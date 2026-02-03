@@ -54,7 +54,7 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_tx_byte_cb_t tx_cb,
  */
 static void io_send_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
   if (ctx->tx_cb) {
-    ctx->tx_cb(ctx->user_data, byte);
+    ctx->tx_cb(byte, ctx->user_data);
   }
 }
 
@@ -210,7 +210,7 @@ static void process_complete_frame(hdlc_context_t *ctx) {
 
   // 2. Notify User (Pass-through inspection)
   if (ctx->rx_cb) {
-    ctx->rx_cb(ctx->user_data, &ctx->rx_frame);
+    ctx->rx_cb(&ctx->rx_frame, ctx->user_data);
   }
 
   ctx->stats_rx_frames++;

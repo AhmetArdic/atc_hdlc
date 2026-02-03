@@ -27,7 +27,7 @@ void print_hexdump(const char *label, const hdlc_u8 *data, int len) {
   printf("\n");
 }
 
-void mock_tx_cb(void *user_data, hdlc_u8 byte) {
+void mock_tx_cb(hdlc_u8 byte, void *user_data) {
   if (tx_len < sizeof(tx_buffer)) {
     tx_buffer[tx_len++] = byte;
   }
@@ -37,7 +37,7 @@ void mock_tx_cb(void *user_data, hdlc_u8 byte) {
 static hdlc_frame_t last_rx_frame;
 static int rx_callback_count = 0;
 
-void mock_rx_cb(void *user_data, const hdlc_frame_t *frame) {
+void mock_rx_cb(const hdlc_frame_t *frame, void *user_data) {
   rx_callback_count++;
   memcpy(&last_rx_frame, frame, sizeof(hdlc_frame_t));
 

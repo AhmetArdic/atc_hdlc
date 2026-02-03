@@ -130,20 +130,20 @@ typedef struct {
  * @brief Output Byte Callback.
  *
  * Function pointer type for the hardware transmission interface.
- * @param user_data Pointer to user-defined context data.
  * @param byte      The byte to send over the physical medium (UART).
+ * @param user_data Pointer to user-defined context data.
  */
-typedef void (*hdlc_tx_byte_cb_t)(void *user_data, hdlc_u8 byte);
+typedef void (*hdlc_tx_byte_cb_t)(hdlc_u8 byte, void *user_data);
 
 /**
  * @brief Frame Received Callback.
  *
  * Function pointer type for notifying the application of a valid received
  * frame.
- * @param user_data Pointer to user-defined context data.
  * @param frame     Pointer to the fully parsed HDLC frame structure.
+ * @param user_data Pointer to user-defined context data.
  */
-typedef void (*hdlc_on_frame_cb_t)(void *user_data, const hdlc_frame_t *frame);
+typedef void (*hdlc_on_frame_cb_t)(const hdlc_frame_t *frame, void *user_data);
 
 /*
  * --------------------------------------------------------------------------
