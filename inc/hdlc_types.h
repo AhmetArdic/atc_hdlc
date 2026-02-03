@@ -25,11 +25,11 @@ extern "C" {
  */
 
 /** @brief 8-bit unsigned integer type. */
-typedef uint8_t hdlc_u8;
+typedef uint_least8_t hdlc_u8;
 /** @brief 16-bit unsigned integer type. */
-typedef uint16_t hdlc_u16;
+typedef uint_least16_t hdlc_u16;
 /** @brief 32-bit unsigned integer type. */
-typedef uint32_t hdlc_u32;
+typedef uint_least32_t hdlc_u32;
 /** @brief Boolean type. */
 typedef bool hdlc_bool;
 
