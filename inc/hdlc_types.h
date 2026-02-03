@@ -84,12 +84,32 @@ typedef enum {
 typedef union {
   hdlc_u8 value; /**< Raw 8-bit Control Byte value. */
 
+  /** Information Frame (I-Frame) [0 N(S) P/F N(R)] */
   struct {
-    hdlc_u8 bit0 : 1; /**< Frame Type ID (0=I-Frame). */
-    hdlc_u8 bit1 : 1; /**< Frame Type ID. */
-    hdlc_u8 p_f : 1;  /**< Poll/Final Bit. */
-    hdlc_u8 oth : 5;  /**< Remaining bits (Ns, Nr, etc.). */
-  } bits;
+    hdlc_u8 frame_type_0 : 1; /**< Frame Type ID (Must be 0). */
+    hdlc_u8 ns           : 3; /**< Send Sequence Number N(S). */
+    hdlc_u8 pf           : 1; /**< Poll/Final Bit. */
+    hdlc_u8 nr           : 3; /**< Receive Sequence Number N(R). */
+  } i_frame;
+
+  /** Supervisory Frame (S-Frame) [1 0 S S P/F N(R)] */
+  struct {
+    hdlc_u8 frame_type_0 : 1; /**< Frame Type ID (Must be 1). */
+    hdlc_u8 frame_type_1 : 1; /**< Frame Type ID (Must be 0). */
+    hdlc_u8 s            : 2; /**< Supervisory function bits. */
+    hdlc_u8 pf           : 1; /**< Poll/Final Bit. */
+    hdlc_u8 nr           : 3; /**< Receive Sequence Number N(R). */
+  } s_frame;
+
+  /** Unnumbered Frame (U-Frame) [1 1 M M P/F M M M] */
+  struct {
+    hdlc_u8 frame_type_0 : 1; /**< Frame Type ID (Must be 1). */
+    hdlc_u8 frame_type_1 : 1; /**< Frame Type ID (Must be 1). */
+    hdlc_u8 m_lo         : 2; /**< Modifier function bits (low). */
+    hdlc_u8 pf           : 1; /**< Poll/Final Bit. */
+    hdlc_u8 m_hi         : 3; /**< Modifier function bits (high). */
+  } u_frame;
+
 } hdlc_control_t;
 
 /*

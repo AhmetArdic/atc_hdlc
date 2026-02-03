@@ -448,6 +448,116 @@ void test_fragmented_delivery() {
   }
 }
 
+// --- Control Field Tests ---
+
+void test_control_field_i() {
+    printf("========================================\n");
+    printf("TEST: Control Field - I-Frame Loopback\n");
+    printf("========================================\n");
+    
+    hdlc_context_t ctx;
+    hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+    reset_test();
+    
+    // N(S)=5, N(R)=3, P/F=1
+    hdlc_frame_t i_frame = {
+        .address = 0x01,
+        .control = hdlc_create_i_ctrl(5, 3, 1),
+        .payload_len = 0
+    };
+    
+    printf("Generated I-Frame Ctrl Value: 0x%02X\n", i_frame.control.value);
+    
+    hdlc_send_frame(&ctx, &i_frame);
+    for(int i=0; i<tx_len; i++) hdlc_input_byte(&ctx, tx_buffer[i]);
+    
+    if(rx_callback_count == 1 && last_rx_frame.type == HDLC_FRAME_I) {
+         hdlc_control_t rc = last_rx_frame.control;
+         printf("Received: Type=I, N(S)=%d, N(R)=%d, P/F=%d\n", 
+                rc.i_frame.ns, rc.i_frame.nr, rc.i_frame.pf);
+         
+         if(rc.i_frame.ns == 5 && rc.i_frame.nr == 3 && rc.i_frame.pf == 1) {
+             assert_pass("I-Frame Loopback");
+         } else {
+             assert_fail("I-Frame", "Field content mismatch");
+         }
+    } else {
+        assert_fail("I-Frame", "Frame not received or wrong type");
+    }
+}
+
+void test_control_field_s() {
+    printf("========================================\n");
+    printf("TEST: Control Field - S-Frame Loopback\n");
+    printf("========================================\n");
+    
+    hdlc_context_t ctx;
+    hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+    reset_test();
+    
+    // RR (S=00), N(R)=7, P/F=0
+    hdlc_frame_t s_frame = {
+        .address = 0x01,
+        .control = hdlc_create_s_ctrl(0, 7, 0), 
+        .payload_len = 0
+    };
+    
+    printf("Generated S-Frame Ctrl Value: 0x%02X\n", s_frame.control.value);
+    hdlc_send_frame(&ctx, &s_frame);
+    for(int i=0; i<tx_len; i++) hdlc_input_byte(&ctx, tx_buffer[i]);
+
+    if(rx_callback_count == 1 && last_rx_frame.type == HDLC_FRAME_S) {
+         hdlc_control_t rc = last_rx_frame.control;
+         printf("Received: Type=S, S=%d, N(R)=%d, P/F=%d\n", 
+                rc.s_frame.s, rc.s_frame.nr, rc.s_frame.pf);
+         
+         if(rc.s_frame.s == 0 && rc.s_frame.nr == 7) {
+             assert_pass("S-Frame Loopback");
+         } else {
+             assert_fail("S-Frame", "Field content mismatch");
+         }
+    } else {
+        assert_fail("S-Frame", "Frame not received or wrong type");
+    }
+}
+
+void test_control_field_u() {
+    printf("========================================\n");
+    printf("TEST: Control Field - U-Frame Loopback\n");
+    printf("========================================\n");
+    
+    hdlc_context_t ctx;
+    hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+    reset_test();
+    
+    // SABM: 0x2F (base) + P=1 => 0x3F
+    // M_LO = 3 (11), M_HI = 1 (001)
+    hdlc_frame_t u_frame = {
+        .address = 0x01,
+        .control = hdlc_create_u_ctrl(3, 1, 1), 
+        .payload_len = 0
+    };
+    
+    printf("Generated U-Frame (SABM) Ctrl Value: 0x%02X\n", u_frame.control.value);
+    
+    hdlc_send_frame(&ctx, &u_frame);
+    for(int i=0; i<tx_len; i++) hdlc_input_byte(&ctx, tx_buffer[i]);
+
+    if(rx_callback_count == 1 && last_rx_frame.type == HDLC_FRAME_U) {
+         hdlc_control_t rc = last_rx_frame.control;
+         printf("Received: Type=U, M_LO=%d, M_HI=%d, P=%d\n", 
+                rc.u_frame.m_lo, rc.u_frame.m_hi, rc.u_frame.pf);
+         
+         if(rc.value == 0x3F) {
+             assert_pass("U-Frame Loopback");
+         } else {
+             assert_fail("U-Frame", "Field content mismatch");
+         }
+    } else {
+        assert_fail("U-Frame", "Frame not received or wrong type");
+    }
+}
+
 int main() {
   printf("\n%sSTARTING COMPREHENSIVE HDLC TEST SUITE%s\n", COL_YELLOW,
          COL_RESET);
@@ -464,6 +574,9 @@ int main() {
   test_mtu_overflow();
   test_streaming_api();
   test_fragmented_delivery();
+  test_control_field_i();
+  test_control_field_s();
+  test_control_field_u();
 
   printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
   return 0;
