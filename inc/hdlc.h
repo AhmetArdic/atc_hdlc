@@ -37,12 +37,20 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_tx_byte_cb_t tx_cb,
 
 /**
  * @brief Input a received byte into the HDLC Parser.
- * 
- * This function should be called from the hardware UART ISR or polling loop
- * for every single byte received. It handles Flag detection, Byte Unstuffing,
- * CRC verification, and eventually calls the `rx_cb` when a complete valid
- * frame is assembled.
- * 
+ *
+ * Checks for delimiters, handles byte-unstuffing, and buffers data.
+ *
+ * @warning **CRITICAL TIMING NOTE**: When the closing flag (0x7E) is received,
+ * this function performs **O(N)** operations synchronously, including:
+ * 1. CRC verification over the full frame.
+ * 2. `memmove` to strip headers.
+ * 3. Execution of the user `rx_cb`.
+ *
+ * **DO NOT CALL FROM ISR** directly unless your baud rate is low, your frames
+ * are short, and you understand the timing implications. For high-performance
+ * applications, push bytes to a Ring Buffer from the ISR and call this function
+ * from a lower-priority thread or main loop.
+ *
  * @param ctx  Pointer to the initialized HDLC context.
  * @param byte The raw byte received from the physical medium.
  */

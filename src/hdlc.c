@@ -218,7 +218,8 @@ static void process_complete_frame(hdlc_context_t *ctx) {
 
 /**
  * @brief Input a received byte into the HDLC Parser.
- * @see hdlc.h
+ * @note **ISR UNSAFE**: Performs heavy validation (CRC) on frame end. Checks for delimiters, handles byte-unstuffing, and buffers data.
+ * @see hdlc.h for detailed ISR usage warnings.
  */
 void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
   if (!ctx)
