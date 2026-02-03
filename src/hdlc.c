@@ -39,7 +39,6 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_tx_byte_cb_t tx_cb,
 
   // Initialize State
   ctx->rx_state = HDLC_RX_HUNT;
-  ctx->state = HDLC_STATE_DISCONNECTED;
 }
 
 /*

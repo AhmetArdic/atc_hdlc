@@ -51,19 +51,6 @@ typedef enum {
   HDLC_FRAME_INVALID /**< Invalid or Unknown Frame format */
 } hdlc_frame_type_t;
 
-/**
- * @brief Connection State Machine.
- *
- * Represents the current state of the logical link connection.
- * Used for ABM (Asynchronous Balanced Mode) logic.
- */
-typedef enum {
-  HDLC_STATE_DISCONNECTED, /**< Link is down or disconnected. */
-  HDLC_STATE_SETUP,        /**< SABM sent, waiting for UA. */
-  HDLC_STATE_CONNECTED,    /**< Link established, ready for I-Frames. */
-  HDLC_STATE_ERROR         /**< Unrecoverable error state. */
-} hdlc_state_t;
-
 /*
  * --------------------------------------------------------------------------
  * CONTROL FIELD STRUCTURES
@@ -175,11 +162,6 @@ typedef struct {
   hdlc_tx_byte_cb_t tx_cb;  /**< Hardware TX callback. */
   hdlc_on_frame_cb_t rx_cb; /**< Application RX callback. */
   void *user_data;          /**< User context passed to callbacks. */
-
-  /* Protocol Logic State */
-  hdlc_state_t state; /**< Connection state (ABM). */
-  hdlc_u8 seq_ns;     /**< Send Sequence Number N(S). */
-  hdlc_u8 seq_nr;     /**< Receive Sequence Number N(R). */
 
   /* Receiver Engine State */
   hdlc_u8 rx_state;  /**< Current internal parser state (enum from private). */
