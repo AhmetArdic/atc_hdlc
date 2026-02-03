@@ -1,24 +1,23 @@
-#include "hdlc_types.h"
-
-// Polynomial: x^16 + x^12 + x^5 + 1 (0x1021)
-// Initial value: 0xFFFF
-
 /**
- * @brief Update CRC-16-CCITT with a new byte
+ * @file hdlc_crc.c
+ * @brief CRC-16-CCITT Implementation.
  *
- * Uses a small lookup table or algorithmic approach to save space?
- * For embedded, a 256-entry table is fast but takes 512 bytes of flash.
- * We will use a nibble-based table or pure calculation to save space if needed,
- * but let's go with a standard byte-wise calculation for balance of speed/size
- * without a massive table, or just a simple loop for maximum space saving
- * since the user emphasized "embedded".
- *
- * Let's use the loop method for smallest code size, as requested for
- * "selectable features" maybe we can add a macro later for table based.
- * ideally, the user asked for "high performance". A 256-entry table is best for
- * speed. I will implement the table version for performance.
+ * Provides the Lookup Table (LUT) and update function for the
+ * standard CCITT CRC-16 (Polynomial: 0x1021).
  */
 
+#include "hdlc_types.h"
+
+/*
+ * Polynomial: x^16 + x^12 + x^5 + 1 (0x1021)
+ * Initial value: 0xFFFF
+ */
+
+/**
+ * @brief Pre-computed CRC-16-CCITT Lookup Table.
+ * Allows for fast byte-wise CRC calculation at the cost of 512 bytes of
+ * ROM/Flash.
+ */
 static const hdlc_u16 fcstab[256] = {
     0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x74bf, 0x8c48,
     0x9dc1, 0xaf5a, 0xbed3, 0xca6c, 0xdbe5, 0xe97e, 0xf8f7, 0x1081, 0x0108,
@@ -50,6 +49,13 @@ static const hdlc_u16 fcstab[256] = {
     0xc514, 0xb1ab, 0xa022, 0x92b9, 0x8330, 0x7bc7, 0x6a4e, 0x58d5, 0x495c,
     0x3de3, 0x2c6a, 0x1ef1, 0x0f78};
 
+/**
+ * @brief Update the running CRC value with a new data byte.
+ *
+ * @param fcs  Current accumulated CRC value (Initial should be 0xFFFF).
+ * @param data New data byte to include in the CRC.
+ * @return hdlc_u16 Updated CRC value.
+ */
 hdlc_u16 hdlc_crc_ccitt_update(hdlc_u16 fcs, hdlc_u8 data) {
   return (fcs >> 8) ^ fcstab[(fcs ^ data) & 0xff];
 }

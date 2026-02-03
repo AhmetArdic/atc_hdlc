@@ -1,3 +1,15 @@
+/**
+ * @file hdlc_config.h
+ * @brief Configuration parameters for the HDLC Library.
+ *
+ * This file contains compile-time configuration macros to tailor the HDLC
+ * library to specific embedded system constraints, such as memory usage (MTU),
+ * window sizes, and internal buffer limits.
+ *
+ * @note Adjust these values based on your target architecture and application
+ * requirements.
+ */
+
 #ifndef HDLC_CONFIG_H
 #define HDLC_CONFIG_H
 
@@ -6,60 +18,24 @@ extern "C" {
 #endif
 
 /*
- * HDLC Configuration
- * 
- * Adjust these macros to fit the target embedded system's constraints.
+ * --------------------------------------------------------------------------
+ * MEMORY & BUFFER CONFIGURATION
+ * --------------------------------------------------------------------------
  */
 
 /**
- * @brief Maximum Transmission Unit (Payload Size)
- * 
- * Defines the maximum size of the Information field in an I-Frame or UI-Frame.
- * Does not include header (Addr+Ctrl) or trailer (FCS).
+ * @brief Maximum Transmission Unit (MTU) for the Payload.
+ *
+ * Defines the maximum size (in bytes) of the Information field (Payload)
+ * within an HDLC frame. This value does NOT include the framing overhead
+ * (Flag, Address, Control, FCS).
+ *
+ * @note Increasing this value increases the static RAM usage for the Rx buffer.
+ *       Ensure your target has sufficient RAM.
+ *
+ * Default: 256 bytes.
  */
-#ifndef HDLC_MAX_MTU
-#define HDLC_MAX_MTU    256
-#endif
-
-/**
- * @brief Address Field Length
- * 
- * Standard HDLC uses 1 byte. Extended addressing is not supported in this
- * classic implementation.
- */
-#define HDLC_ADDR_LEN   1
-
-/**
- * @brief Control Field Length
- * 
- * Classic HDLC uses 1 byte (8-bit) control field.
- * Extended (16-bit) is not supported.
- */
-#define HDLC_CTRL_LEN   1
-
-/**
- * @brief FCS (CRC) Size
- * 
- * 2 bytes for CRC-16-CCITT.
- */
-#define HDLC_FCS_LEN    2
-
-/**
- * @brief Receive Window Size (1-7)
- * 
- * Determines how many I-frames can be unacknowledged.
- * Standard mode allows up to 7.
- */
-#ifndef HDLC_WINDOW_SIZE
-#define HDLC_WINDOW_SIZE 7
-#endif
-
-/**
- * @brief Context User Data
- * 
- * Enable a void* user_data pointer in the context to pass to callbacks.
- */
-#define HDLC_USE_USER_DATA 1
+#define HDLC_MAX_MTU    (256)
 
 #ifdef __cplusplus
 }

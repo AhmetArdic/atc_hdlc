@@ -1,13 +1,29 @@
+/**
+ * @file hdlc.c
+ * @brief Main Implementation of the HDLC Protocol Stack.
+ *
+ * Contains the logic for Frame Transmission (Buffered & Streaming),
+ * Frame Reception (State Machine, Byte Stuffing removal), and
+ * CRC Verification.
+ */
+
 #include "hdlc.h"
 #include "hdlc_crc.h"
 #include "hdlc_private.h"
 #include <stdio.h>
 #include <string.h>
 
+/** @brief HDLC Flag Sequence (0x7E) used to delimit frames. */
 #define HDLC_FLAG 0x7E
+/** @brief HDLC Escape Octet (0x7D) used for transparency. */
 #define HDLC_ESCAPE 0x7D
+/** @brief Bit-mask (0x20) XORed with octets to be escaped. */
 #define HDLC_XOR_MASK 0x20
 
+/**
+ * @brief Initialize the HDLC Context.
+ * @see hdlc.h
+ */
 void hdlc_init(hdlc_context_t *ctx, hdlc_tx_byte_cb_t tx_cb,
                hdlc_on_frame_cb_t rx_cb, void *user_data) {
   if (!ctx)
@@ -32,12 +48,27 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_tx_byte_cb_t tx_cb,
  * --------------------------------------------------------------------------
  */
 
+/**
+ * @brief Internal helper to send a single raw byte to hardware.
+ * @param ctx  HDLC Context.
+ * @param byte Raw byte to transmit.
+ */
 static void io_send_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
   if (ctx->tx_cb) {
     ctx->tx_cb(ctx->user_data, byte);
   }
 }
 
+/**
+ * @brief Internal helper to send a data byte with automatic escaping.
+ *
+ * Updates the running CRC and checks if the byte needs escaping
+ * (i.e. if it looks like a FLAG or ESCAPE).
+ *
+ * @param ctx  HDLC Context.
+ * @param byte Data byte to send.
+ * @param crc  Pointer to the running CRC to update.
+ */
 static void io_send_escaped(hdlc_context_t *ctx, hdlc_u8 byte, hdlc_u16 *crc) {
   *crc = hdlc_crc_ccitt_update(*crc, byte);
 
@@ -49,6 +80,10 @@ static void io_send_escaped(hdlc_context_t *ctx, hdlc_u8 byte, hdlc_u16 *crc) {
   }
 }
 
+/**
+ * @brief Send a complete HDLC Frame (Buffered).
+ * @see hdlc.h
+ */
 void hdlc_send_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   if (!ctx || !frame)
     return;
@@ -69,29 +104,11 @@ void hdlc_send_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     io_send_escaped(ctx, frame->payload[i], &crc);
   }
 
-  // FCS (CRC) - Stuffed!
-  // CRC is sent little-endian or big-endian?
-  // ISO/IEC 13239 says FCS is transmitted least significant bit first.
-  // However, usually widespread implementations (like PPP/AX.25) might differ.
-  // Classic HDLC often implies sending MSB first for 8-bit bytes,
-  // but the CRC itself is often inverted.
-  // Let's stick to standard practice: Send Low Byte, then High Byte?
-  // Actually, normally X.25 CRC is sent MSB first? No, LSB first.
-  // Let's assume Network Byte Order (Big Endian) for consistency unless
-  // specified otherwise. Wait, ISO 3309 says "The 1s complement of the FCS is
-  // transmitted... highest order term first". "Highest order term" generally
-  // maps to MSB. Let's send MSB first (Big Endian) which is typical for network
-  // protocols.
-
-  // We do NOT update the CRC with itself.
-
+  // FCS (CRC) - Transmit MSB first (Network Byte Order)
+  // Note: FCS bytes themselves are NOT added to the CRC calculation,
+  // but they ARE subject to byte stuffing.
   hdlc_u8 fcs_hi = (crc >> 8) & 0xFF;
   hdlc_u8 fcs_lo = crc & 0xFF;
-
-  // We just write these bytes. They are subject to stuffing too.
-  // Wait, we DO NOT recalculate CRC on the CRC bytes ourselves.
-  // But we DO need to stuff them if they match FLAG/ESCAPE.
-  // We use a local helper that assumes no CRC update for these two:
 
   if (fcs_hi == HDLC_FLAG || fcs_hi == HDLC_ESCAPE) {
     io_send_byte(ctx, HDLC_ESCAPE);
@@ -125,6 +142,11 @@ void hdlc_send_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
  * --------------------------------------------------------------------------
  */
 
+/**
+ * @brief Internal handler for Information (I) Frames.
+ * @param ctx   HDLC Context.
+ * @param frame Received frame.
+ */
 static void handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   // TODO: Implement I-Frame Logic
   // - Check Sequence Number N(S) against V(R)
@@ -135,6 +157,11 @@ static void handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   (void)frame;
 }
 
+/**
+ * @brief Internal handler for Supervisory (S) Frames.
+ * @param ctx   HDLC Context.
+ * @param frame Received frame.
+ */
 static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   // TODO: Implement S-Frame Logic
   // - Handle RR, RNR, REJ
@@ -142,6 +169,11 @@ static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   (void)frame;
 }
 
+/**
+ * @brief Internal handler for Unnumbered (U) Frames.
+ * @param ctx   HDLC Context.
+ * @param frame Received frame.
+ */
 static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   // TODO: Implement U-Frame Logic
   // - SABM: Send UA, Reset State
@@ -151,6 +183,15 @@ static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   (void)frame;
 }
 
+/**
+ * @brief Process a completely received and validated frame.
+ *
+ * Called when the State Machine detects a valid closing Flag and CRC checks
+ * out. Routes the frame to the appropriate handler (I/S/U) and invokes the user
+ * callback.
+ *
+ * @param ctx HDLC Context.
+ */
 static void process_complete_frame(hdlc_context_t *ctx) {
   // 1. Identify Frame Type based on Control Field
   hdlc_u8 ctrl = ctx->rx_frame.control.value;
@@ -176,6 +217,10 @@ static void process_complete_frame(hdlc_context_t *ctx) {
   ctx->stats_rx_frames++;
 }
 
+/**
+ * @brief Input a received byte into the HDLC Parser.
+ * @see hdlc.h
+ */
 void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
   if (!ctx)
     return;
@@ -183,24 +228,26 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
   /* 1. Handle Frame Delimiters */
   if (byte == HDLC_FLAG) {
     if (ctx->rx_state != HDLC_RX_HUNT) {
-      // End of frame or Resync
+      // Flag received while receiving data -> End of Frame
       if (ctx->rx_index > 0) {
-        // We have some data, check if it's a valid frame
         // Minimum size: Addr(1) + Ctrl(1) + FCS(2) = 4 bytes
-
-        // Verify CRC by Re-calculation (Robust method)
-        // Check minimum size first (Addr+Ctrl+FCS = 4 bytes)
         if (ctx->rx_index >= 4) {
-          // 1. Calculate CRC over Data (Addr + Ctrl + Payload)
+
+          // --- CRC Verification Strategy ---
+          // 1. Re-calculate CRC over the "Data" portion (Addr..Payload).
+          // 2. Compare calculated CRC with the received FCS bytes (last 2
+          // bytes).
+
           hdlc_u16 calced_crc = 0xFFFF;
-          hdlc_u16 data_len = ctx->rx_index - 2; // Exclude FCS
+          hdlc_u16 data_len = ctx->rx_index - 2; // Exclude FCS bytes
 
           for (hdlc_u16 i = 0; i < data_len; i++) {
             calced_crc =
                 hdlc_crc_ccitt_update(calced_crc, ctx->rx_frame.payload[i]);
           }
 
-          // 2. Extract Received FCS
+          // Extract Received FCS (Assuming MSB first order on wire -> Buffered
+          // as Hi, Lo)
           hdlc_u8 fcs_hi = ctx->rx_frame.payload[ctx->rx_index - 2];
           hdlc_u8 fcs_lo = ctx->rx_frame.payload[ctx->rx_index - 1];
           hdlc_u16 rx_fcs = (fcs_hi << 8) | fcs_lo;
@@ -208,20 +255,22 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
           if (calced_crc == rx_fcs) {
             // Valid Frame!
 
-            // Extract Structure:
+            // Populate Structure:
             ctx->rx_frame.address = ctx->rx_frame.payload[0];
             ctx->rx_frame.control.value = ctx->rx_frame.payload[1];
 
-            // Move payload: (Total - Header(2) - FCS(2))
-            ctx->rx_frame.payload_len = data_len - 2; // -Addr, -Ctrl
+            // Payload is everything after Header(2) and before FCS(2)
+            ctx->rx_frame.payload_len = data_len - 2;
 
+            // Shift payload to the beginning of the buffer (removing header)
             memmove(ctx->rx_frame.payload, &ctx->rx_frame.payload[2],
                     ctx->rx_frame.payload_len);
 
             process_complete_frame(ctx);
           } else {
-            printf("[LIB] CRC Fail: Calc=%04X Rx=%04X Len=%d\n", calced_crc,
-                   rx_fcs, ctx->rx_index);
+            // CRC Error: Frame discarded silently (or logged)
+            // printf("[LIB] CRC Fail: Calc=%04X Rx=%04X Len=%d\n", calced_crc,
+            // rx_fcs, ctx->rx_index);
             ctx->stats_crc_errors++;
           }
         }
@@ -232,14 +281,13 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
     ctx->rx_state = HDLC_RX_ADDRESS; // Expecting Address next
     ctx->rx_index = 0;
     ctx->rx_crc = 0xFFFF;
-    // Don't process FLAG as data
     return;
   }
 
   /* 2. Handle State Machine */
 
   if (ctx->rx_state == HDLC_RX_HUNT) {
-    return; // Ignoring noise
+    return; // Ignoring noise awaiting next Flag
   }
 
   if (byte == HDLC_ESCAPE) {
@@ -248,22 +296,22 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
   }
 
   if (ctx->rx_state == HDLC_RX_ESCAPE) {
-    byte ^= HDLC_XOR_MASK;
-    ctx->rx_state = HDLC_RX_DATA; // Return to normal state (conceptually)
+    byte ^= HDLC_XOR_MASK;        // Un-escape
+    ctx->rx_state = HDLC_RX_DATA; // Return to normal state
   }
 
   /* 3. Validation & Buffering */
 
   if (ctx->rx_index >= HDLC_MAX_MTU + 4) {
-    // Overflow
+    // Overflow protection: Drop invalid large frame and hunt for next flag
     ctx->rx_state = HDLC_RX_HUNT;
     return;
   }
 
-  // Add to CRC
-  ctx->rx_crc = hdlc_crc_ccitt_update(ctx->rx_crc, byte);
+  // Note: We don't update running RX CRC here anymore because we use
+  // the "Recalculate over buffer" method on Frame End for robustness.
 
-  // Store
+  // Store byte in buffer
   ctx->rx_frame.payload[ctx->rx_index++] = byte;
 }
 
@@ -273,6 +321,10 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
  * --------------------------------------------------------------------------
  */
 
+/**
+ * @brief Start a Streaming Packet Transmission.
+ * @see hdlc.h
+ */
 void hdlc_send_packet_start(hdlc_context_t *ctx) {
   if (!ctx)
     return;
@@ -284,6 +336,10 @@ void hdlc_send_packet_start(hdlc_context_t *ctx) {
   io_send_byte(ctx, HDLC_FLAG);
 }
 
+/**
+ * @brief Send a Payload Byte in Streaming Mode.
+ * @see hdlc.h
+ */
 void hdlc_send_packet_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
   if (!ctx)
     return;
@@ -292,18 +348,15 @@ void hdlc_send_packet_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
   io_send_escaped(ctx, byte, &ctx->tx_crc);
 }
 
+/**
+ * @brief Finalize Streaming Packet Transmission.
+ * @see hdlc.h
+ */
 void hdlc_send_packet_end(hdlc_context_t *ctx) {
   if (!ctx)
     return;
 
   // Finalize CRC
-  // Same logic as send_frame: Send MSB then LSB, inverted?
-  // In send_frame we used:
-  // hdlc_u8 fcs_hi = (crc >> 8) & 0xFF;
-  // hdlc_u8 fcs_lo = crc & 0xFF;
-  // And we did NOT update CRC with itself.
-  // Also we stuffed them.
-
   hdlc_u16 crc = ctx->tx_crc;
 
   hdlc_u8 fcs_hi = (crc >> 8) & 0xFF;

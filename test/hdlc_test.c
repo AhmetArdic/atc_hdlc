@@ -460,8 +460,6 @@ int main() {
   test_consecutive_flags();
   test_min_size_rejection();
   test_aborted_frame();
-
-  // Restored & New Tests
   test_crc_error_injection();
   test_mtu_overflow();
   test_streaming_api();
