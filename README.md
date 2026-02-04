@@ -20,6 +20,9 @@ This project provides a high-performance, scalable HDLC (High-Level Data Link Co
 *   **Build System**:
     *   Modern **CMake** build system for easy integration and cross-platform compilation.
     *   Comprehensive **Unit Tests** covering edge cases (Stuffing, CRC errors, Overflows).
+*   **Highly Configurable**:
+    *   **Prefix Support**: All public API functions and types are prefixed (default `atc_`) to avoid symbol collisions.
+    *   **Configurable**: The prefix can be changed at compile time via `ATC_HDLC_PREFIX`.
 
 ## 📂 Project Structure
 
