@@ -397,14 +397,14 @@ void hdlc_send_packet_information_byte(hdlc_context_t *ctx, hdlc_u8 information_
  * @brief Send a Information Bytes Array in Streaming Mode.
  * @see hdlc.h
  */
-void hdlc_send_packet_information_bytes_array(hdlc_context_t *ctx, const hdlc_u8* information_bytes_array, hdlc_u32 length)
+void hdlc_send_packet_information_bytes_array(hdlc_context_t *ctx, const hdlc_u8* information_bytes_array, hdlc_u32 size)
 {
     if (ctx == NULL)
     {
         return;
     }
 
-    for (hdlc_u32 i = 0; i < length; ++i)
+    for (hdlc_u32 i = 0; i < size; ++i)
     {
         // Update CRC and Send Escaped
         io_send_escaped(ctx, information_bytes_array[i], &ctx->tx_crc);
