@@ -26,7 +26,7 @@
  */
 void hdlc_init(hdlc_context_t *ctx, hdlc_tx_byte_cb_t tx_cb,
                hdlc_on_frame_cb_t rx_cb, void *user_data) {
-  if (!ctx)
+  if (ctx == NULL)
     return;
 
   // Clear context
@@ -53,7 +53,7 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_tx_byte_cb_t tx_cb,
  * @param byte Raw byte to transmit.
  */
 static void io_send_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
-  if (ctx->tx_cb) {
+  if (ctx->tx_cb != NULL) {
     ctx->tx_cb(byte, ctx->user_data);
   }
 }
@@ -84,7 +84,7 @@ static void io_send_escaped(hdlc_context_t *ctx, hdlc_u8 byte, hdlc_u16 *crc) {
  * @see hdlc.h
  */
 void hdlc_send_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
-  if (!ctx || !frame)
+  if (ctx == NULL || frame == NULL)
     return;
 
   hdlc_u16 crc = 0xFFFF;
@@ -209,7 +209,7 @@ static void process_complete_frame(hdlc_context_t *ctx) {
   }
 
   // 2. Notify User (Pass-through inspection)
-  if (ctx->rx_cb) {
+  if (ctx->rx_cb != NULL) {
     ctx->rx_cb(&ctx->rx_frame, ctx->user_data);
   }
 
@@ -222,7 +222,7 @@ static void process_complete_frame(hdlc_context_t *ctx) {
  * @see hdlc.h for detailed ISR usage warnings.
  */
 void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
-  if (!ctx)
+  if (ctx == NULL)
     return;
 
   /* 1. Handle Frame Delimiters */
@@ -322,66 +322,92 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
  */
 
 /**
- * @brief Start a Streaming Packet Transmission.
- * @see hdlc.h
- */
-void hdlc_send_packet_start(hdlc_context_t *ctx) {
-  if (!ctx)
-    return;
+* @brief Start a Streaming Packet Transmission.
+* @see hdlc.h
+*/
+void hdlc_send_packet_start(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 control)
+{
+    if (ctx == NULL)
+        return;
 
-  // Initialize CRC
-  ctx->tx_crc = 0xFFFF;
+    // Initialize CRC
+    ctx->tx_crc = 0xFFFF;
 
-  // Send Start Flag
-  io_send_byte(ctx, HDLC_FLAG);
+    // Send Start Flag
+    io_send_byte(ctx, HDLC_FLAG);
+
+    // Send Address
+    // Update CRC and Send Escaped
+    io_send_escaped(ctx, address, &ctx->tx_crc);
+
+    // Send Control
+    // Update CRC and Send Escaped
+    io_send_escaped(ctx, control, &ctx->tx_crc);
 }
 
 /**
- * @brief Send a Payload Byte in Streaming Mode.
- * @see hdlc.h
- */
-void hdlc_send_packet_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
-  if (!ctx)
-    return;
+* @brief Send a Information Byte in Streaming Mode.
+* @see hdlc.h
+*/
+void hdlc_send_packet_information_byte(hdlc_context_t *ctx, hdlc_u8 information_byte)
+{
+    if (ctx == NULL)
+        return;
 
-  // Update CRC and Send Escaped
-  io_send_escaped(ctx, byte, &ctx->tx_crc);
+    // Update CRC and Send Escaped
+    io_send_escaped(ctx, information_byte, &ctx->tx_crc);
 }
 
 /**
- * @brief Finalize Streaming Packet Transmission.
- * @see hdlc.h
- */
+* @brief Send a Information Bytes Array in Streaming Mode.
+* @see hdlc.h
+*/
+void hdlc_send_packet_information_bytes_array(hdlc_context_t *ctx, const hdlc_u8* information_bytes_array, hdlc_u32 length)
+{
+    if (ctx == NULL)
+        return;
+
+    for (hdlc_u32 i = 0; i < length; ++i)
+    {
+        // Update CRC and Send Escaped
+        io_send_escaped(ctx, information_bytes_array[i], &ctx->tx_crc);
+    }
+}
+
+/**
+* @brief Finalize Streaming Packet Transmission.
+* @see hdlc.h
+*/
 void hdlc_send_packet_end(hdlc_context_t *ctx) {
-  if (!ctx)
-    return;
+    if (ctx == NULL)
+        return;
 
-  // Finalize CRC
-  hdlc_u16 crc = ctx->tx_crc;
+    // Finalize CRC
+    hdlc_u16 crc = ctx->tx_crc;
 
-  hdlc_u8 fcs_hi = (crc >> 8) & 0xFF;
-  hdlc_u8 fcs_lo = crc & 0xFF;
+    hdlc_u8 fcs_hi = (crc >> 8) & 0xFF;
+    hdlc_u8 fcs_lo = crc & 0xFF;
 
-  // Send FCS High
-  if (fcs_hi == HDLC_FLAG || fcs_hi == HDLC_ESCAPE) {
-    io_send_byte(ctx, HDLC_ESCAPE);
-    io_send_byte(ctx, fcs_hi ^ HDLC_XOR_MASK);
-  } else {
-    io_send_byte(ctx, fcs_hi);
-  }
+    // Send FCS High
+    if (fcs_hi == HDLC_FLAG || fcs_hi == HDLC_ESCAPE) {
+        io_send_byte(ctx, HDLC_ESCAPE);
+        io_send_byte(ctx, fcs_hi ^ HDLC_XOR_MASK);
+    } else {
+        io_send_byte(ctx, fcs_hi);
+    }
 
-  // Send FCS Low
-  if (fcs_lo == HDLC_FLAG || fcs_lo == HDLC_ESCAPE) {
-    io_send_byte(ctx, HDLC_ESCAPE);
-    io_send_byte(ctx, fcs_lo ^ HDLC_XOR_MASK);
-  } else {
-    io_send_byte(ctx, fcs_lo);
-  }
+    // Send FCS Low
+    if (fcs_lo == HDLC_FLAG || fcs_lo == HDLC_ESCAPE) {
+        io_send_byte(ctx, HDLC_ESCAPE);
+        io_send_byte(ctx, fcs_lo ^ HDLC_XOR_MASK);
+    } else {
+        io_send_byte(ctx, fcs_lo);
+    }
 
-  // End Flag
-  io_send_byte(ctx, HDLC_FLAG);
+    // End Flag
+    io_send_byte(ctx, HDLC_FLAG);
 
-  ctx->stats_tx_frames++;
+    ctx->stats_tx_frames++;
 }
 
 /*
