@@ -1,5 +1,7 @@
 /**
  * @file hdlc_crc.h
+ * @author ahmettardic - Ahmet Talha ARDIC
+ * @date 02.02.2026
  * @brief Internal CRC-16 API.
  *
  * Declares the CRC update function used by the HDLC engine.

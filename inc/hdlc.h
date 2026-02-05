@@ -1,5 +1,7 @@
 /**
  * @file hdlc.h
+ * @author ahmettardic - Ahmet Talha ARDIC
+ * @date 02.02.2026
  * @brief Public API for the HDLC Library.
  * 
  * Provides function prototypes for initializing the library, sending frames,
@@ -32,8 +34,7 @@ extern "C" {
  * @param rx_cb     Callback function for receiving valid frames.
  * @param user_data Optional user pointer to pass to the callbacks.
  */
-void hdlc_init(hdlc_context_t *ctx, hdlc_tx_byte_cb_t tx_cb, 
-               hdlc_on_frame_cb_t rx_cb, void *user_data);
+void hdlc_init(hdlc_context_t *ctx, hdlc_tx_byte_cb_t tx_cb, hdlc_on_frame_cb_t rx_cb, void *user_data);
 
 /**
  * @brief Input a received byte into the HDLC Parser.
@@ -108,53 +109,53 @@ hdlc_control_t hdlc_create_u_ctrl(hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf);
  */
 
 /**
-* @brief Start a Streaming Packet Transmission.
-* 
-* Begins a new frame transmission by sending the Start Flag (`0x7E`)
-* and initializing the internal TX CRC engine.
-* 
-* Use this API sequence for memory-constrained devices where constructing
-* a full `hdlc_frame_t` in RAM is not feasible.
-* 
-* @param ctx Pointer to the initialized HDLC context.
-* @param address The address byte to send.
-* @param control The control byte to send.
-*/
+ * @brief Start a Streaming Packet Transmission.
+ *
+ * Begins a new frame transmission by sending the Start Flag (`0x7E`)
+ * and initializing the internal TX CRC engine.
+ *
+ * Use this API sequence for memory-constrained devices where constructing
+ * a full `hdlc_frame_t` in RAM is not feasible.
+ *
+ * @param ctx Pointer to the initialized HDLC context.
+ * @param address The address byte to send.
+ * @param control The control byte to send.
+ */
 void hdlc_send_packet_start(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 control);
 
 /**
-* @brief Send a Information Byte in Streaming Mode.
-* 
-* Sends a single byte of the frame content (Address, Control, or Data).
-* Automatically calculates CRC and performs Byte Stuffing (Escaping)
-* on the fly if the byte matches Flag/Escape characters.
-* 
-* @param ctx Pointer to the initialized HDLC context.
-* @param information_byte The payload byte to send.
-*/
+ * @brief Send a Information Byte in Streaming Mode.
+ *
+ * Sends a single byte of the frame content (Address, Control, or Data).
+ * Automatically calculates CRC and performs Byte Stuffing (Escaping)
+ * on the fly if the byte matches Flag/Escape characters.
+ *
+ * @param ctx Pointer to the initialized HDLC context.
+ * @param information_byte The payload byte to send.
+ */
 void hdlc_send_packet_information_byte(hdlc_context_t *ctx, hdlc_u8 information_byte);
 
 /**
-* @brief Send a Information Bytes Array in Streaming Mode.
-* 
-* Sends a bytes array of the frame content (Address, Control, or Data).
-* Automatically calculates CRC and performs Byte Stuffing (Escaping)
-* on the fly if the byte matches Flag/Escape characters.
-* 
-* @param ctx Pointer to the initialized HDLC context.
-* @param information_bytes_array The payload bytes array to send.
-* @param length The length of payload bytes array to send.
-*/
+ * @brief Send a Information Bytes Array in Streaming Mode.
+ *
+ * Sends a bytes array of the frame content (Address, Control, or Data).
+ * Automatically calculates CRC and performs Byte Stuffing (Escaping)
+ * on the fly if the byte matches Flag/Escape characters.
+ *
+ * @param ctx Pointer to the initialized HDLC context.
+ * @param information_bytes_array The payload bytes array to send.
+ * @param length The length of payload bytes array to send.
+ */
 void hdlc_send_packet_information_bytes_array(hdlc_context_t *ctx, const hdlc_u8* information_bytes_array, hdlc_u32 length);
 
 /**
-* @brief Finalize Streaming Packet Transmission.
-* 
-* Sends the calculated CRC (FCS) (handling any necessary stuffing),
-* and transmits the End Flag (`0x7E`).
-* 
-* @param ctx Pointer to the initialized HDLC context.
-*/
+ * @brief Finalize Streaming Packet Transmission.
+ *
+ * Sends the calculated CRC (FCS) (handling any necessary stuffing),
+ * and transmits the End Flag (`0x7E`).
+ *
+ * @param ctx Pointer to the initialized HDLC context.
+ */
 void hdlc_send_packet_end(hdlc_context_t *ctx);
 
 #ifdef __cplusplus

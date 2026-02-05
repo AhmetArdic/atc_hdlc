@@ -1,5 +1,7 @@
 /**
  * @file hdlc_config.h
+ * @author ahmettardic - Ahmet Talha ARDIC
+ * @date 02.02.2026
  * @brief Configuration parameters for the HDLC Library.
  *
  * This file contains compile-time configuration macros to tailor the HDLC
