@@ -22,6 +22,13 @@ extern "C" {
 
 /*
  * --------------------------------------------------------------------------
+ * DEFINITIONS
+ * --------------------------------------------------------------------------
+ */
+#define HDLC_MAX_FRAME_SIZE     (1 + 1 + HDLC_MAX_INFORMATION_SIZE + 2)     /**< Address, Control, Information, FCS Fields. */
+
+/*
+ * --------------------------------------------------------------------------
  * BASIC TYPE DEFINITIONS
  * --------------------------------------------------------------------------
  */
@@ -106,6 +113,11 @@ typedef union
 
 } hdlc_control_t;
 
+typedef union
+{
+    hdlc_u8 fcs[2];
+} hdlc_fcs_t;
+
 /*
  * --------------------------------------------------------------------------
  * FRAME STRUCTURE
@@ -120,11 +132,20 @@ typedef union
  */
 typedef struct
 {
-    hdlc_u8 address;                /**< Address Field (usually 0xFF for broadcast or Station ID). */
-    hdlc_control_t control;         /**< Control Field (Type, Seq Numbers, P/F). */
+    union
+    {
+        hdlc_u8 value[HDLC_MAX_FRAME_SIZE];  /**< Address, Control, Information, FCS Fields. */
+
+        struct
+        {
+            hdlc_u8 address;                                    /**< Address Field (usually 0xFF for broadcast or Station ID). */
+            hdlc_control_t control;                             /**< Control Field (Type, Seq Numbers, P/F). */
+            hdlc_u8 information[HDLC_MAX_INFORMATION_SIZE];     /**< Information Field (Payload data). */
+        };
+    };
+
     hdlc_frame_type_t type;         /**< Resolved Frame Type (I/S/U). */
-    hdlc_u8 payload[HDLC_MAX_MTU];  /**< Information Field (Payload data). */
-    hdlc_u16 payload_len;           /**< Length of valid data in payload[]. */
+    hdlc_u16 information_len;       /**< Length of valid data in information[]. */
 } hdlc_frame_t;
 
 /*

@@ -85,7 +85,7 @@ extern "C" {
  */
 
 /**
- * @brief Maximum Transmission Unit (MTU) for the Payload.
+ * @brief Maximum Size of the Information Field (Payload).
  *
  * Defines the maximum size (in bytes) of the Information field (Payload)
  * within an HDLC frame. This value does NOT include the framing overhead
@@ -96,7 +96,7 @@ extern "C" {
  *
  * Default: 256 bytes.
  */
-#define HDLC_MAX_MTU    (256)
+#define HDLC_MAX_INFORMATION_SIZE   (256)
 
 #ifdef __cplusplus
 }
