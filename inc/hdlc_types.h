@@ -117,7 +117,6 @@ typedef struct {
   hdlc_frame_type_t type;         /**< Resolved Frame Type (I/S/U). */
   hdlc_u8 payload[HDLC_MAX_MTU];  /**< Information Field (Payload data). */
   hdlc_u16 payload_len;           /**< Length of valid data in payload[]. */
-  hdlc_bool is_command;           /**< True if Command frame, False if Response (Address logic). */
 } hdlc_frame_t;
 
 /*

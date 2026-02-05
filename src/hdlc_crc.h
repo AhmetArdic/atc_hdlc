@@ -8,7 +8,7 @@
 #ifndef HDLC_CRC_H
 #define HDLC_CRC_H
 
-#include "hdlc_types.h"
+#include "../inc/hdlc_types.h"
 
 /**
  * @brief Update the running CRC-16-CCITT value.

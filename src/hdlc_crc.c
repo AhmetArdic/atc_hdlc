@@ -6,7 +6,7 @@
  * standard CCITT CRC-16 (Polynomial: 0x1021).
  */
 
-#include "hdlc_types.h"
+#include "../inc/hdlc_types.h"
 
 /*
  * Polynomial: x^16 + x^12 + x^5 + 1 (0x1021)

@@ -7,7 +7,7 @@
  * CRC Verification.
  */
 
-#include "hdlc.h"
+#include "../inc/hdlc.h"
 #include "hdlc_crc.h"
 #include "hdlc_private.h"
 #include <stdio.h>

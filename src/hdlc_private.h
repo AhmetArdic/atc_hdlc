@@ -9,7 +9,7 @@
 #ifndef HDLC_PRIVATE_H
 #define HDLC_PRIVATE_H
 
-#include "hdlc_types.h"
+#include "../inc/hdlc_types.h"
 
 /**
  * @brief RX State Machine States.
