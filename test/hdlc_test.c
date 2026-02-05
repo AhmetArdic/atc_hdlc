@@ -351,9 +351,9 @@ void test_mtu_overflow() {
   printf("Feeding Start Flag...\n");
   atc_hdlc_input_byte(&ctx, 0x7E); // Start
 
-  printf("Feeding %d bytes (MTU + 50)...\n", HDLC_MAX_MTU + 50);
+  printf("Feeding %d bytes (MTU + 50)...\n", HDLC_MAX_INFORMATION_SIZE + 50);
   // Feed more than MTU
-  for (int i = 0; i < HDLC_MAX_MTU + 50; i++) {
+  for (int i = 0; i < HDLC_MAX_INFORMATION_SIZE + 50; i++) {
     atc_hdlc_input_byte(&ctx, 0xAA);
   }
 
@@ -363,6 +363,36 @@ void test_mtu_overflow() {
     assert_pass("MTU Overflow");
   } else {
     assert_fail("MTU Overflow", "Overflow frame triggered callback");
+  }
+}
+
+void test_mtu() {
+  printf("========================================\n");
+  printf("TEST: MTU\n");
+  printf("========================================\n");
+  atc_hdlc_context_t ctx;
+  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  reset_test();
+
+  printf("Feeding Start...\n");
+  atc_hdlc_send_packet_start(&ctx, 0xAA, 0xBB); // Addr, Ctrl
+
+  printf("Feeding %d bytes (MTU)...\n", HDLC_MAX_INFORMATION_SIZE);
+  // Feed more than MTU
+  for (int i = 0; i < HDLC_MAX_INFORMATION_SIZE; i++) {
+      atc_hdlc_send_packet_information_byte(&ctx, 0xAA);
+  }
+  atc_hdlc_send_packet_end(&ctx); // End Flag
+
+  print_hexdump("TX Buffer (Streamed)", tx_buffer, tx_len);
+
+  for (int i = 0; i < tx_len; i++)
+      atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+
+  if (rx_callback_count == 1 && last_rx_frame.information_len == HDLC_MAX_INFORMATION_SIZE) {
+    assert_pass("MTU");
+  } else {
+    assert_fail("MTU", "MTU error");
   }
 }
 
@@ -602,6 +632,7 @@ int main() {
   test_aborted_frame();
   test_crc_error_injection();
   test_mtu_overflow();
+  test_mtu();
   test_streaming_api();
   test_fragmented_delivery();
   test_control_field_i();

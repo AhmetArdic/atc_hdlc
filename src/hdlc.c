@@ -281,11 +281,9 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte)
                     calced_crc = hdlc_crc_ccitt_update(calced_crc, ctx->rx_frame.value[i]);
                 }
 
-                // Extract Received FCS (Assuming MSB first order on wire -> Buffered
-                // as Hi, Lo)
-                hdlc_u8 fcs_hi = ctx->rx_frame.fcs.fcs_hi;
-                hdlc_u8 fcs_lo = ctx->rx_frame.fcs.fcs_lo;
-                hdlc_u16 rx_fcs = (fcs_hi << 8) | fcs_lo;
+                // Extract Received FCS (Assuming MSB first order on wire -> Buffered as Hi, Lo)
+                hdlc_fcs_t* fcs = (hdlc_fcs_t*)&ctx->rx_frame.value[ctx->rx_index - 2];
+                hdlc_u16 rx_fcs = (fcs->fcs[0] << 8) | fcs->fcs[1];
 
                 if (calced_crc == rx_fcs)
                 {
@@ -334,7 +332,7 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte)
 
     /* 3. Validation & Buffering */
 
-    if (ctx->rx_index >= HDLC_MAX_MTU + 4)
+    if (ctx->rx_index >= HDLC_MAX_FRAME_SIZE)
     {
         // Overflow protection: Drop invalid large frame and hunt for next flag
         ctx->rx_state = HDLC_RX_HUNT;
