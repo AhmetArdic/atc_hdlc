@@ -106,6 +106,18 @@ typedef union
 
 } hdlc_control_t;
 
+typedef union
+{
+    hdlc_u8 fcs[2];
+
+    struct
+    {
+        hdlc_u8 fcs_lo;
+        hdlc_u8 fcs_hi;
+    };
+
+} hdlc_fcs_t;
+
 /*
  * --------------------------------------------------------------------------
  * FRAME STRUCTURE
@@ -120,11 +132,21 @@ typedef union
  */
 typedef struct
 {
-    hdlc_u8 address;                /**< Address Field (usually 0xFF for broadcast or Station ID). */
-    hdlc_control_t control;         /**< Control Field (Type, Seq Numbers, P/F). */
+    union
+    {
+        hdlc_u8 value[HDLC_MAX_MTU + 4];  /**< Address, Control, Information, FCS Fields. */
+
+        struct
+        {
+            hdlc_u8 address;                    /**< Address Field (usually 0xFF for broadcast or Station ID). */
+            hdlc_control_t control;             /**< Control Field (Type, Seq Numbers, P/F). */
+            hdlc_u8 information[HDLC_MAX_MTU];  /**< Information Field (Payload data). */
+            hdlc_fcs_t fcs;                     /**< FCS Field. */
+        };
+    };
+
     hdlc_frame_type_t type;         /**< Resolved Frame Type (I/S/U). */
-    hdlc_u8 payload[HDLC_MAX_MTU];  /**< Information Field (Payload data). */
-    hdlc_u16 payload_len;           /**< Length of valid data in payload[]. */
+    hdlc_u16 information_len;       /**< Length of valid data in information[]. */
 } hdlc_frame_t;
 
 /*

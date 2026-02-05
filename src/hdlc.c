@@ -112,9 +112,9 @@ void hdlc_send_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame)
     io_send_escaped(ctx, frame->control.value, &crc);
 
     // Payload
-    for (hdlc_u16 i = 0; i < frame->payload_len; i++)
+    for (hdlc_u16 i = 0; i < frame->information_len; i++)
     {
-        io_send_escaped(ctx, frame->payload[i], &crc);
+        io_send_escaped(ctx, frame->information[i], &crc);
     }
 
     // FCS (CRC) - Transmit MSB first (Network Byte Order)
@@ -265,56 +265,43 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte)
     {
         if (ctx->rx_state != HDLC_RX_HUNT)
         {
-            // Flag received while receiving data -> End of Frame
-            if (ctx->rx_index > 0)
+            // Minimum size: Addr(1) + Ctrl(1) + FCS(2) = 4 bytes
+            if (ctx->rx_index >= 4)
             {
-                // Minimum size: Addr(1) + Ctrl(1) + FCS(2) = 4 bytes
-                if (ctx->rx_index >= 4)
+                // --- CRC Verification Strategy ---
+                // 1. Re-calculate CRC over the "Data" portion (Addr..Payload).
+                // 2. Compare calculated CRC with the received FCS bytes (last 2
+                // bytes).
+
+                hdlc_u16 calced_crc = 0xFFFF;
+                hdlc_u16 data_len = ctx->rx_index - 2; // Exclude FCS bytes
+
+                for (hdlc_u16 i = 0; i < data_len; i++)
                 {
+                    calced_crc = hdlc_crc_ccitt_update(calced_crc, ctx->rx_frame.value[i]);
+                }
 
-                    // --- CRC Verification Strategy ---
-                    // 1. Re-calculate CRC over the "Data" portion (Addr..Payload).
-                    // 2. Compare calculated CRC with the received FCS bytes (last 2
-                    // bytes).
+                // Extract Received FCS (Assuming MSB first order on wire -> Buffered
+                // as Hi, Lo)
+                hdlc_u8 fcs_hi = ctx->rx_frame.fcs.fcs_hi;
+                hdlc_u8 fcs_lo = ctx->rx_frame.fcs.fcs_lo;
+                hdlc_u16 rx_fcs = (fcs_hi << 8) | fcs_lo;
 
-                    hdlc_u16 calced_crc = 0xFFFF;
-                    hdlc_u16 data_len = ctx->rx_index - 2; // Exclude FCS bytes
+                if (calced_crc == rx_fcs)
+                {
+                    // Valid Frame!
 
-                    for (hdlc_u16 i = 0; i < data_len; i++)
-                    {
-                        calced_crc = hdlc_crc_ccitt_update(calced_crc, ctx->rx_frame.payload[i]);
-                    }
+                    // Information is everything after Header(2) and before FCS(2)
+                    ctx->rx_frame.information_len = data_len - 2;
 
-                    // Extract Received FCS (Assuming MSB first order on wire -> Buffered
-                    // as Hi, Lo)
-                    hdlc_u8 fcs_hi = ctx->rx_frame.payload[ctx->rx_index - 2];
-                    hdlc_u8 fcs_lo = ctx->rx_frame.payload[ctx->rx_index - 1];
-                    hdlc_u16 rx_fcs = (fcs_hi << 8) | fcs_lo;
-
-                    if (calced_crc == rx_fcs)
-                    {
-                        // Valid Frame!
-
-                        // Populate Structure:
-                        ctx->rx_frame.address = ctx->rx_frame.payload[0];
-                        ctx->rx_frame.control.value = ctx->rx_frame.payload[1];
-
-                        // Payload is everything after Header(2) and before FCS(2)
-                        ctx->rx_frame.payload_len = data_len - 2;
-
-                        // Shift payload to the beginning of the buffer (removing header)
-                        memmove(ctx->rx_frame.payload, &ctx->rx_frame.payload[2],
-                                ctx->rx_frame.payload_len);
-
-                        process_complete_frame(ctx);
-                    }
-                    else
-                    {
-                        // CRC Error: Frame discarded silently (or logged)
-                        // printf("[LIB] CRC Fail: Calc=%04X Rx=%04X Len=%d\n", calced_crc,
-                        // rx_fcs, ctx->rx_index);
-                        ctx->stats_crc_errors++;
-                    }
+                    process_complete_frame(ctx);
+                }
+                else
+                {
+                    // CRC Error: Frame discarded silently (or logged)
+                    // printf("[LIB] CRC Fail: Calc=%04X Rx=%04X Len=%d\n", calced_crc,
+                    // rx_fcs, ctx->rx_index);
+                    ctx->stats_crc_errors++;
                 }
             }
         }
@@ -358,7 +345,7 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte)
     // the "Recalculate over buffer" method on Frame End for robustness.
 
     // Store byte in buffer
-    ctx->rx_frame.payload[ctx->rx_index++] = byte;
+    ctx->rx_frame.value[ctx->rx_index++] = byte;
 }
 
 /*

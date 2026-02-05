@@ -45,11 +45,11 @@ void mock_rx_cb(const atc_hdlc_frame_t *frame, void *user_data) {
 
   printf("   %s[RX EVENT] Frame Received!%s\n", COL_GREEN, COL_RESET);
   printf("   Type: %d, Addr: %02X, Ctrl: %02X, Payload Len: %d\n", frame->type,
-         frame->address, frame->control.value, frame->payload_len);
-  if (frame->payload_len > 0) {
+         frame->address, frame->control.value, frame->information_len);
+  if (frame->information_len > 0) {
     printf("   Payload: ");
-    for (int i = 0; i < frame->payload_len; i++)
-      printf("%02X ", frame->payload[i]);
+    for (int i = 0; i < frame->information_len; i++)
+      printf("%02X ", frame->information[i]);
     printf("\n");
   }
 }
@@ -83,8 +83,8 @@ void test_basic_frame() {
   reset_test();
 
   atc_hdlc_frame_t frame_out = {
-      .address = 0xFF, .control.value = 0x00, .payload_len = 4};
-  memcpy(frame_out.payload, "TEST", 4);
+      .address = 0xFF, .control.value = 0x00, .information_len = 4};
+  memcpy(frame_out.information, "TEST", 4);
 
   atc_hdlc_send_frame(&ctx, &frame_out);
   print_hexdump("TX Buffer", tx_buffer, tx_len);
@@ -94,7 +94,7 @@ void test_basic_frame() {
     atc_hdlc_input_byte(&ctx, tx_buffer[i]);
   }
 
-  if (rx_callback_count == 1 && memcmp(last_rx_frame.payload, "TEST", 4) == 0) {
+  if (rx_callback_count == 1 && memcmp(last_rx_frame.information, "TEST", 4) == 0) {
     assert_pass("Basic Frame");
   } else {
     assert_fail("Basic Frame", "Frame not received correctly");
@@ -111,7 +111,7 @@ void test_empty_payload() {
 
   atc_hdlc_frame_t frame_out = {.address = 0xAA,
                             .control.value = 0x11, // Some random control
-                            .payload_len = 0};
+                            .information_len = 0};
 
   atc_hdlc_send_frame(&ctx, &frame_out);
   print_hexdump("TX Buffer", tx_buffer, tx_len);
@@ -119,11 +119,11 @@ void test_empty_payload() {
   for (int i = 0; i < tx_len; i++)
     atc_hdlc_input_byte(&ctx, tx_buffer[i]);
 
-  if (rx_callback_count == 1 && last_rx_frame.payload_len == 0 &&
+  if (rx_callback_count == 1 && last_rx_frame.information_len == 0 &&
       last_rx_frame.address == 0xAA) {
     assert_pass("Empty Payload");
   } else {
-    assert_fail("Empty Payload", "Failed to receive empty payload frame");
+    assert_fail("Empty Payload", "Failed to receive empty information frame");
   }
 }
 
@@ -139,8 +139,8 @@ void test_byte_stuffing_heavy() {
   atc_hdlc_u8 tricky_data[] = {0x7E, 0x7E, 0x7D, 0x7D, 0x7E, 0x00};
   atc_hdlc_frame_t frame_out = {.address = 0x01,
                             .control.value = 0x03,
-                            .payload_len = sizeof(tricky_data)};
-  memcpy(frame_out.payload, tricky_data, sizeof(tricky_data));
+                            .information_len = sizeof(tricky_data)};
+  memcpy(frame_out.information, tricky_data, sizeof(tricky_data));
 
   atc_hdlc_send_frame(&ctx, &frame_out);
   print_hexdump("TX Buffer (Stuffed)", tx_buffer, tx_len);
@@ -159,7 +159,7 @@ void test_byte_stuffing_heavy() {
     atc_hdlc_input_byte(&ctx, tx_buffer[i]);
 
   if (rx_callback_count == 1 &&
-      memcmp(last_rx_frame.payload, tricky_data, sizeof(tricky_data)) == 0) {
+      memcmp(last_rx_frame.information, tricky_data, sizeof(tricky_data)) == 0) {
     assert_pass("Heavy Stuffing");
   } else {
     assert_fail("Heavy Stuffing", "Payload mismatch after unstuffing");
@@ -176,8 +176,8 @@ void test_garbage_noise() {
 
   // 1. Generate a valid frame
   atc_hdlc_frame_t frame_out = {
-      .address = 0x05, .control.value = 0x05, .payload_len = 1};
-  frame_out.payload[0] = 0xCC;
+      .address = 0x05, .control.value = 0x05, .information_len = 1};
+  frame_out.information[0] = 0xCC;
   atc_hdlc_send_frame(&ctx, &frame_out); // Fills tx_buffer
 
   // 2. Inject noise BEFORE the frame
@@ -214,7 +214,7 @@ void test_consecutive_flags() {
   reset_test();
 
   atc_hdlc_frame_t frame_out = {
-      .address = 0x10, .control.value = 0x10, .payload_len = 0};
+      .address = 0x10, .control.value = 0x10, .information_len = 0};
   atc_hdlc_send_frame(&ctx, &frame_out);
   // tx_buffer has valid frame.
   // Format: 7E ... 7E
@@ -255,14 +255,14 @@ void test_min_size_rejection() {
   // (invalid)
   atc_hdlc_u8 tiny[] = {0x7E, 0x01, 0x02, 0x7E};
 
-  printf("Feeding Tiny Frame (2 bytes payload inside flags)...\n");
+  printf("Feeding Tiny Frame (2 bytes information inside flags)...\n");
   for (size_t i = 0; i < sizeof(tiny); i++)
     atc_hdlc_input_byte(&ctx, tiny[i]);
 
   // Construct Frame with CRC but weird: 7E 01 02 03 7E -> Size 3 (Addr, Ctrl, 1
   // byte CRC?) -> Invalid
   atc_hdlc_u8 tiny2[] = {0x7E, 0x01, 0x02, 0x03, 0x7E};
-  printf("Feeding Too Short Frame (3 bytes payload inside flags)...\n");
+  printf("Feeding Too Short Frame (3 bytes information inside flags)...\n");
   for (size_t i = 0; i < sizeof(tiny2); i++)
     atc_hdlc_input_byte(&ctx, tiny2[i]);
 
@@ -296,7 +296,7 @@ void test_aborted_frame() {
 
   // Now send a REAL valid frame immediately after
   atc_hdlc_frame_t frame_out = {
-      .address = 0x01, .control.value = 0x11, .payload_len = 0};
+      .address = 0x01, .control.value = 0x11, .information_len = 0};
   atc_hdlc_send_frame(&ctx, &frame_out);
 
   // Send valid frame (skipping first 7E since we just sent one? No, safe to
@@ -322,8 +322,8 @@ void test_crc_error_injection() {
   reset_test();
 
   atc_hdlc_frame_t frame_out = {
-      .address = 0xFF, .control.value = 0x00, .payload_len = 4};
-  memcpy(frame_out.payload, "DATA", 4);
+      .address = 0xFF, .control.value = 0x00, .information_len = 4};
+  memcpy(frame_out.information, "DATA", 4);
   atc_hdlc_send_frame(&ctx, &frame_out);
 
   // Corrupt the last byte (part of CRC)
@@ -384,9 +384,9 @@ void test_streaming_api() {
   for (int i = 0; i < tx_len; i++)
       atc_hdlc_input_byte(&ctx, tx_buffer[i]);
 
-  if (rx_callback_count == 1 && last_rx_frame.payload_len == 2) {
+  if (rx_callback_count == 1 && last_rx_frame.information_len == 2) {
       // Payload should be 7E 7D
-      if (last_rx_frame.payload[0] == 0x7E && last_rx_frame.payload[1] == 0x7D) {
+      if (last_rx_frame.information[0] == 0x7E && last_rx_frame.information[1] == 0x7D) {
           assert_pass("Streaming API");
       } else {
           assert_fail("Streaming API", "Payload content mismatch");
@@ -397,10 +397,10 @@ void test_streaming_api() {
 
   reset_test();
 
-  atc_hdlc_u8 payload[] = {0x7E, 0x7D};
+  atc_hdlc_u8 information[] = {0x7E, 0x7D};
   atc_hdlc_send_packet_start(&ctx, 0xAA, 0xBB); // Addr, Ctrl
   atc_hdlc_send_packet_information_byte(&ctx, 0x7C); // Data
-  atc_hdlc_send_packet_information_bytes_array(&ctx, payload, 2); // Data (Stuffing needed)
+  atc_hdlc_send_packet_information_bytes_array(&ctx, information, 2); // Data (Stuffing needed)
   atc_hdlc_send_packet_information_byte(&ctx, 0x7F); // Data
   atc_hdlc_send_packet_information_byte(&ctx, 0x7A); // Data
   atc_hdlc_send_packet_end(&ctx);
@@ -410,13 +410,13 @@ void test_streaming_api() {
   for (int i = 0; i < tx_len; i++)
     atc_hdlc_input_byte(&ctx, tx_buffer[i]);
 
-  if (rx_callback_count == 1 && last_rx_frame.payload_len == 5) {
+  if (rx_callback_count == 1 && last_rx_frame.information_len == 5) {
     // Payload should be 7C 7E 7D 7F 7A
-    if (last_rx_frame.payload[0] == 0x7C && 
-        last_rx_frame.payload[1] == 0x7E &&
-        last_rx_frame.payload[2] == 0x7D &&
-        last_rx_frame.payload[3] == 0x7F &&
-        last_rx_frame.payload[4] == 0x7A) {
+    if (last_rx_frame.information[0] == 0x7C &&
+        last_rx_frame.information[1] == 0x7E &&
+        last_rx_frame.information[2] == 0x7D &&
+        last_rx_frame.information[3] == 0x7F &&
+        last_rx_frame.information[4] == 0x7A) {
       assert_pass("Streaming API");
     } else {
       assert_fail("Streaming API", "Payload content mismatch");
@@ -435,8 +435,8 @@ void test_fragmented_delivery() {
   reset_test();
 
   atc_hdlc_frame_t frame_out = {
-      .address = 0x99, .control.value = 0x88, .payload_len = 10};
-  memcpy(frame_out.payload, "0123456789", 10);
+      .address = 0x99, .control.value = 0x88, .information_len = 10};
+  memcpy(frame_out.information, "0123456789", 10);
   atc_hdlc_send_frame(&ctx, &frame_out);
 
   // Simulate UART getting bytes 1 by 1 with delays (conceptually)
@@ -493,7 +493,7 @@ void test_control_field_i() {
     atc_hdlc_frame_t i_frame = {
         .address = 0x01,
         .control = atc_hdlc_create_i_ctrl(5, 3, 1),
-        .payload_len = 0
+        .information_len = 0
     };
     
     printf("Generated I-Frame Ctrl Value: 0x%02X\n", i_frame.control.value);
@@ -529,7 +529,7 @@ void test_control_field_s() {
     atc_hdlc_frame_t s_frame = {
         .address = 0x01,
         .control = atc_hdlc_create_s_ctrl(0, 7, 0), 
-        .payload_len = 0
+        .information_len = 0
     };
     
     printf("Generated S-Frame Ctrl Value: 0x%02X\n", s_frame.control.value);
@@ -565,7 +565,7 @@ void test_control_field_u() {
     atc_hdlc_frame_t u_frame = {
         .address = 0x01,
         .control = atc_hdlc_create_u_ctrl(3, 1, 1), 
-        .payload_len = 0
+        .information_len = 0
     };
     
     printf("Generated U-Frame (SABM) Ctrl Value: 0x%02X\n", u_frame.control.value);
