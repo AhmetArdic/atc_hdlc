@@ -44,10 +44,10 @@ void mock_rx_cb(const atc_hdlc_frame_t *frame, void *user_data) {
   memcpy(&last_rx_frame, frame, sizeof(atc_hdlc_frame_t));
 
   printf("   %s[RX EVENT] Frame Received!%s\n", COL_GREEN, COL_RESET);
-  printf("   Type: %d, Addr: %02X, Ctrl: %02X, Payload Len: %d\n", frame->type,
+  printf("   Type: %d, Addr: %02X, Ctrl: %02X, Information Len: %d\n", frame->type,
          frame->address, frame->control.value, frame->information_len);
   if (frame->information_len > 0) {
-    printf("   Payload: ");
+    printf("   Information: ");
     for (int i = 0; i < frame->information_len; i++)
       printf("%02X ", frame->information[i]);
     printf("\n");
@@ -101,9 +101,9 @@ void test_basic_frame() {
   }
 }
 
-void test_empty_payload() {
+void test_empty_information() {
   printf("========================================\n");
-  printf("TEST: Empty Payload (Header only)\n");
+  printf("TEST: Empty Information (Header only)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
   atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
@@ -121,9 +121,9 @@ void test_empty_payload() {
 
   if (rx_callback_count == 1 && last_rx_frame.information_len == 0 &&
       last_rx_frame.address == 0xAA) {
-    assert_pass("Empty Payload");
+    assert_pass("Empty Information");
   } else {
-    assert_fail("Empty Payload", "Failed to receive empty information frame");
+    assert_fail("Empty Information", "Failed to receive empty information frame");
   }
 }
 
@@ -162,7 +162,7 @@ void test_byte_stuffing_heavy() {
       memcmp(last_rx_frame.information, tricky_data, sizeof(tricky_data)) == 0) {
     assert_pass("Heavy Stuffing");
   } else {
-    assert_fail("Heavy Stuffing", "Payload mismatch after unstuffing");
+    assert_fail("Heavy Stuffing", "Information mismatch after unstuffing");
   }
 }
 
@@ -415,11 +415,11 @@ void test_streaming_api() {
       atc_hdlc_input_byte(&ctx, tx_buffer[i]);
 
   if (rx_callback_count == 1 && last_rx_frame.information_len == 2) {
-      // Payload should be 7E 7D
+      // Information should be 7E 7D
       if (last_rx_frame.information[0] == 0x7E && last_rx_frame.information[1] == 0x7D) {
           assert_pass("Streaming API");
       } else {
-          assert_fail("Streaming API", "Payload content mismatch");
+          assert_fail("Streaming API", "Information content mismatch");
       }
   } else {
       assert_fail("Streaming API", "Frame not received");
@@ -441,7 +441,7 @@ void test_streaming_api() {
     atc_hdlc_input_byte(&ctx, tx_buffer[i]);
 
   if (rx_callback_count == 1 && last_rx_frame.information_len == 5) {
-    // Payload should be 7C 7E 7D 7F 7A
+    // Information should be 7C 7E 7D 7F 7A
     if (last_rx_frame.information[0] == 0x7C &&
         last_rx_frame.information[1] == 0x7E &&
         last_rx_frame.information[2] == 0x7D &&
@@ -449,7 +449,7 @@ void test_streaming_api() {
         last_rx_frame.information[4] == 0x7A) {
       assert_pass("Streaming API");
     } else {
-      assert_fail("Streaming API", "Payload content mismatch");
+      assert_fail("Streaming API", "Information content mismatch");
     }
   } else {
     assert_fail("Streaming API", "Frame not received");
@@ -624,7 +624,7 @@ int main() {
   printf("----------------------------------------\n\n");
 
   test_basic_frame();
-  test_empty_payload();
+  test_empty_information();
   test_byte_stuffing_heavy();
   test_garbage_noise();
   test_consecutive_flags();
