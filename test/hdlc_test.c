@@ -28,6 +28,7 @@ void print_hexdump(const char *label, const atc_hdlc_u8 *data, int len) {
 }
 
 void mock_tx_cb(atc_hdlc_u8 byte, void *user_data) {
+  (void)user_data;
   if (tx_len < sizeof(tx_buffer)) {
     tx_buffer[tx_len++] = byte;
   }
@@ -38,6 +39,7 @@ static atc_hdlc_frame_t last_rx_frame;
 static int rx_callback_count = 0;
 
 void mock_rx_cb(const atc_hdlc_frame_t *frame, void *user_data) {
+  (void)user_data;
   rx_callback_count++;
   memcpy(&last_rx_frame, frame, sizeof(atc_hdlc_frame_t));
 
@@ -372,11 +374,35 @@ void test_streaming_api() {
   atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
-  atc_hdlc_send_packet_start(&ctx);
-  atc_hdlc_send_packet_byte(&ctx, 0xAA); // Addr
-  atc_hdlc_send_packet_byte(&ctx, 0xBB); // Ctrl
-  atc_hdlc_send_packet_byte(&ctx, 0x7E); // Data (Stuffing needed)
-  atc_hdlc_send_packet_byte(&ctx, 0x7D); // Data (Stuffing needed)
+  atc_hdlc_send_packet_start(&ctx, 0xAA, 0xBB); // Addr, Ctrl
+  atc_hdlc_send_packet_information_byte(&ctx, 0x7E); // Data (Stuffing needed)
+  atc_hdlc_send_packet_information_byte(&ctx, 0x7D); // Data (Stuffing needed)
+  atc_hdlc_send_packet_end(&ctx);
+
+  print_hexdump("TX Buffer (Streamed)", tx_buffer, tx_len);
+
+  for (int i = 0; i < tx_len; i++)
+      atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+
+  if (rx_callback_count == 1 && last_rx_frame.payload_len == 2) {
+      // Payload should be 7E 7D
+      if (last_rx_frame.payload[0] == 0x7E && last_rx_frame.payload[1] == 0x7D) {
+          assert_pass("Streaming API");
+      } else {
+          assert_fail("Streaming API", "Payload content mismatch");
+      }
+  } else {
+      assert_fail("Streaming API", "Frame not received");
+  }
+
+  reset_test();
+
+  atc_hdlc_u8 payload[] = {0x7E, 0x7D};
+  atc_hdlc_send_packet_start(&ctx, 0xAA, 0xBB); // Addr, Ctrl
+  atc_hdlc_send_packet_information_byte(&ctx, 0x7C); // Data
+  atc_hdlc_send_packet_information_bytes_array(&ctx, payload, 2); // Data (Stuffing needed)
+  atc_hdlc_send_packet_information_byte(&ctx, 0x7F); // Data
+  atc_hdlc_send_packet_information_byte(&ctx, 0x7A); // Data
   atc_hdlc_send_packet_end(&ctx);
 
   print_hexdump("TX Buffer (Streamed)", tx_buffer, tx_len);
@@ -384,9 +410,13 @@ void test_streaming_api() {
   for (int i = 0; i < tx_len; i++)
     atc_hdlc_input_byte(&ctx, tx_buffer[i]);
 
-  if (rx_callback_count == 1 && last_rx_frame.payload_len == 2) {
-    // Payload should be 7E 7D
-    if (last_rx_frame.payload[0] == 0x7E && last_rx_frame.payload[1] == 0x7D) {
+  if (rx_callback_count == 1 && last_rx_frame.payload_len == 5) {
+    // Payload should be 7C 7E 7D 7F 7A
+    if (last_rx_frame.payload[0] == 0x7C && 
+        last_rx_frame.payload[1] == 0x7E &&
+        last_rx_frame.payload[2] == 0x7D &&
+        last_rx_frame.payload[3] == 0x7F &&
+        last_rx_frame.payload[4] == 0x7A) {
       assert_pass("Streaming API");
     } else {
       assert_fail("Streaming API", "Payload content mismatch");

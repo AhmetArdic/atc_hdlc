@@ -50,6 +50,9 @@ This project provides a high-performance, scalable HDLC (High-Level Data Link Co
     ```bash
     cmake ..
     ```
+	```bash
+    cmake -G "MinGW Makefiles" ..
+    ```
 3.  Compile the library and tests:
     ```bash
     make
