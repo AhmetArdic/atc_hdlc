@@ -144,9 +144,9 @@ void hdlc_send_packet_information_byte(hdlc_context_t *ctx, hdlc_u8 information_
  *
  * @param ctx Pointer to the initialized HDLC context.
  * @param information_bytes_array The payload bytes array to send.
- * @param size The size of payload bytes array to send.
+ * @param len The length of payload bytes array to send.
  */
-void hdlc_send_packet_information_bytes_array(hdlc_context_t *ctx, const hdlc_u8* information_bytes_array, hdlc_u32 size);
+void hdlc_send_packet_information_bytes_array(hdlc_context_t *ctx, const hdlc_u8* information_bytes_array, hdlc_u32 len);
 
 /**
  * @brief Finalize Streaming Packet Transmission.

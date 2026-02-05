@@ -85,9 +85,9 @@ extern "C" {
  */
 
 /**
- * @brief Maximum Size of the Information Field (Payload).
+ * @brief Maximum Length of the Information Field (Payload).
  *
- * Defines the maximum size (in bytes) of the Information field (Payload)
+ * Defines the maximum length (in bytes) of the Information field (Payload)
  * within an HDLC frame. This value does NOT include the framing overhead
  * (Flag, Address, Control, FCS).
  *
@@ -96,7 +96,7 @@ extern "C" {
  *
  * Default: 256 bytes.
  */
-#define HDLC_MAX_INFORMATION_SIZE   (256)
+#define HDLC_MAX_INFORMATION_LEN   (256)
 
 #ifdef __cplusplus
 }

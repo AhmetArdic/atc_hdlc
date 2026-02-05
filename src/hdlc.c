@@ -332,7 +332,7 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte)
 
     /* 3. Validation & Buffering */
 
-    if (ctx->rx_index >= HDLC_MAX_FRAME_SIZE)
+    if (ctx->rx_index >= HDLC_MAX_FRAME_LEN)
     {
         // Overflow protection: Drop invalid large frame and hunt for next flag
         ctx->rx_state = HDLC_RX_HUNT;
@@ -397,14 +397,14 @@ void hdlc_send_packet_information_byte(hdlc_context_t *ctx, hdlc_u8 information_
  * @brief Send a Information Bytes Array in Streaming Mode.
  * @see hdlc.h
  */
-void hdlc_send_packet_information_bytes_array(hdlc_context_t *ctx, const hdlc_u8* information_bytes_array, hdlc_u32 size)
+void hdlc_send_packet_information_bytes_array(hdlc_context_t *ctx, const hdlc_u8* information_bytes_array, hdlc_u32 len)
 {
     if (ctx == NULL)
     {
         return;
     }
 
-    for (hdlc_u32 i = 0; i < size; ++i)
+    for (hdlc_u32 i = 0; i < len; ++i)
     {
         // Update CRC and Send Escaped
         io_send_escaped(ctx, information_bytes_array[i], &ctx->tx_crc);

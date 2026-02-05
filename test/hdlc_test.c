@@ -351,9 +351,9 @@ void test_mtu_overflow() {
   printf("Feeding Start Flag...\n");
   atc_hdlc_input_byte(&ctx, 0x7E); // Start
 
-  printf("Feeding %d bytes (MTU + 50)...\n", HDLC_MAX_INFORMATION_SIZE + 50);
+  printf("Feeding %d bytes (MTU + 50)...\n", HDLC_MAX_INFORMATION_LEN + 50);
   // Feed more than MTU
-  for (int i = 0; i < HDLC_MAX_INFORMATION_SIZE + 50; i++) {
+  for (int i = 0; i < HDLC_MAX_INFORMATION_LEN + 50; i++) {
     atc_hdlc_input_byte(&ctx, 0xAA);
   }
 
@@ -377,9 +377,9 @@ void test_mtu() {
   printf("Feeding Start...\n");
   atc_hdlc_send_packet_start(&ctx, 0xAA, 0xBB); // Addr, Ctrl
 
-  printf("Feeding %d bytes (MTU)...\n", HDLC_MAX_INFORMATION_SIZE);
+  printf("Feeding %d bytes (MTU)...\n", HDLC_MAX_INFORMATION_LEN);
   // Feed more than MTU
-  for (int i = 0; i < HDLC_MAX_INFORMATION_SIZE; i++) {
+  for (int i = 0; i < HDLC_MAX_INFORMATION_LEN; i++) {
       atc_hdlc_send_packet_information_byte(&ctx, 0xAA);
   }
   atc_hdlc_send_packet_end(&ctx); // End Flag
@@ -389,7 +389,7 @@ void test_mtu() {
   for (int i = 0; i < tx_len; i++)
       atc_hdlc_input_byte(&ctx, tx_buffer[i]);
 
-  if (rx_callback_count == 1 && last_rx_frame.information_len == HDLC_MAX_INFORMATION_SIZE) {
+  if (rx_callback_count == 1 && last_rx_frame.information_len == HDLC_MAX_INFORMATION_LEN) {
     assert_pass("MTU");
   } else {
     assert_fail("MTU", "MTU error");

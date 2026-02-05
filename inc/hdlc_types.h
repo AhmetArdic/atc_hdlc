@@ -25,7 +25,7 @@ extern "C" {
  * DEFINITIONS
  * --------------------------------------------------------------------------
  */
-#define HDLC_MAX_FRAME_SIZE     (1 + 1 + HDLC_MAX_INFORMATION_SIZE + 2)     /**< Address, Control, Information, FCS Fields. */
+#define HDLC_MAX_FRAME_LEN      (1 + 1 + HDLC_MAX_INFORMATION_LEN + 2)     /**< Address, Control, Information, FCS Fields. */
 
 /*
  * --------------------------------------------------------------------------
@@ -134,13 +134,13 @@ typedef struct
 {
     union
     {
-        hdlc_u8 value[HDLC_MAX_FRAME_SIZE];  /**< Address, Control, Information, FCS Fields. */
+        hdlc_u8 value[HDLC_MAX_FRAME_LEN];  /**< Address, Control, Information, FCS Fields. */
 
         struct
         {
             hdlc_u8 address;                                    /**< Address Field (usually 0xFF for broadcast or Station ID). */
             hdlc_control_t control;                             /**< Control Field (Type, Seq Numbers, P/F). */
-            hdlc_u8 information[HDLC_MAX_INFORMATION_SIZE];     /**< Information Field (Payload data). */
+            hdlc_u8 information[HDLC_MAX_INFORMATION_LEN];      /**< Information Field (Payload data). */
         };
     };
 
