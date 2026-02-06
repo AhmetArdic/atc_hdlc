@@ -56,11 +56,30 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_tx_byte_cb_t tx_cb, hdlc_on_frame_cb_t 
  * @param ctx  HDLC Context.
  * @param byte Raw byte to transmit.
  */
-static void io_send_byte(hdlc_context_t *ctx, hdlc_u8 byte)
+static inline void io_send_byte(hdlc_context_t *ctx, hdlc_u8 byte)
 {
     if (ctx->tx_cb != NULL)
     {
         ctx->tx_cb(byte, ctx->user_data);
+    }
+}
+
+/**
+* @brief Internal helper to send a data byte with automatic escaping.
+*
+* @param ctx  HDLC Context.
+* @param byte Data byte to send.
+*/
+static void io_send_escaped(hdlc_context_t *ctx, hdlc_u8 byte)
+{
+    if (byte == HDLC_FLAG || byte == HDLC_ESCAPE)
+    {
+        io_send_byte(ctx, HDLC_ESCAPE);
+        io_send_byte(ctx, byte ^ HDLC_XOR_MASK);
+    }
+    else
+    {
+        io_send_byte(ctx, byte);
     }
 }
 
@@ -74,19 +93,11 @@ static void io_send_byte(hdlc_context_t *ctx, hdlc_u8 byte)
  * @param byte Data byte to send.
  * @param crc  Pointer to the running CRC to update.
  */
-static void io_send_escaped(hdlc_context_t *ctx, hdlc_u8 byte, hdlc_u16 *crc)
+static void io_send_escaped_crc_update(hdlc_context_t *ctx, hdlc_u8 byte, hdlc_u16 *crc)
 {
     *crc = hdlc_crc_ccitt_update(*crc, byte);
 
-    if (byte == HDLC_FLAG || byte == HDLC_ESCAPE)
-    {
-        io_send_byte(ctx, HDLC_ESCAPE);
-        io_send_byte(ctx, byte ^ HDLC_XOR_MASK);
-    }
-    else
-    {
-        io_send_byte(ctx, byte);
-    }
+    io_send_escaped(ctx, byte);
 }
 
 /**
@@ -106,15 +117,15 @@ void hdlc_send_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame)
     io_send_byte(ctx, HDLC_FLAG);
 
     // Address (Directly from frame, usually broadcast or specific)
-    io_send_escaped(ctx, frame->address, &crc);
+    io_send_escaped_crc_update(ctx, frame->address, &crc);
 
     // Control Field
-    io_send_escaped(ctx, frame->control.value, &crc);
+    io_send_escaped_crc_update(ctx, frame->control.value, &crc);
 
     // Payload
     for (hdlc_u16 i = 0; i < frame->information_len; i++)
     {
-        io_send_escaped(ctx, frame->information[i], &crc);
+        io_send_escaped_crc_update(ctx, frame->information[i], &crc);
     }
 
     // FCS (CRC) - Transmit MSB first (Network Byte Order)
@@ -123,25 +134,8 @@ void hdlc_send_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame)
     hdlc_u8 fcs_hi = (crc >> 8) & 0xFF;
     hdlc_u8 fcs_lo = crc & 0xFF;
 
-    if (fcs_hi == HDLC_FLAG || fcs_hi == HDLC_ESCAPE)
-    {
-        io_send_byte(ctx, HDLC_ESCAPE);
-        io_send_byte(ctx, fcs_hi ^ HDLC_XOR_MASK);
-    }
-    else
-    {
-        io_send_byte(ctx, fcs_hi);
-    }
-
-    if (fcs_lo == HDLC_FLAG || fcs_lo == HDLC_ESCAPE)
-    {
-        io_send_byte(ctx, HDLC_ESCAPE);
-        io_send_byte(ctx, fcs_lo ^ HDLC_XOR_MASK);
-    }
-    else
-    {
-        io_send_byte(ctx, fcs_lo);
-    }
+    io_send_escaped(ctx, fcs_hi);
+    io_send_escaped(ctx, fcs_lo);
 
     // End Flag
     io_send_byte(ctx, HDLC_FLAG);
@@ -371,11 +365,11 @@ void hdlc_send_packet_start(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 contro
 
     // Send Address
     // Update CRC and Send Escaped
-    io_send_escaped(ctx, address, &ctx->tx_crc);
+    io_send_escaped_crc_update(ctx, address, &ctx->tx_crc);
 
     // Send Control
     // Update CRC and Send Escaped
-    io_send_escaped(ctx, control, &ctx->tx_crc);
+    io_send_escaped_crc_update(ctx, control, &ctx->tx_crc);
 }
 
 /**
@@ -390,7 +384,7 @@ void hdlc_send_packet_information_byte(hdlc_context_t *ctx, hdlc_u8 information_
     }
 
     // Update CRC and Send Escaped
-    io_send_escaped(ctx, information_byte, &ctx->tx_crc);
+    io_send_escaped_crc_update(ctx, information_byte, &ctx->tx_crc);
 }
 
 /**
@@ -407,7 +401,7 @@ void hdlc_send_packet_information_bytes_array(hdlc_context_t *ctx, const hdlc_u8
     for (hdlc_u32 i = 0; i < len; ++i)
     {
         // Update CRC and Send Escaped
-        io_send_escaped(ctx, information_bytes_array[i], &ctx->tx_crc);
+        io_send_escaped_crc_update(ctx, information_bytes_array[i], &ctx->tx_crc);
     }
 }
 
@@ -429,26 +423,10 @@ void hdlc_send_packet_end(hdlc_context_t *ctx)
     hdlc_u8 fcs_lo = crc & 0xFF;
 
     // Send FCS High
-    if (fcs_hi == HDLC_FLAG || fcs_hi == HDLC_ESCAPE)
-    {
-        io_send_byte(ctx, HDLC_ESCAPE);
-        io_send_byte(ctx, fcs_hi ^ HDLC_XOR_MASK);
-    }
-    else
-    {
-        io_send_byte(ctx, fcs_hi);
-    }
+    io_send_escaped(ctx, fcs_hi);
 
     // Send FCS Low
-    if (fcs_lo == HDLC_FLAG || fcs_lo == HDLC_ESCAPE)
-    {
-        io_send_byte(ctx, HDLC_ESCAPE);
-        io_send_byte(ctx, fcs_lo ^ HDLC_XOR_MASK);
-    }
-    else
-    {
-        io_send_byte(ctx, fcs_lo);
-    }
+    io_send_escaped(ctx, fcs_lo);
 
     // End Flag
     io_send_byte(ctx, HDLC_FLAG);
