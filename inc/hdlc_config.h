@@ -85,18 +85,17 @@ extern "C" {
  */
 
 /**
- * @brief Maximum Length of the Information Field (Payload).
+ * @brief Maximum Length of the HDLC Frame.
  *
- * Defines the maximum length (in bytes) of the Information field (Payload)
- * within an HDLC frame. This value does NOT include the framing overhead
- * (Flag, Address, Control, FCS).
+ * Defines the maximum length (in bytes) of the HDLC frame. 
+ * This value does include the framing overhead (Flag, Address, Control, FCS).
  *
  * @note Increasing this value increases the static RAM usage for the Rx buffer.
  *       Ensure your target has sufficient RAM.
  *
  * Default: 256 bytes.
  */
-#define HDLC_MAX_INFORMATION_LEN   (256)
+#define HDLC_MAX_FRAME_LEN   (256)
 
 #ifdef __cplusplus
 }

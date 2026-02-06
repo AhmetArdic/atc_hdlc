@@ -25,7 +25,12 @@ extern "C" {
  * DEFINITIONS
  * --------------------------------------------------------------------------
  */
-#define HDLC_MAX_FRAME_LEN      (1 + 1 + HDLC_MAX_INFORMATION_LEN + 2)     /**< Address, Control, Information, FCS Fields. */
+#define HDLC_FLAG_LEN               (1)     /**< Flag. */
+#define HDLC_ADDRESS_LEN            (1)     /**< Address Field. */
+#define HDLC_CONTROL_LEN            (1)     /**< Control Field. */
+#define HDLC_FCS_LEN                (2)     /**< FCS Field. */
+#define HDLC_MAX_INFORMATION_LEN    (HDLC_MAX_FRAME_LEN - (2 * HDLC_FLAG_LEN) - HDLC_ADDRESS_LEN - HDLC_CONTROL_LEN - HDLC_FCS_LEN)     /**< Information Field (Payload). */
+
 
 /*
  * --------------------------------------------------------------------------

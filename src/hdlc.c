@@ -111,7 +111,7 @@ void hdlc_send_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame)
         return;
     }
 
-    hdlc_u16 crc = 0xFFFF;
+    hdlc_u16 crc = HDLC_FCS_INIT_VALUE;
 
     // Start Flag
     io_send_byte(ctx, HDLC_FLAG);
@@ -267,7 +267,7 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte)
                 // 2. Compare calculated CRC with the received FCS bytes (last 2
                 // bytes).
 
-                hdlc_u16 calced_crc = 0xFFFF;
+                hdlc_u16 calced_crc = HDLC_FCS_INIT_VALUE;
                 hdlc_u16 data_len = ctx->rx_index - 2; // Exclude FCS bytes
 
                 for (hdlc_u16 i = 0; i < data_len; i++)
@@ -301,7 +301,7 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte)
         // Reset for next frame
         ctx->rx_state = HDLC_RX_ADDRESS; // Expecting Address next
         ctx->rx_index = 0;
-        ctx->rx_crc = 0xFFFF;
+        ctx->rx_crc = HDLC_FCS_INIT_VALUE;
         return;
     }
 
@@ -358,7 +358,7 @@ void hdlc_send_packet_start(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 contro
     }
 
     // Initialize CRC
-    ctx->tx_crc = 0xFFFF;
+    ctx->tx_crc = HDLC_FCS_INIT_VALUE;
 
     // Send Start Flag
     io_send_byte(ctx, HDLC_FLAG);

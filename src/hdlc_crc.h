@@ -12,6 +12,13 @@
 
 #include "../inc/hdlc_types.h"
 
+ /**
+ * @brief FCS initialization value.
+ *
+ * Default: 0xFFFF
+ */
+#define HDLC_FCS_INIT_VALUE     (0xFFFF)
+
 /**
  * @brief Update the running CRC-16-CCITT value.
  *
