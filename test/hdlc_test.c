@@ -618,6 +618,33 @@ void test_control_field_u() {
     }
 }
 
+void test_input_bytes() {
+  printf("========================================\n");
+  printf("TEST: Bulk Input (input_bytes)\n");
+  printf("========================================\n");
+  atc_hdlc_context_t ctx;
+  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  reset_test();
+
+  // Build a valid frame
+  atc_hdlc_frame_t frame_out = {
+      .address = 0xFF, .control.value = 0x00, .information_len = 4};
+  memcpy(frame_out.information, "BULK", 4);
+  atc_hdlc_send_frame(&ctx, &frame_out);
+  print_hexdump("TX Buffer", tx_buffer, tx_len);
+
+  // Feed back using bulk API
+  printf("Feeding back using atc_hdlc_input_bytes...\n");
+  atc_hdlc_input_bytes(&ctx, tx_buffer, tx_len);
+
+  if (rx_callback_count == 1 && last_rx_frame.information_len == 4 &&
+      memcmp(last_rx_frame.information, "BULK", 4) == 0) {
+    assert_pass("Bulk Input (input_bytes)");
+  } else {
+    assert_fail("Bulk Input (input_bytes)", "Frame not received correctly");
+  }
+}
+
 int main() {
   printf("\n%sSTARTING COMPREHENSIVE HDLC TEST SUITE%s\n", COL_YELLOW,
          COL_RESET);
@@ -638,6 +665,7 @@ int main() {
   test_control_field_i();
   test_control_field_s();
   test_control_field_u();
+  test_input_bytes();
 
   printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
   return 0;

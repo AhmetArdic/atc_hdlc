@@ -340,6 +340,23 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte)
     ctx->rx_frame.value[ctx->rx_index++] = byte;
 }
 
+/**
+ * @brief Input multiple received bytes into the HDLC Parser.
+ * @see hdlc.h
+ */
+void hdlc_input_bytes(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len)
+{
+    if (ctx == NULL || data == NULL)
+    {
+        return;
+    }
+
+    for (hdlc_u32 i = 0; i < len; ++i)
+    {
+        hdlc_input_byte(ctx, data[i]);
+    }
+}
+
 /*
  * --------------------------------------------------------------------------
  * STREAMING TRANSMIT ENGINE

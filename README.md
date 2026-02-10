@@ -141,12 +141,17 @@ To use this library in your own project:
         ring_buffer_push(&rx_buf, byte);
     }
 
-    // Main Loop: Process bytes safely
+    // Main Loop: Process bytes safely (single byte)
     void main_loop(void) {
         uint8_t byte;
         while (ring_buffer_pop(&rx_buf, &byte)) {
             atc_hdlc_input_byte(&ctx, byte);
         }
+    }
+
+    // Or use bulk input for DMA / batch transfers
+    void process_dma_buffer(uint8_t *buf, uint32_t len) {
+        atc_hdlc_input_bytes(&ctx, buf, len);
     }
     ```
 
@@ -192,7 +197,8 @@ Configuration is done in `inc/hdlc_config.h`:
 | Function | Description |
 |---|---|
 | `atc_hdlc_init()` | Initialize context and bind callbacks |
-| `atc_hdlc_input_byte()` | Feed a received byte into the parser |
+| `atc_hdlc_input_byte()` | Feed a single received byte into the parser |
+| `atc_hdlc_input_bytes()` | Feed a byte array into the parser (bulk) |
 | `atc_hdlc_send_frame()` | Send a complete frame (buffered) |
 
 ### Streaming API

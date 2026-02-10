@@ -58,6 +58,20 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_tx_byte_cb_t tx_cb, hdlc_on_frame_cb_t 
 void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte);
 
 /**
+ * @brief Input multiple received bytes into the HDLC Parser.
+ *
+ * Convenience wrapper that feeds an array of bytes into the parser
+ * by calling @ref hdlc_input_byte for each element.
+ *
+ * @warning Same ISR safety considerations as @ref hdlc_input_byte apply.
+ *
+ * @param ctx  Pointer to the initialized HDLC context.
+ * @param data Pointer to the byte array to process.
+ * @param len  Number of bytes in the array.
+ */
+void hdlc_input_bytes(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
+
+/**
  * @brief Send a complete HDLC Frame (Buffered).
  * 
  * Constructs a raw HDLC stream from the provided `frame` structure,
