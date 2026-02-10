@@ -1,0 +1,38 @@
+# Build directories
+build/
+bin/
+lib/
+
+# CMake generated files (if building in-source)
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+CTestTestfile.cmake
+
+# Object files
+*.o
+*.obj
+
+# Libraries
+*.a
+*.so
+*.dylib
+*.dll
+
+# Executables
+*.exe
+*.out
+test/hdlc_test
+test/crc_check
+
+# Temporary files
+*~
+*.swp
+*.tmp
+*.log
+
+# IDEs and OS
+.vscode/
+.idea/
+.DS_Store
