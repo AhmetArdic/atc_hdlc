@@ -14,6 +14,7 @@
 
 // --- Mocking & Utilities ---
 static atc_hdlc_u8 tx_buffer[4096];
+static atc_hdlc_u8 rx_buffer[1024]; // User-supplied RX buffer for tests
 static int tx_len = 0;
 
 void print_hexdump(const char *label, const atc_hdlc_u8 *data, int len) {
@@ -82,12 +83,12 @@ void test_basic_frame() {
   printf("TEST: Basic Frame (I-Frame)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
+  atc_hdlc_u8 payload[] = "TEST";
   atc_hdlc_frame_t frame_out = {
-      .address = 0xFF, .control.value = 0x00, .information_len = 4};
-  memcpy(frame_out.information, "TEST", 4);
+      .address = 0xFF, .control.value = 0x00, .information = payload, .information_len = 4};
 
   atc_hdlc_send_frame(&ctx, &frame_out);
   print_hexdump("TX Buffer", tx_buffer, tx_len);
@@ -110,11 +111,12 @@ void test_empty_information() {
   printf("TEST: Empty Information (Header only)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
   atc_hdlc_frame_t frame_out = {.address = 0xAA,
                                 .control.value = 0x11, // Some random control
+                                .information = NULL,
                                 .information_len = 0};
 
   atc_hdlc_send_frame(&ctx, &frame_out);
@@ -137,15 +139,15 @@ void test_byte_stuffing_heavy() {
   printf("TEST: Heavy Byte Stuffing\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
   // Data with many flags and escapes
   atc_hdlc_u8 tricky_data[] = {0x7E, 0x7E, 0x7D, 0x7D, 0x7E, 0x00};
   atc_hdlc_frame_t frame_out = {.address = 0x01,
                                 .control.value = 0x03,
+                                .information = tricky_data,
                                 .information_len = sizeof(tricky_data)};
-  memcpy(frame_out.information, tricky_data, sizeof(tricky_data));
 
   atc_hdlc_send_frame(&ctx, &frame_out);
   print_hexdump("TX Buffer (Stuffed)", tx_buffer, tx_len);
@@ -176,13 +178,13 @@ void test_garbage_noise() {
   printf("TEST: Garbage / Noise Rejection\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
   // 1. Generate a valid frame
+  atc_hdlc_u8 payload[] = {0xCC};
   atc_hdlc_frame_t frame_out = {
-      .address = 0x05, .control.value = 0x05, .information_len = 1};
-  frame_out.information[0] = 0xCC;
+      .address = 0x05, .control.value = 0x05, .information = payload, .information_len = 1};
   atc_hdlc_send_frame(&ctx, &frame_out); // Fills tx_buffer
 
   // 2. Inject noise BEFORE the frame
@@ -215,11 +217,11 @@ void test_consecutive_flags() {
   printf("TEST: Consecutive Flags (Inter-frame fill)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
   atc_hdlc_frame_t frame_out = {
-      .address = 0x10, .control.value = 0x10, .information_len = 0};
+      .address = 0x10, .control.value = 0x10, .information = NULL, .information_len = 0};
   atc_hdlc_send_frame(&ctx, &frame_out);
   // tx_buffer has valid frame.
   // Format: 7E ... 7E
@@ -253,7 +255,7 @@ void test_min_size_rejection() {
   printf("TEST: Minimum Size Rejection (<4 bytes)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
   // Construct a Tiny Frame: 7E 01 02 7E (Addr, Ctrl, No CRC) -> Size 2
@@ -283,7 +285,7 @@ void test_aborted_frame() {
   printf("TEST: Aborted / Interrupted Frame\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
   // Start a frame, write some data, then hit Flag immediately (Frame
@@ -301,7 +303,7 @@ void test_aborted_frame() {
 
   // Now send a REAL valid frame immediately after
   atc_hdlc_frame_t frame_out = {
-      .address = 0x01, .control.value = 0x11, .information_len = 0};
+      .address = 0x01, .control.value = 0x11, .information = NULL, .information_len = 0};
   atc_hdlc_send_frame(&ctx, &frame_out);
 
   // Send valid frame (skipping first 7E since we just sent one? No, safe to
@@ -323,12 +325,12 @@ void test_crc_error_injection() {
   printf("TEST: CRC Error Injection (Single Bit)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
+  atc_hdlc_u8 payload[] = "DATA";
   atc_hdlc_frame_t frame_out = {
-      .address = 0xFF, .control.value = 0x00, .information_len = 4};
-  memcpy(frame_out.information, "DATA", 4);
+      .address = 0xFF, .control.value = 0x00, .information = payload, .information_len = 4};
   atc_hdlc_send_frame(&ctx, &frame_out);
 
   // Corrupt the last byte (part of CRC)
@@ -350,15 +352,15 @@ void test_mtu_overflow() {
   printf("TEST: MTU Overflow Safety\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
   printf("Feeding Start Flag...\n");
   atc_hdlc_input_byte(&ctx, 0x7E); // Start
 
-  printf("Feeding %d bytes (MTU + 50)...\n", HDLC_MAX_INFORMATION_LEN + 50);
+  printf("Feeding %d bytes (MTU + 50)...\n", 1024 + 50);
   // Feed more than MTU
-  for (int i = 0; i < HDLC_MAX_INFORMATION_LEN + 50; i++) {
+  for (int i = 0; i < 1024 + 50; i++) {
     atc_hdlc_input_byte(&ctx, 0xAA);
   }
 
@@ -376,15 +378,15 @@ void test_mtu() {
   printf("TEST: MTU\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
   printf("Feeding Start...\n");
   atc_hdlc_send_packet_start(&ctx, 0xAA, 0xBB); // Addr, Ctrl
 
-  printf("Feeding %d bytes (MTU)...\n", HDLC_MAX_INFORMATION_LEN);
+  printf("Feeding %d bytes (MTU)...\n", 100);
   // Feed more than MTU
-  for (int i = 0; i < HDLC_MAX_INFORMATION_LEN; i++) {
+  for (int i = 0; i < 100; i++) {
     atc_hdlc_send_packet_information_byte(&ctx, 0xAA);
   }
   atc_hdlc_send_packet_end(&ctx); // End Flag
@@ -395,7 +397,7 @@ void test_mtu() {
     atc_hdlc_input_byte(&ctx, tx_buffer[i]);
 
   if (rx_callback_count == 1 &&
-      last_rx_frame.information_len == HDLC_MAX_INFORMATION_LEN) {
+      last_rx_frame.information_len == 100) {
     assert_pass("MTU");
   } else {
     assert_fail("MTU", "MTU error");
@@ -407,7 +409,7 @@ void test_streaming_api() {
   printf("TEST: Streaming API (Zero-Copy)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
   atc_hdlc_send_packet_start(&ctx, 0xAA, 0xBB);      // Addr, Ctrl
@@ -469,12 +471,12 @@ void test_fragmented_delivery() {
   printf("TEST: Fragmented / Slow Delivery\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
+  atc_hdlc_u8 payload[] = "0123456789";
   atc_hdlc_frame_t frame_out = {
-      .address = 0x99, .control.value = 0x88, .information_len = 10};
-  memcpy(frame_out.information, "0123456789", 10);
+      .address = 0x99, .control.value = 0x88, .information = payload, .information_len = 10};
   atc_hdlc_send_frame(&ctx, &frame_out);
 
   // Simulate UART getting bytes 1 by 1 with delays (conceptually)
@@ -524,12 +526,13 @@ void test_control_field_i() {
   printf("========================================\n");
 
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
   // N(S)=5, N(R)=3, P/F=1
   atc_hdlc_frame_t i_frame = {.address = 0x01,
                               .control = atc_hdlc_create_i_ctrl(5, 3, 1),
+                              .information = NULL,
                               .information_len = 0};
 
   printf("Generated I-Frame Ctrl Value: 0x%02X\n", i_frame.control.value);
@@ -559,12 +562,13 @@ void test_control_field_s() {
   printf("========================================\n");
 
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
   // RR (S=00), N(R)=7, P/F=0
   atc_hdlc_frame_t s_frame = {.address = 0x01,
                               .control = atc_hdlc_create_s_ctrl(0, 7, 0),
+                              .information = NULL,
                               .information_len = 0};
 
   printf("Generated S-Frame Ctrl Value: 0x%02X\n", s_frame.control.value);
@@ -593,13 +597,14 @@ void test_control_field_u() {
   printf("========================================\n");
 
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
   // SABM: 0x2F (base) + P=1 => 0x3F
   // M_LO = 3 (11), M_HI = 1 (001)
   atc_hdlc_frame_t u_frame = {.address = 0x01,
                               .control = atc_hdlc_create_u_ctrl(3, 1, 1),
+                              .information = NULL,
                               .information_len = 0};
 
   printf("Generated U-Frame (SABM) Ctrl Value: 0x%02X\n",
@@ -629,13 +634,13 @@ void test_input_bytes() {
   printf("TEST: Bulk Input (input_bytes)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
   // Build a valid frame
+  atc_hdlc_u8 payload[] = "BULK";
   atc_hdlc_frame_t frame_out = {
-      .address = 0xFF, .control.value = 0x00, .information_len = 4};
-  memcpy(frame_out.information, "BULK", 4);
+      .address = 0xFF, .control.value = 0x00, .information = payload, .information_len = 4};
   atc_hdlc_send_frame(&ctx, &frame_out);
   print_hexdump("TX Buffer", tx_buffer, tx_len);
 
@@ -658,9 +663,9 @@ void test_encode_buffer_success() {
   printf("TEST: Encode Buffer - Success Case\n");
   printf("========================================\n");
 
+  atc_hdlc_u8 payload[] = "TEST";
   atc_hdlc_frame_t frame = {
-      .address = 0xFF, .control.value = 0x03, .information_len = 4};
-  memcpy(frame.information, "TEST", 4);
+      .address = 0xFF, .control.value = 0x03, .information = payload, .information_len = 4};
 
   atc_hdlc_u8 buffer[128];
   atc_hdlc_u32 len = 0;
@@ -680,9 +685,10 @@ void test_encode_buffer_overflow() {
   printf("TEST: Encode Buffer - Overflow Case\n");
   printf("========================================\n");
 
+  atc_hdlc_u8 payload[10];
+  memset(payload, 0xAA, 10);
   atc_hdlc_frame_t frame = {
-      .address = 0xFF, .control.value = 0x03, .information_len = 10};
-  memset(frame.information, 0xAA, 10);
+      .address = 0xFF, .control.value = 0x03, .information = payload, .information_len = 10};
 
   // Frame needs ~16 bytes. Provide only 5.
   atc_hdlc_u8 buffer[5];
@@ -704,6 +710,7 @@ void test_encode_buffer_stuffing() {
 
   atc_hdlc_frame_t frame = {.address = 0x7E,       // Needs escaping -> 7D 5E
                             .control.value = 0x7D, // Needs escaping -> 7D 5D
+                            .information = NULL,
                             .information_len = 0};
 
   atc_hdlc_u8 buffer[128];

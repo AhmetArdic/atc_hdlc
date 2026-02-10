@@ -25,11 +25,6 @@ extern "C" {
  * DEFINITIONS
  * --------------------------------------------------------------------------
  */
-#define HDLC_FLAG_LEN               (1)     /**< Flag. */
-#define HDLC_ADDRESS_LEN            (1)     /**< Address Field. */
-#define HDLC_CONTROL_LEN            (1)     /**< Control Field. */
-#define HDLC_FCS_LEN                (2)     /**< FCS Field. */
-#define HDLC_MAX_INFORMATION_LEN    (HDLC_MAX_FRAME_LEN - (2 * HDLC_FLAG_LEN) - HDLC_ADDRESS_LEN - HDLC_CONTROL_LEN - HDLC_FCS_LEN)     /**< Information Field (Payload). */
 
 
 /*
@@ -130,18 +125,11 @@ typedef union {
  * Contains the parsed header fields and the payload buffer.
  */
 typedef struct {
-    union {
-        hdlc_u8 value[HDLC_MAX_FRAME_LEN];  /**< Address, Control, Information, FCS Fields. */
-
-        struct {
-            hdlc_u8 address;                                    /**< Address Field (usually 0xFF for broadcast or Station ID). */
-            hdlc_control_t control;                             /**< Control Field (Type, Seq Numbers, P/F). */
-            hdlc_u8 information[HDLC_MAX_INFORMATION_LEN];      /**< Information Field (Payload data). */
-        };
-    };
-
+    hdlc_u8 address;                /**< Address Field. */
+    hdlc_control_t control;         /**< Control Field. */
+    hdlc_u8 *information;           /**< Pointer to Information Field (Payload). */
+    hdlc_u16 information_len;       /**< Length of valid data in information. */
     hdlc_frame_type_t type;         /**< Resolved Frame Type (I/S/U). */
-    hdlc_u16 information_len;       /**< Length of valid data in information[]. */
 } hdlc_frame_t;
 
 /*
@@ -190,10 +178,12 @@ typedef struct {
     void *user_data;          /**< User context passed to callbacks. */
 
     /* Receiver Engine State */
-    hdlc_u8 rx_state;  /**< Current internal parser state (enum from private). */
-    hdlc_u16 rx_index; /**< Current buffer write index. */
-    hdlc_u16 rx_crc;   /**< Running CRC calculation. */
-    hdlc_frame_t rx_frame; /**< Buffer for the frame currently being received. */
+    hdlc_u8 rx_state;        /**< Current internal parser state. */
+    hdlc_u8 *rx_buffer;      /**< Pointer to the user-supplied RX buffer. */
+    hdlc_u32 rx_buffer_len;  /**< Length of the user-supplied RX buffer. */
+    hdlc_u32 rx_index;       /**< Current write index in rx_buffer. */
+    hdlc_u16 rx_crc;         /**< Running RX CRC. */
+    hdlc_frame_t rx_frame;   /**< Temporary frame descriptor passed to callback. */
 
     /* Transmitter Engine State */
     hdlc_u16 tx_crc; /**< Running CRC for streaming TX. */

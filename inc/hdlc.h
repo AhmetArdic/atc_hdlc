@@ -12,6 +12,7 @@
 #define HDLC_H
 
 #include "hdlc_types.h"
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,12 +30,16 @@ extern "C" {
  * Sets up the HDLC instance, clears internal state, resets statistics,
  * and binds the user-provided callbacks.
  * 
- * @param ctx       Pointer to the @ref hdlc_context_t structure to initialize.
- * @param tx_cb     Callback function for sending a byte to the hardware.
- * @param rx_cb     Callback function for receiving valid frames.
- * @param user_data Optional user pointer to pass to the callbacks.
+ * @param ctx           Pointer to the @ref hdlc_context_t structure to initialize.
+ * @param rx_buffer     Pointer to the user-supplied RX buffer.
+ * @param rx_buffer_len Length of the user-supplied RX buffer.
+ * @param tx_cb         Callback function for sending a byte to the hardware.
+ * @param rx_cb         Callback function for receiving valid frames.
+ * @param user_data     Optional user pointer to pass to the callbacks.
  */
-void hdlc_init(hdlc_context_t *ctx, hdlc_tx_byte_cb_t tx_cb, hdlc_on_frame_cb_t rx_cb, void *user_data);
+void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *rx_buffer, hdlc_u32 rx_buffer_len,
+               hdlc_tx_byte_cb_t tx_cb, hdlc_on_frame_cb_t rx_cb,
+               void *user_data);
 
 /**
  * @brief Input a received byte into the HDLC Parser.

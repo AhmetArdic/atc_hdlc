@@ -26,14 +26,19 @@
  * @brief Initialize the HDLC Context.
  * @see hdlc.h
  */
-void hdlc_init(hdlc_context_t *ctx, hdlc_tx_byte_cb_t tx_cb,
-               hdlc_on_frame_cb_t rx_cb, void *user_data) {
-  if (ctx == NULL) {
+void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *rx_buffer, hdlc_u32 rx_buffer_len,
+               hdlc_tx_byte_cb_t tx_cb, hdlc_on_frame_cb_t rx_cb,
+               void *user_data) {
+  if (ctx == NULL || rx_buffer == NULL || rx_buffer_len < 4) {
     return;
   }
 
   // Clear context
   memset(ctx, 0, sizeof(hdlc_context_t));
+
+  // Initialize Buffer
+  ctx->rx_buffer = rx_buffer;
+  ctx->rx_buffer_len = rx_buffer_len;
 
   // Bind callbacks
   ctx->tx_cb = tx_cb;
@@ -133,10 +138,12 @@ static hdlc_bool hdlc_encode_core(const hdlc_frame_t *frame,
     return false;
 
   // Payload
-  for (hdlc_u16 i = 0; i < frame->information_len; i++) {
-    encode_escaped_crc_update(enc_ctx, put_fn, frame->information[i], &crc);
-    if (!enc_ctx->success)
-      return false;
+  if (frame->information != NULL && frame->information_len > 0) {
+    for (hdlc_u16 i = 0; i < frame->information_len; i++) {
+      encode_escaped_crc_update(enc_ctx, put_fn, frame->information[i], &crc);
+      if (!enc_ctx->success)
+        return false;
+    }
   }
 
   // FCS
@@ -310,23 +317,34 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
         // bytes).
 
         hdlc_u16 calced_crc = HDLC_FCS_INIT_VALUE;
-        hdlc_u16 data_len = ctx->rx_index - 2; // Exclude FCS bytes
+        hdlc_u32 data_len = ctx->rx_index - 2; // Exclude FCS bytes
 
-        for (hdlc_u16 i = 0; i < data_len; i++) {
+        for (hdlc_u32 i = 0; i < data_len; i++) {
           calced_crc =
-              hdlc_crc_ccitt_update(calced_crc, ctx->rx_frame.value[i]);
+              hdlc_crc_ccitt_update(calced_crc, ctx->rx_buffer[i]);
         }
 
         // Extract Received FCS (Assuming MSB first order on wire -> Buffered as
         // Hi, Lo)
-        hdlc_fcs_t *fcs = (hdlc_fcs_t *)&ctx->rx_frame.value[ctx->rx_index - 2];
+        hdlc_fcs_t *fcs = (hdlc_fcs_t *)&ctx->rx_buffer[ctx->rx_index - 2];
         hdlc_u16 rx_fcs = (fcs->fcs[0] << 8) | fcs->fcs[1];
 
         if (calced_crc == rx_fcs) {
           // Valid Frame!
 
-          // Information is everything after Header(2) and before FCS(2)
-          ctx->rx_frame.information_len = data_len - 2;
+          /* Construct the temporary frame descriptor (Zero-Copy) */
+          ctx->rx_frame.address = ctx->rx_buffer[0];
+          ctx->rx_frame.control.value = ctx->rx_buffer[1];
+          
+          // Information starts at index 2 (Addr+Ctrl), length is Total - (Addr+Ctrl+FCS) = Total - 4
+          // But only if total >= 4 (checked above)
+          if (data_len > 2) {
+             ctx->rx_frame.information = &ctx->rx_buffer[2];
+             ctx->rx_frame.information_len = (hdlc_u16)(data_len - 2);
+          } else {
+             ctx->rx_frame.information = NULL;
+             ctx->rx_frame.information_len = 0;
+          }
 
           process_complete_frame(ctx);
         } else {
@@ -363,7 +381,7 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
 
   /* 3. Validation & Buffering */
 
-  if (ctx->rx_index >= HDLC_MAX_FRAME_LEN) {
+  if (ctx->rx_index >= ctx->rx_buffer_len) {
     // Overflow protection: Drop invalid large frame and hunt for next flag
     ctx->rx_state = HDLC_RX_HUNT;
     return;
@@ -373,7 +391,7 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
   // the "Recalculate over buffer" method on Frame End for robustness.
 
   // Store byte in buffer
-  ctx->rx_frame.value[ctx->rx_index++] = byte;
+  ctx->rx_buffer[ctx->rx_index++] = byte;
 }
 
 /**
