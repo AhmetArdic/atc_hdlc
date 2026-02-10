@@ -155,9 +155,11 @@ typedef struct {
  *
  * Function pointer type for the hardware transmission interface.
  * @param byte      The byte to send over the physical medium (UART).
+ * @param flush     Indicates if this is the last byte of the frame (End Flag).
+ *                  Can be used to trigger hardware buffer flush.
  * @param user_data Pointer to user-defined context data.
  */
-typedef void (*hdlc_tx_byte_cb_t)(hdlc_u8 byte, void *user_data);
+typedef void (*hdlc_tx_byte_cb_t)(hdlc_u8 byte, hdlc_bool flush, void *user_data);
 
 /**
  * @brief Frame Received Callback.

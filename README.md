@@ -13,6 +13,7 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
 *   **Flexible Transmission**:
     *   **Buffered Mode**: Construct a full `atc_hdlc_frame_t` and send it in one call.
     *   **Streaming Mode (Zero-Copy)**: Send frames byte-by-byte (`start` → `data` → `end`) for ultra-low memory environments.
+    *   **Buffer Encoding**: Encode a frame directly into a memory buffer without immediate transmission.
 *   **Protocol Infrastructure**:
     *   Built-in support for I-Frames, S-Frames, and U-Frames with bit-field accessors.
     *   Control Field helper functions for constructing each frame type.
@@ -113,8 +114,12 @@ To use this library in your own project:
 3.  **Define Callbacks**:
     ```c
     // TX: Called by the library for each byte to transmit
-    void my_tx_byte(atc_hdlc_u8 byte, void *user_data) {
+    void my_tx_byte(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data) {
         UART_SendByte(byte);
+        if (flush) {
+           // Optional: Flush hardware buffer if needed
+           // UART_Flush();
+        }
     }
 
     // RX: Called by the library when a valid frame is received
@@ -181,6 +186,19 @@ To use this library in your own project:
     atc_hdlc_send_packet_end(&ctx);
     ```
 
+8.  **Encode to Buffer**:
+    Useful when you need to send the frame via a different transport or store it.
+    ```c
+    uint8_t buffer[128];
+    uint32_t len = 0;
+    atc_hdlc_frame_t frame = { ... }; // Setup frame fully
+    
+    if (atc_hdlc_encode_frame(&frame, buffer, sizeof(buffer), &len)) {
+        // buffer now contains the encoded frame (Flags + Stuffing + CRC)
+        // e.g. HAL_UART_Transmit(&huart1, buffer, len, 100);
+    }
+    ```
+
 ## ⚙️ Configuration
 
 Configuration is done in `inc/hdlc_config.h`:
@@ -200,6 +218,7 @@ Configuration is done in `inc/hdlc_config.h`:
 | `atc_hdlc_input_byte()` | Feed a single received byte into the parser |
 | `atc_hdlc_input_bytes()` | Feed a byte array into the parser (bulk) |
 | `atc_hdlc_send_frame()` | Send a complete frame (buffered) |
+| `atc_hdlc_encode_frame()` | Encode a frame into a memory buffer |
 
 ### Streaming API
 
@@ -221,6 +240,6 @@ Configuration is done in `inc/hdlc_config.h`:
 ### Callback Signatures
 
 ```c
-typedef void (*atc_hdlc_tx_byte_cb_t)(atc_hdlc_u8 byte, void *user_data);
+typedef void (*atc_hdlc_tx_byte_cb_t)(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data);
 typedef void (*atc_hdlc_on_frame_cb_t)(const atc_hdlc_frame_t *frame, void *user_data);
 ```

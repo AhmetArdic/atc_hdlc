@@ -28,8 +28,9 @@ void print_hexdump(const char *label, const atc_hdlc_u8 *data, int len) {
   printf("\n");
 }
 
-void mock_tx_cb(atc_hdlc_u8 byte, void *user_data) {
+void mock_tx_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data) {
   (void)user_data;
+  (void)flush;
   if (tx_len < sizeof(tx_buffer)) {
     tx_buffer[tx_len++] = byte;
   }
