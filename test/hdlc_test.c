@@ -1,5 +1,6 @@
 #include "hdlc.h"
 #include <ctype.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,8 +45,9 @@ void mock_rx_cb(const atc_hdlc_frame_t *frame, void *user_data) {
   memcpy(&last_rx_frame, frame, sizeof(atc_hdlc_frame_t));
 
   printf("   %s[RX EVENT] Frame Received!%s\n", COL_GREEN, COL_RESET);
-  printf("   Type: %d, Addr: %02X, Ctrl: %02X, Information Len: %d\n", frame->type,
-         frame->address, frame->control.value, frame->information_len);
+  printf("   Type: %d, Addr: %02X, Ctrl: %02X, Information Len: %d\n",
+         frame->type, frame->address, frame->control.value,
+         frame->information_len);
   if (frame->information_len > 0) {
     printf("   Information: ");
     for (int i = 0; i < frame->information_len; i++)
@@ -94,7 +96,8 @@ void test_basic_frame() {
     atc_hdlc_input_byte(&ctx, tx_buffer[i]);
   }
 
-  if (rx_callback_count == 1 && memcmp(last_rx_frame.information, "TEST", 4) == 0) {
+  if (rx_callback_count == 1 &&
+      memcmp(last_rx_frame.information, "TEST", 4) == 0) {
     assert_pass("Basic Frame");
   } else {
     assert_fail("Basic Frame", "Frame not received correctly");
@@ -110,8 +113,8 @@ void test_empty_information() {
   reset_test();
 
   atc_hdlc_frame_t frame_out = {.address = 0xAA,
-                            .control.value = 0x11, // Some random control
-                            .information_len = 0};
+                                .control.value = 0x11, // Some random control
+                                .information_len = 0};
 
   atc_hdlc_send_frame(&ctx, &frame_out);
   print_hexdump("TX Buffer", tx_buffer, tx_len);
@@ -123,7 +126,8 @@ void test_empty_information() {
       last_rx_frame.address == 0xAA) {
     assert_pass("Empty Information");
   } else {
-    assert_fail("Empty Information", "Failed to receive empty information frame");
+    assert_fail("Empty Information",
+                "Failed to receive empty information frame");
   }
 }
 
@@ -138,8 +142,8 @@ void test_byte_stuffing_heavy() {
   // Data with many flags and escapes
   atc_hdlc_u8 tricky_data[] = {0x7E, 0x7E, 0x7D, 0x7D, 0x7E, 0x00};
   atc_hdlc_frame_t frame_out = {.address = 0x01,
-                            .control.value = 0x03,
-                            .information_len = sizeof(tricky_data)};
+                                .control.value = 0x03,
+                                .information_len = sizeof(tricky_data)};
   memcpy(frame_out.information, tricky_data, sizeof(tricky_data));
 
   atc_hdlc_send_frame(&ctx, &frame_out);
@@ -158,8 +162,8 @@ void test_byte_stuffing_heavy() {
   for (int i = 0; i < tx_len; i++)
     atc_hdlc_input_byte(&ctx, tx_buffer[i]);
 
-  if (rx_callback_count == 1 &&
-      memcmp(last_rx_frame.information, tricky_data, sizeof(tricky_data)) == 0) {
+  if (rx_callback_count == 1 && memcmp(last_rx_frame.information, tricky_data,
+                                       sizeof(tricky_data)) == 0) {
     assert_pass("Heavy Stuffing");
   } else {
     assert_fail("Heavy Stuffing", "Information mismatch after unstuffing");
@@ -380,16 +384,17 @@ void test_mtu() {
   printf("Feeding %d bytes (MTU)...\n", HDLC_MAX_INFORMATION_LEN);
   // Feed more than MTU
   for (int i = 0; i < HDLC_MAX_INFORMATION_LEN; i++) {
-      atc_hdlc_send_packet_information_byte(&ctx, 0xAA);
+    atc_hdlc_send_packet_information_byte(&ctx, 0xAA);
   }
   atc_hdlc_send_packet_end(&ctx); // End Flag
 
   print_hexdump("TX Buffer (Streamed)", tx_buffer, tx_len);
 
   for (int i = 0; i < tx_len; i++)
-      atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
 
-  if (rx_callback_count == 1 && last_rx_frame.information_len == HDLC_MAX_INFORMATION_LEN) {
+  if (rx_callback_count == 1 &&
+      last_rx_frame.information_len == HDLC_MAX_INFORMATION_LEN) {
     assert_pass("MTU");
   } else {
     assert_fail("MTU", "MTU error");
@@ -404,7 +409,7 @@ void test_streaming_api() {
   atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
   reset_test();
 
-  atc_hdlc_send_packet_start(&ctx, 0xAA, 0xBB); // Addr, Ctrl
+  atc_hdlc_send_packet_start(&ctx, 0xAA, 0xBB);      // Addr, Ctrl
   atc_hdlc_send_packet_information_byte(&ctx, 0x7E); // Data (Stuffing needed)
   atc_hdlc_send_packet_information_byte(&ctx, 0x7D); // Data (Stuffing needed)
   atc_hdlc_send_packet_end(&ctx);
@@ -412,25 +417,27 @@ void test_streaming_api() {
   print_hexdump("TX Buffer (Streamed)", tx_buffer, tx_len);
 
   for (int i = 0; i < tx_len; i++)
-      atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
 
   if (rx_callback_count == 1 && last_rx_frame.information_len == 2) {
-      // Information should be 7E 7D
-      if (last_rx_frame.information[0] == 0x7E && last_rx_frame.information[1] == 0x7D) {
-          assert_pass("Streaming API");
-      } else {
-          assert_fail("Streaming API", "Information content mismatch");
-      }
+    // Information should be 7E 7D
+    if (last_rx_frame.information[0] == 0x7E &&
+        last_rx_frame.information[1] == 0x7D) {
+      assert_pass("Streaming API");
+    } else {
+      assert_fail("Streaming API", "Information content mismatch");
+    }
   } else {
-      assert_fail("Streaming API", "Frame not received");
+    assert_fail("Streaming API", "Frame not received");
   }
 
   reset_test();
 
   atc_hdlc_u8 information[] = {0x7E, 0x7D};
-  atc_hdlc_send_packet_start(&ctx, 0xAA, 0xBB); // Addr, Ctrl
+  atc_hdlc_send_packet_start(&ctx, 0xAA, 0xBB);      // Addr, Ctrl
   atc_hdlc_send_packet_information_byte(&ctx, 0x7C); // Data
-  atc_hdlc_send_packet_information_bytes_array(&ctx, information, 2); // Data (Stuffing needed)
+  atc_hdlc_send_packet_information_bytes_array(&ctx, information,
+                                               2);   // Data (Stuffing needed)
   atc_hdlc_send_packet_information_byte(&ctx, 0x7F); // Data
   atc_hdlc_send_packet_information_byte(&ctx, 0x7A); // Data
   atc_hdlc_send_packet_end(&ctx);
@@ -511,111 +518,109 @@ void test_fragmented_delivery() {
 // --- Control Field Tests ---
 
 void test_control_field_i() {
-    printf("========================================\n");
-    printf("TEST: Control Field - I-Frame Loopback\n");
-    printf("========================================\n");
-    
-    atc_hdlc_context_t ctx;
-    atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
-    reset_test();
-    
-    // N(S)=5, N(R)=3, P/F=1
-    atc_hdlc_frame_t i_frame = {
-        .address = 0x01,
-        .control = atc_hdlc_create_i_ctrl(5, 3, 1),
-        .information_len = 0
-    };
-    
-    printf("Generated I-Frame Ctrl Value: 0x%02X\n", i_frame.control.value);
-    
-    atc_hdlc_send_frame(&ctx, &i_frame);
-    for(int i=0; i<tx_len; i++) atc_hdlc_input_byte(&ctx, tx_buffer[i]);
-    
-    if(rx_callback_count == 1 && last_rx_frame.type == HDLC_FRAME_I) {
-         atc_hdlc_control_t rc = last_rx_frame.control;
-         printf("Received: Type=I, N(S)=%d, N(R)=%d, P/F=%d\n", 
-                rc.i_frame.ns, rc.i_frame.nr, rc.i_frame.pf);
-         
-         if(rc.i_frame.ns == 5 && rc.i_frame.nr == 3 && rc.i_frame.pf == 1) {
-             assert_pass("I-Frame Loopback");
-         } else {
-             assert_fail("I-Frame", "Field content mismatch");
-         }
+  printf("========================================\n");
+  printf("TEST: Control Field - I-Frame Loopback\n");
+  printf("========================================\n");
+
+  atc_hdlc_context_t ctx;
+  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  reset_test();
+
+  // N(S)=5, N(R)=3, P/F=1
+  atc_hdlc_frame_t i_frame = {.address = 0x01,
+                              .control = atc_hdlc_create_i_ctrl(5, 3, 1),
+                              .information_len = 0};
+
+  printf("Generated I-Frame Ctrl Value: 0x%02X\n", i_frame.control.value);
+
+  atc_hdlc_send_frame(&ctx, &i_frame);
+  for (int i = 0; i < tx_len; i++)
+    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+
+  if (rx_callback_count == 1 && last_rx_frame.type == HDLC_FRAME_I) {
+    atc_hdlc_control_t rc = last_rx_frame.control;
+    printf("Received: Type=I, N(S)=%d, N(R)=%d, P/F=%d\n", rc.i_frame.ns,
+           rc.i_frame.nr, rc.i_frame.pf);
+
+    if (rc.i_frame.ns == 5 && rc.i_frame.nr == 3 && rc.i_frame.pf == 1) {
+      assert_pass("I-Frame Loopback");
     } else {
-        assert_fail("I-Frame", "Frame not received or wrong type");
+      assert_fail("I-Frame", "Field content mismatch");
     }
+  } else {
+    assert_fail("I-Frame", "Frame not received or wrong type");
+  }
 }
 
 void test_control_field_s() {
-    printf("========================================\n");
-    printf("TEST: Control Field - S-Frame Loopback\n");
-    printf("========================================\n");
-    
-    atc_hdlc_context_t ctx;
-    atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
-    reset_test();
-    
-    // RR (S=00), N(R)=7, P/F=0
-    atc_hdlc_frame_t s_frame = {
-        .address = 0x01,
-        .control = atc_hdlc_create_s_ctrl(0, 7, 0), 
-        .information_len = 0
-    };
-    
-    printf("Generated S-Frame Ctrl Value: 0x%02X\n", s_frame.control.value);
-    atc_hdlc_send_frame(&ctx, &s_frame);
-    for(int i=0; i<tx_len; i++) atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+  printf("========================================\n");
+  printf("TEST: Control Field - S-Frame Loopback\n");
+  printf("========================================\n");
 
-    if(rx_callback_count == 1 && last_rx_frame.type == HDLC_FRAME_S) {
-         atc_hdlc_control_t rc = last_rx_frame.control;
-         printf("Received: Type=S, S=%d, N(R)=%d, P/F=%d\n", 
-                rc.s_frame.s, rc.s_frame.nr, rc.s_frame.pf);
-         
-         if(rc.s_frame.s == 0 && rc.s_frame.nr == 7) {
-             assert_pass("S-Frame Loopback");
-         } else {
-             assert_fail("S-Frame", "Field content mismatch");
-         }
+  atc_hdlc_context_t ctx;
+  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  reset_test();
+
+  // RR (S=00), N(R)=7, P/F=0
+  atc_hdlc_frame_t s_frame = {.address = 0x01,
+                              .control = atc_hdlc_create_s_ctrl(0, 7, 0),
+                              .information_len = 0};
+
+  printf("Generated S-Frame Ctrl Value: 0x%02X\n", s_frame.control.value);
+  atc_hdlc_send_frame(&ctx, &s_frame);
+  for (int i = 0; i < tx_len; i++)
+    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+
+  if (rx_callback_count == 1 && last_rx_frame.type == HDLC_FRAME_S) {
+    atc_hdlc_control_t rc = last_rx_frame.control;
+    printf("Received: Type=S, S=%d, N(R)=%d, P/F=%d\n", rc.s_frame.s,
+           rc.s_frame.nr, rc.s_frame.pf);
+
+    if (rc.s_frame.s == 0 && rc.s_frame.nr == 7) {
+      assert_pass("S-Frame Loopback");
     } else {
-        assert_fail("S-Frame", "Frame not received or wrong type");
+      assert_fail("S-Frame", "Field content mismatch");
     }
+  } else {
+    assert_fail("S-Frame", "Frame not received or wrong type");
+  }
 }
 
 void test_control_field_u() {
-    printf("========================================\n");
-    printf("TEST: Control Field - U-Frame Loopback\n");
-    printf("========================================\n");
-    
-    atc_hdlc_context_t ctx;
-    atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
-    reset_test();
-    
-    // SABM: 0x2F (base) + P=1 => 0x3F
-    // M_LO = 3 (11), M_HI = 1 (001)
-    atc_hdlc_frame_t u_frame = {
-        .address = 0x01,
-        .control = atc_hdlc_create_u_ctrl(3, 1, 1), 
-        .information_len = 0
-    };
-    
-    printf("Generated U-Frame (SABM) Ctrl Value: 0x%02X\n", u_frame.control.value);
-    
-    atc_hdlc_send_frame(&ctx, &u_frame);
-    for(int i=0; i<tx_len; i++) atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+  printf("========================================\n");
+  printf("TEST: Control Field - U-Frame Loopback\n");
+  printf("========================================\n");
 
-    if(rx_callback_count == 1 && last_rx_frame.type == HDLC_FRAME_U) {
-         atc_hdlc_control_t rc = last_rx_frame.control;
-         printf("Received: Type=U, M_LO=%d, M_HI=%d, P=%d\n", 
-                rc.u_frame.m_lo, rc.u_frame.m_hi, rc.u_frame.pf);
-         
-         if(rc.value == 0x3F) {
-             assert_pass("U-Frame Loopback");
-         } else {
-             assert_fail("U-Frame", "Field content mismatch");
-         }
+  atc_hdlc_context_t ctx;
+  atc_hdlc_init(&ctx, mock_tx_cb, mock_rx_cb, NULL);
+  reset_test();
+
+  // SABM: 0x2F (base) + P=1 => 0x3F
+  // M_LO = 3 (11), M_HI = 1 (001)
+  atc_hdlc_frame_t u_frame = {.address = 0x01,
+                              .control = atc_hdlc_create_u_ctrl(3, 1, 1),
+                              .information_len = 0};
+
+  printf("Generated U-Frame (SABM) Ctrl Value: 0x%02X\n",
+         u_frame.control.value);
+
+  atc_hdlc_send_frame(&ctx, &u_frame);
+  for (int i = 0; i < tx_len; i++)
+    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+
+  if (rx_callback_count == 1 && last_rx_frame.type == HDLC_FRAME_U) {
+    atc_hdlc_control_t rc = last_rx_frame.control;
+    printf("Received: Type=U, M_LO=%d, M_HI=%d, P=%d\n", rc.u_frame.m_lo,
+           rc.u_frame.m_hi, rc.u_frame.pf);
+
+    if (rc.value == 0x3F) {
+      assert_pass("U-Frame Loopback");
     } else {
-        assert_fail("U-Frame", "Frame not received or wrong type");
+      assert_fail("U-Frame", "Field content mismatch");
     }
+  } else {
+    assert_fail("U-Frame", "Frame not received or wrong type");
+  }
 }
 
 void test_input_bytes() {
@@ -645,6 +650,76 @@ void test_input_bytes() {
   }
 }
 
+// --- Buffer Encoding Tests ---
+
+void test_encode_buffer_success() {
+  printf("========================================\n");
+  printf("TEST: Encode Buffer - Success Case\n");
+  printf("========================================\n");
+
+  atc_hdlc_frame_t frame = {
+      .address = 0xFF, .control.value = 0x03, .information_len = 4};
+  memcpy(frame.information, "TEST", 4);
+
+  atc_hdlc_u8 buffer[128];
+  atc_hdlc_u32 len = 0;
+
+  bool success = atc_hdlc_encode_frame(&frame, buffer, sizeof(buffer), &len);
+
+  if (success && len == 10 && buffer[0] == 0x7E && buffer[9] == 0x7E) {
+    assert_pass("Encode Buffer - Success Case");
+  } else {
+    assert_fail("Encode Buffer - Success Case",
+                "Encoding failed or content mismatch");
+  }
+}
+
+void test_encode_buffer_overflow() {
+  printf("========================================\n");
+  printf("TEST: Encode Buffer - Overflow Case\n");
+  printf("========================================\n");
+
+  atc_hdlc_frame_t frame = {
+      .address = 0xFF, .control.value = 0x03, .information_len = 10};
+  memset(frame.information, 0xAA, 10);
+
+  // Frame needs ~16 bytes. Provide only 5.
+  atc_hdlc_u8 buffer[5];
+  atc_hdlc_u32 len = 0;
+
+  bool success = atc_hdlc_encode_frame(&frame, buffer, sizeof(buffer), &len);
+
+  if (!success && len == 0) {
+    assert_pass("Encode Buffer - Overflow Case");
+  } else {
+    assert_fail("Encode Buffer - Overflow Case", "Should fail on overflow");
+  }
+}
+
+void test_encode_buffer_stuffing() {
+  printf("========================================\n");
+  printf("TEST: Encode Buffer - Stuffing\n");
+  printf("========================================\n");
+
+  atc_hdlc_frame_t frame = {.address = 0x7E,       // Needs escaping -> 7D 5E
+                            .control.value = 0x7D, // Needs escaping -> 7D 5D
+                            .information_len = 0};
+
+  atc_hdlc_u8 buffer[128];
+  atc_hdlc_u32 len = 0;
+
+  bool success = atc_hdlc_encode_frame(&frame, buffer, sizeof(buffer), &len);
+
+  // Expected: 7E (7D 5E) (7D 5D) [CRC_LO] [CRC_HI] 7E
+  // Length > 6 checks basic stuffing occurred.
+  if (success && len > 6 && buffer[1] == 0x7D && buffer[2] == 0x5E &&
+      buffer[3] == 0x7D && buffer[4] == 0x5D) {
+    assert_pass("Encode Buffer - Stuffing");
+  } else {
+    assert_fail("Encode Buffer - Stuffing", "Stuffing logic failed");
+  }
+}
+
 int main() {
   printf("\n%sSTARTING COMPREHENSIVE HDLC TEST SUITE%s\n", COL_YELLOW,
          COL_RESET);
@@ -666,6 +741,9 @@ int main() {
   test_control_field_s();
   test_control_field_u();
   test_input_bytes();
+  test_encode_buffer_success();
+  test_encode_buffer_overflow();
+  test_encode_buffer_stuffing();
 
   printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
   return 0;

@@ -83,6 +83,21 @@ void hdlc_input_bytes(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
  */
 void hdlc_send_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 
+
+/**
+ * @brief Encode a frame into a memory buffer.
+ * 
+ * Serializes the frame into the provided buffer. This is useful for users who
+ * want to control transmission scheduling or use a different transport layer.
+ * 
+ * @param frame      Pointer to the frame to encode.
+ * @param buffer     Destination buffer.
+ * @param buffer_len Size of the destination buffer.
+ * @param encoded_len Output pointer for the actual encoded length.
+ * @return true if successful, false if buffer is too small.
+ */
+bool hdlc_encode_frame(const hdlc_frame_t *frame, hdlc_u8 *buffer, hdlc_u32 buffer_len, hdlc_u32 *encoded_len);
+
 /* 
  * --------------------------------------------------------------------------
  * CONTROL FIELD HELPERS
