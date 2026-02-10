@@ -737,6 +737,60 @@ void test_encode_buffer_stuffing() {
   }
 }
 
+
+void test_decode_frame() {
+  printf("========================================\n");
+  printf("TEST: Decode Frame (Round Trip)\n");
+  printf("========================================\n");
+
+  // 1. Encode
+  atc_hdlc_u8 payload[] = "ROUNDTRIP";
+  atc_hdlc_frame_t frame_in = {
+      .address = 0xAA, .control.value = 0x55, .information = payload, .information_len = 9};
+
+  atc_hdlc_u8 raw_buffer[128];
+  atc_hdlc_u32 raw_len = 0;
+
+  bool ok = atc_hdlc_encode_frame(&frame_in, raw_buffer, sizeof(raw_buffer), &raw_len);
+  if (!ok) {
+    assert_fail("Decode Round Trip", "Encoding failed");
+  }
+  print_hexdump("Encoded", raw_buffer, raw_len);
+
+  // 2. Decode
+  atc_hdlc_frame_t frame_out;
+  atc_hdlc_u8 flat_buffer[128];
+  memset(&frame_out, 0, sizeof(frame_out));
+
+  ok = atc_hdlc_decode_frame(raw_buffer, raw_len, &frame_out, flat_buffer, sizeof(flat_buffer));
+
+  if (ok) {
+     printf("Decoded Frame: Addr=%02X, Ctrl=%02X, InfoLen=%d\n", 
+            frame_out.address, frame_out.control.value, frame_out.information_len);
+     
+     if (frame_out.address == 0xAA && 
+         frame_out.control.value == 0x55 && 
+         frame_out.information_len == 9 &&
+         memcmp(frame_out.information, "ROUNDTRIP", 9) == 0) {
+         assert_pass("Decode Round Trip");
+     } else {
+         assert_fail("Decode Round Trip", "Content mismatch");
+     }
+  } else {
+     assert_fail("Decode Round Trip", "Decoding failed");
+  }
+
+  // 3. Test Decode Error (Bad CRC)
+  printf("Testing Bad CRC...\n");
+  raw_buffer[raw_len - 2] ^= 0xFF; // Corrupt FCS
+  ok = atc_hdlc_decode_frame(raw_buffer, raw_len, &frame_out, flat_buffer, sizeof(flat_buffer));
+  if (!ok) {
+     printf("Caught bad CRC as expected.\n");
+  } else {
+     assert_fail("Decode Round Trip", "Failed to detect bad CRC");
+  }
+}
+
 int main() {
   printf("\n%sSTARTING COMPREHENSIVE HDLC TEST SUITE%s\n", COL_YELLOW,
          COL_RESET);
@@ -761,6 +815,7 @@ int main() {
   test_encode_buffer_success();
   test_encode_buffer_overflow();
   test_encode_buffer_stuffing();
+  test_decode_frame();
 
   printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
   return 0;

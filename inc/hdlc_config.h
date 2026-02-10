@@ -59,6 +59,7 @@ extern "C" {
 #define hdlc_input_bytes                                                ATC_HDLC_NAME(hdlc_input_bytes)
 #define hdlc_send_frame                                                 ATC_HDLC_NAME(hdlc_send_frame)
 #define hdlc_encode_frame                                               ATC_HDLC_NAME(hdlc_encode_frame)
+#define hdlc_decode_frame                                               ATC_HDLC_NAME(hdlc_decode_frame)
 #define hdlc_create_i_ctrl                                              ATC_HDLC_NAME(hdlc_create_i_ctrl)
 #define hdlc_create_s_ctrl                                              ATC_HDLC_NAME(hdlc_create_s_ctrl)
 #define hdlc_create_u_ctrl                                              ATC_HDLC_NAME(hdlc_create_u_ctrl)

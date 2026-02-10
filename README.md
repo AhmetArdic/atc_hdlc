@@ -199,6 +199,20 @@ To use this library in your own project:
     }
     ```
 
+9.  **Decode from Buffer**:
+    Useful when you have a raw buffer containing a full frame (e.g. from a packet-based radio or DMA transfer) and want to parse it.
+    ```c
+    uint8_t raw_buffer[] = {0x7E, 0xFF, ... , 0x7E}; // Received raw data
+    atc_hdlc_frame_t frame;
+    uint8_t flat_buffer[128]; // Destination for decoded data
+    
+    // Decodes, verifies CRC, unstuffs, and populates 'frame'
+    if (atc_hdlc_decode_frame(raw_buffer, sizeof(raw_buffer), &frame, flat_buffer, sizeof(flat_buffer))) {
+        // Frame is valid!
+        process_frame(frame.address, frame.control.value, frame.information, frame.information_len);
+    }
+    ```
+
 ## ⚙️ Configuration
 
 Configuration is done in `inc/hdlc_config.h`:
@@ -219,6 +233,7 @@ Configuration is done in `inc/hdlc_config.h`:
 | `atc_hdlc_input_bytes()` | Feed a byte array into the parser (bulk) |
 | `atc_hdlc_send_frame()` | Send a complete frame (buffered) |
 | `atc_hdlc_encode_frame()` | Encode a frame into a memory buffer |
+| `atc_hdlc_decode_frame()` | Decode a raw frame from a memory buffer |
 
 ### Streaming API
 

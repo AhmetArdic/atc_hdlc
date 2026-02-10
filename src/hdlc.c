@@ -208,6 +208,126 @@ bool hdlc_encode_frame(const hdlc_frame_t *frame, hdlc_u8 *buffer,
   return false;
 }
 
+/**
+ * @brief Decode a raw HDLC frame from a buffer.
+ * @see hdlc.h
+ */
+bool hdlc_decode_frame(const hdlc_u8 *buffer, hdlc_u32 buffer_len,
+                       hdlc_frame_t *frame, hdlc_u8 *flat_buffer,
+                       hdlc_u32 flat_buffer_len) {
+  if (buffer == NULL || frame == NULL || flat_buffer == NULL) {
+    return false;
+  }
+
+  // 1. Basic Length Check (Min: Flag + Addr + Ctrl + FCS + Flag = 6)
+  // Actually, min on wire could be Flag + Addr + Ctrl + FCS + Flag = 6 bytes.
+  // Or Flag + Addr + Ctrl + FCS (if implicit end).
+  // Our HDLC_MIN_FRAME_LEN is 4 (bits inside).
+  if (buffer_len < HDLC_MIN_FRAME_LEN + 2 * HDLC_FLAG_LEN) {
+      // It might be just 1 flag if shared. Let's be safe.
+     if (buffer_len < HDLC_MIN_FRAME_LEN) return false;
+  }
+
+  // 2. Parse and Unescape
+  hdlc_u32 write_idx = 0;
+  hdlc_bool inside_frame = false;
+  hdlc_bool escape_next = false;
+  hdlc_bool frame_complete = false;
+
+  for (hdlc_u32 i = 0; i < buffer_len; i++) {
+    hdlc_u8 byte = buffer[i];
+
+    if (byte == HDLC_FLAG) {
+      if (inside_frame) {
+        if (write_idx >= HDLC_MIN_FRAME_LEN) {
+           frame_complete = true;
+           break; // Found End Flag
+        } else {
+           // Too short, maybe just consecutive flags or start flag
+           write_idx = 0; // Reset
+           continue; 
+        }
+      } else {
+        inside_frame = true; // Found Start Flag
+        write_idx = 0;
+        continue;
+      }
+    }
+
+    if (!inside_frame) continue;
+
+    if (byte == HDLC_ESCAPE) {
+      escape_next = true;
+      continue;
+    }
+
+    if (escape_next) {
+      byte ^= HDLC_XOR_MASK;
+      escape_next = false;
+    }
+
+    if (write_idx < flat_buffer_len) {
+      flat_buffer[write_idx++] = byte;
+    } else {
+      return false; // Buffer Overflow
+    }
+  }
+
+  // If we didn't find an explicit End Flag but consumed valid data, 
+  // we might check if the buffer itself was cut properly?
+  // Usually decode assumes a full frame.
+  if (!frame_complete) {
+     // If the buffer didn't end with 7E, we can't be sure it's done?
+     // Or maybe the user passed a buffer that *is* the frame.
+     // Let's assume if we have enough data and valid CRC, it's OK?
+     // But standard HDLC requires flags.
+     // Let's rely on finding at least one start and one end, OR
+     // if the loop finished and we satisfy min length, check CRC?
+     if (write_idx < HDLC_MIN_FRAME_LEN) return false;
+  }
+
+  // 3. CRC Verification
+  hdlc_u16 calced_crc = HDLC_FCS_INIT_VALUE;
+  hdlc_u32 data_len = write_idx - HDLC_FCS_LEN; 
+
+  for (hdlc_u32 i = 0; i < data_len; i++) {
+    calced_crc = hdlc_crc_ccitt_update(calced_crc, flat_buffer[i]);
+  }
+
+  hdlc_fcs_t *fcs = (hdlc_fcs_t *)&flat_buffer[data_len];
+  hdlc_u16 rx_fcs = (fcs->fcs[0] << 8) | fcs->fcs[1];
+
+  if (calced_crc != rx_fcs) {
+    return false;
+  }
+
+  // 4. Fill Frame Struct
+  frame->address = flat_buffer[0];
+  frame->control.value = flat_buffer[1];
+  
+  hdlc_u32 header_len = HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN;
+  if (data_len > header_len) {
+    frame->information = &flat_buffer[header_len];
+    frame->information_len = (hdlc_u16)(data_len - header_len);
+  } else {
+    frame->information = NULL;
+    frame->information_len = 0;
+  }
+
+  // Resolve Type
+  if ((frame->control.value & HDLC_FRAME_TYPE_MASK_I) == HDLC_FRAME_TYPE_VAL_I) {
+      frame->type = HDLC_FRAME_I;
+  } else if ((frame->control.value & HDLC_FRAME_TYPE_MASK_S) == HDLC_FRAME_TYPE_VAL_S) {
+      frame->type = HDLC_FRAME_S;
+  } else if ((frame->control.value & HDLC_FRAME_TYPE_MASK_U) == HDLC_FRAME_TYPE_VAL_U) {
+      frame->type = HDLC_FRAME_U;
+  } else {
+      frame->type = HDLC_FRAME_INVALID;
+  }
+
+  return true;
+}
+
 /*
  * --------------------------------------------------------------------------
  * RECEIVE ENGINE

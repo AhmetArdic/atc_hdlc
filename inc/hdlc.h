@@ -49,8 +49,7 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *rx_buffer, hdlc_u32 rx_buffer_len,
  * @warning **CRITICAL TIMING NOTE**: When the closing flag (0x7E) is received,
  * this function performs **O(N)** operations synchronously, including:
  * 1. CRC verification over the full frame.
- * 2. `memmove` to strip headers.
- * 3. Execution of the user `rx_cb`.
+ * 2. Execution of the user `rx_cb`.
  *
  * **DO NOT CALL FROM ISR** directly unless your baud rate is low, your frames
  * are short, and you understand the timing implications. For high-performance
@@ -102,6 +101,21 @@ void hdlc_send_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame);
  * @return true if successful, false if buffer is too small.
  */
 bool hdlc_encode_frame(const hdlc_frame_t *frame, hdlc_u8 *buffer, hdlc_u32 buffer_len, hdlc_u32 *encoded_len);
+
+/**
+ * @brief Decode a raw HDLC frame from a buffer.
+ *
+ * Parses a raw byte buffer containing a full HDLC frame (with Flags and FCS),
+ * validates the CRC, un-escapes the content, and populates the frame structure.
+ *
+ * @param buffer          Source buffer containing the raw HDLC frame (including 0x7E flags).
+ * @param buffer_len      Length of the source buffer.
+ * @param frame           Pointer to the frame structure to populate.
+ * @param flat_buffer     Destination buffer to store the decoded (linearized) data (Addr, Ctrl, Info).
+ * @param flat_buffer_len Length of the destination buffer.
+ * @return true if frame is valid (CRC match, correct formatting), false otherwise.
+ */
+bool hdlc_decode_frame(const hdlc_u8 *buffer, hdlc_u32 buffer_len, hdlc_frame_t *frame, hdlc_u8 *flat_buffer, hdlc_u32 flat_buffer_len);
 
 /* 
  * --------------------------------------------------------------------------
