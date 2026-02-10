@@ -29,7 +29,7 @@
 void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *rx_buffer, hdlc_u32 rx_buffer_len,
                hdlc_tx_byte_cb_t tx_cb, hdlc_on_frame_cb_t rx_cb,
                void *user_data) {
-  if (ctx == NULL || rx_buffer == NULL || rx_buffer_len < 4) {
+  if (ctx == NULL || rx_buffer == NULL || rx_buffer_len < HDLC_MIN_FRAME_LEN) {
     return;
   }
 
@@ -274,13 +274,13 @@ static void process_complete_frame(hdlc_context_t *ctx) {
   // 1. Identify Frame Type based on Control Field
   hdlc_u8 ctrl = ctx->rx_frame.control.value;
 
-  if ((ctrl & 0x01) == 0) {
+  if ((ctrl & HDLC_FRAME_TYPE_MASK_I) == HDLC_FRAME_TYPE_VAL_I) {
     ctx->rx_frame.type = HDLC_FRAME_I;
     handle_i_frame(ctx, &ctx->rx_frame);
-  } else if ((ctrl & 0x03) == 0x01) {
+  } else if ((ctrl & HDLC_FRAME_TYPE_MASK_S) == HDLC_FRAME_TYPE_VAL_S) {
     ctx->rx_frame.type = HDLC_FRAME_S;
     handle_s_frame(ctx, &ctx->rx_frame);
-  } else if ((ctrl & 0x03) == 0x03) {
+  } else if ((ctrl & HDLC_FRAME_TYPE_MASK_U) == HDLC_FRAME_TYPE_VAL_U) {
     ctx->rx_frame.type = HDLC_FRAME_U;
     handle_u_frame(ctx, &ctx->rx_frame);
   } else {
@@ -310,14 +310,14 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
   if (byte == HDLC_FLAG) {
     if (ctx->rx_state != HDLC_RX_HUNT) {
       // Minimum size: Addr(1) + Ctrl(1) + FCS(2) = 4 bytes
-      if (ctx->rx_index >= 4) {
+      if (ctx->rx_index >= HDLC_MIN_FRAME_LEN) {
         // --- CRC Verification Strategy ---
         // 1. Re-calculate CRC over the "Data" portion (Addr..Payload).
         // 2. Compare calculated CRC with the received FCS bytes (last 2
         // bytes).
 
         hdlc_u16 calced_crc = HDLC_FCS_INIT_VALUE;
-        hdlc_u32 data_len = ctx->rx_index - 2; // Exclude FCS bytes
+        hdlc_u32 data_len = ctx->rx_index - HDLC_FCS_LEN; // Exclude FCS bytes
 
         for (hdlc_u32 i = 0; i < data_len; i++) {
           calced_crc =
@@ -326,7 +326,7 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
 
         // Extract Received FCS (Assuming MSB first order on wire -> Buffered as
         // Hi, Lo)
-        hdlc_fcs_t *fcs = (hdlc_fcs_t *)&ctx->rx_buffer[ctx->rx_index - 2];
+        hdlc_fcs_t *fcs = (hdlc_fcs_t *)&ctx->rx_buffer[ctx->rx_index - HDLC_FCS_LEN];
         hdlc_u16 rx_fcs = (fcs->fcs[0] << 8) | fcs->fcs[1];
 
         if (calced_crc == rx_fcs) {
@@ -336,11 +336,12 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
           ctx->rx_frame.address = ctx->rx_buffer[0];
           ctx->rx_frame.control.value = ctx->rx_buffer[1];
           
-          // Information starts at index 2 (Addr+Ctrl), length is Total - (Addr+Ctrl+FCS) = Total - 4
+          // Information starts after Header (Addr+Ctrl), length is Total - (Header+FCS) = Total - 4
           // But only if total >= 4 (checked above)
-          if (data_len > 2) {
-             ctx->rx_frame.information = &ctx->rx_buffer[2];
-             ctx->rx_frame.information_len = (hdlc_u16)(data_len - 2);
+          // Header Len = Address(1) + Control(1) = 2
+          if (data_len > HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN) {
+             ctx->rx_frame.information = &ctx->rx_buffer[HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN];
+             ctx->rx_frame.information_len = (hdlc_u16)(data_len - (HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN));
           } else {
              ctx->rx_frame.information = NULL;
              ctx->rx_frame.information_len = 0;

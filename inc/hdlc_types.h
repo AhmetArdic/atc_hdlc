@@ -25,6 +25,23 @@ extern "C" {
  * DEFINITIONS
  * --------------------------------------------------------------------------
  */
+#define HDLC_FLAG_LEN               (1)     /**< Flag. */
+#define HDLC_ADDRESS_LEN            (1)     /**< Address Field. */
+#define HDLC_CONTROL_LEN            (1)     /**< Control Field. */
+#define HDLC_FCS_LEN                (2)     /**< FCS Field. */
+
+/** Minimum frame length: Address(1) + Control(1) + FCS(2). */
+#define HDLC_MIN_FRAME_LEN          (HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN + HDLC_FCS_LEN)
+
+/* Frame Type Masks & Values */
+#define HDLC_FRAME_TYPE_MASK_I      (0x01)
+#define HDLC_FRAME_TYPE_VAL_I       (0x00)
+
+#define HDLC_FRAME_TYPE_MASK_S      (0x03)
+#define HDLC_FRAME_TYPE_VAL_S       (0x01)
+
+#define HDLC_FRAME_TYPE_MASK_U      (0x03)
+#define HDLC_FRAME_TYPE_VAL_U       (0x03)
 
 
 /*
