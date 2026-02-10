@@ -671,6 +671,9 @@ void test_encode_buffer_success() {
   atc_hdlc_u32 len = 0;
 
   bool success = atc_hdlc_encode_frame(&frame, buffer, sizeof(buffer), &len);
+  if (success) {
+    print_hexdump("Encoded Buffer", buffer, len);
+  }
 
   if (success && len == 10 && buffer[0] == 0x7E && buffer[9] == 0x7E) {
     assert_pass("Encode Buffer - Success Case");
@@ -695,6 +698,9 @@ void test_encode_buffer_overflow() {
   atc_hdlc_u32 len = 0;
 
   bool success = atc_hdlc_encode_frame(&frame, buffer, sizeof(buffer), &len);
+  if (success) {
+    print_hexdump("Encoded Buffer", buffer, len);
+  }
 
   if (!success && len == 0) {
     assert_pass("Encode Buffer - Overflow Case");
@@ -717,6 +723,9 @@ void test_encode_buffer_stuffing() {
   atc_hdlc_u32 len = 0;
 
   bool success = atc_hdlc_encode_frame(&frame, buffer, sizeof(buffer), &len);
+  if (success) {
+    print_hexdump("Encoded Buffer", buffer, len);
+  }
 
   // Expected: 7E (7D 5E) (7D 5D) [CRC_LO] [CRC_HI] 7E
   // Length > 6 checks basic stuffing occurred.
