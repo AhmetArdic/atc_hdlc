@@ -20,7 +20,7 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
     *   Frame Type dispatcher (ready for ABM logic).
 *   **Developer Experience**:
     *   Modern **CMake** build system (C99).
-    *   **15 comprehensive unit tests** covering edge cases (byte stuffing, CRC errors, overflow, fragmentation, control field loopback, streaming API).
+    *   **Unit tests** covering edge cases (byte stuffing, CRC errors, overflow, fragmentation, control field loopback, streaming API).
     *   **Configurable Symbol Prefix**: All public symbols are prefixed (default `atc_`) to avoid collisions. Changeable at compile time via `ATC_HDLC_PREFIX`.
     *   **C++ compatible** (`extern "C"` wrappers).
 
