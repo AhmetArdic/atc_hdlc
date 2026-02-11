@@ -29,7 +29,19 @@ extern "C" {
 #define HDLC_ADDRESS_LEN            (1)     /**< Address Field. */
 #define HDLC_CONTROL_LEN            (1)     /**< Control Field. */
 #define HDLC_FCS_LEN                (2)     /**< FCS Field. */
-#define HDLC_MAX_INFORMATION_LEN    (HDLC_MAX_FRAME_LEN - (2 * HDLC_FLAG_LEN) - HDLC_ADDRESS_LEN - HDLC_CONTROL_LEN - HDLC_FCS_LEN)     /**< Information Field (Payload). */
+
+/** Minimum frame length: Address(1) + Control(1) + FCS(2). */
+#define HDLC_MIN_FRAME_LEN          (HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN + HDLC_FCS_LEN)
+
+/* Frame Type Masks & Values */
+#define HDLC_FRAME_TYPE_MASK_I      (0x01)
+#define HDLC_FRAME_TYPE_VAL_I       (0x00)
+
+#define HDLC_FRAME_TYPE_MASK_S      (0x03)
+#define HDLC_FRAME_TYPE_VAL_S       (0x01)
+
+#define HDLC_FRAME_TYPE_MASK_U      (0x03)
+#define HDLC_FRAME_TYPE_VAL_U       (0x03)
 
 
 /*
@@ -58,8 +70,7 @@ typedef bool hdlc_bool;
  *
  * Categorizes frames based on the Control Field format.
  */
-typedef enum
-{
+typedef enum {
     HDLC_FRAME_I,      /**< Information Frame (Data transfer) */
     HDLC_FRAME_S,      /**< Supervisory Frame (Flow/Error control) */
     HDLC_FRAME_U,      /**< Unnumbered Frame (Link management) */
@@ -83,13 +94,11 @@ typedef enum
  * NOTE: Bit-field ordering is compiler-dependent. Use the raw `value`
  * for critical serialization if not packing explicitly.
  */
-typedef union
-{
+typedef union {
     hdlc_u8 value; /**< Raw 8-bit Control Byte value. */
 
     /** Information Frame (I-Frame) [0 N(S) P/F N(R)] */
-    struct
-    {
+    struct {
         hdlc_u8 frame_type_0 : 1; /**< Frame Type ID (Must be 0). */
         hdlc_u8 ns           : 3; /**< Send Sequence Number N(S). */
         hdlc_u8 pf           : 1; /**< Poll/Final Bit. */
@@ -97,8 +106,7 @@ typedef union
     } i_frame;
 
     /** Supervisory Frame (S-Frame) [1 0 S S P/F N(R)] */
-    struct
-    {
+    struct {
         hdlc_u8 frame_type_0 : 1; /**< Frame Type ID (Must be 1). */
         hdlc_u8 frame_type_1 : 1; /**< Frame Type ID (Must be 0). */
         hdlc_u8 s            : 2; /**< Supervisory function bits. */
@@ -107,8 +115,7 @@ typedef union
     } s_frame;
 
     /** Unnumbered Frame (U-Frame) [1 1 M M P/F M M M] */
-    struct
-    {
+    struct {
         hdlc_u8 frame_type_0 : 1; /**< Frame Type ID (Must be 1). */
         hdlc_u8 frame_type_1 : 1; /**< Frame Type ID (Must be 1). */
         hdlc_u8 m_lo         : 2; /**< Modifier function bits (low). */
@@ -118,8 +125,7 @@ typedef union
 
 } hdlc_control_t;
 
-typedef union
-{
+typedef union {
     hdlc_u8 fcs[2];
 } hdlc_fcs_t;
 
@@ -135,22 +141,12 @@ typedef union
  * logical representation of a received or to-be-transmitted frame.
  * Contains the parsed header fields and the payload buffer.
  */
-typedef struct
-{
-    union
-    {
-        hdlc_u8 value[HDLC_MAX_FRAME_LEN];  /**< Address, Control, Information, FCS Fields. */
-
-        struct
-        {
-            hdlc_u8 address;                                    /**< Address Field (usually 0xFF for broadcast or Station ID). */
-            hdlc_control_t control;                             /**< Control Field (Type, Seq Numbers, P/F). */
-            hdlc_u8 information[HDLC_MAX_INFORMATION_LEN];      /**< Information Field (Payload data). */
-        };
-    };
-
+typedef struct {
+    hdlc_u8 address;                /**< Address Field. */
+    hdlc_control_t control;         /**< Control Field. */
+    hdlc_u8 *information;           /**< Pointer to Information Field (Payload). */
+    hdlc_u16 information_len;       /**< Length of valid data in information. */
     hdlc_frame_type_t type;         /**< Resolved Frame Type (I/S/U). */
-    hdlc_u16 information_len;       /**< Length of valid data in information[]. */
 } hdlc_frame_t;
 
 /*
@@ -164,9 +160,11 @@ typedef struct
  *
  * Function pointer type for the hardware transmission interface.
  * @param byte      The byte to send over the physical medium (UART).
+ * @param flush     Indicates if this is the last byte of the frame (End Flag).
+ *                  Can be used to trigger hardware buffer flush.
  * @param user_data Pointer to user-defined context data.
  */
-typedef void (*hdlc_tx_byte_cb_t)(hdlc_u8 byte, void *user_data);
+typedef void (*hdlc_tx_byte_cb_t)(hdlc_u8 byte, hdlc_bool flush, void *user_data);
 
 /**
  * @brief Frame Received Callback.
@@ -190,18 +188,19 @@ typedef void (*hdlc_on_frame_cb_t)(const hdlc_frame_t *frame, void *user_data);
  * Main state structure holding all runtime information for a single HDLC
  * instance.
  */
-typedef struct
-{
+typedef struct {
     /* Configuration & Callbacks */
     hdlc_tx_byte_cb_t tx_cb;  /**< Hardware TX callback. */
     hdlc_on_frame_cb_t rx_cb; /**< Application RX callback. */
     void *user_data;          /**< User context passed to callbacks. */
 
     /* Receiver Engine State */
-    hdlc_u8 rx_state;  /**< Current internal parser state (enum from private). */
-    hdlc_u16 rx_index; /**< Current buffer write index. */
-    hdlc_u16 rx_crc;   /**< Running CRC calculation. */
-    hdlc_frame_t rx_frame; /**< Buffer for the frame currently being received. */
+    hdlc_u8 rx_state;        /**< Current internal parser state. */
+    hdlc_u8 *rx_buffer;      /**< Pointer to the user-supplied RX buffer. */
+    hdlc_u32 rx_buffer_len;  /**< Length of the user-supplied RX buffer. */
+    hdlc_u32 rx_index;       /**< Current write index in rx_buffer. */
+    hdlc_u16 rx_crc;         /**< Running RX CRC. */
+    hdlc_frame_t rx_frame;   /**< Temporary frame descriptor passed to callback. */
 
     /* Transmitter Engine State */
     hdlc_u16 tx_crc; /**< Running CRC for streaming TX. */
@@ -209,8 +208,7 @@ typedef struct
     /* Statistics */
     hdlc_u32 stats_rx_frames; /**< Count of valid frames received. */
     hdlc_u32 stats_tx_frames; /**< Count of frames transmitted. */
-    hdlc_u32
-    stats_crc_errors; /**< Count of frames discarded due to CRC mismatch. */
+    hdlc_u32 stats_crc_errors; /**< Count of frames discarded due to CRC mismatch. */
 } hdlc_context_t;
 
 #ifdef __cplusplus

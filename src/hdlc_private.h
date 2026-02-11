@@ -17,8 +17,7 @@
  * @brief RX State Machine States.
  * Internal states for the byte-by-byte receive parser.
  */
-typedef enum
-{
+typedef enum {
     HDLC_RX_HUNT = 0, /**< Searching for the Start Flag (0x7E) to sync. */
     HDLC_RX_ADDRESS,  /**< Frame detected, expecting Address Byte next. */
     HDLC_RX_DATA,     /**< Receiving Control or Payload Data. */

@@ -12,6 +12,7 @@
 #define HDLC_H
 
 #include "hdlc_types.h"
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,12 +30,16 @@ extern "C" {
  * Sets up the HDLC instance, clears internal state, resets statistics,
  * and binds the user-provided callbacks.
  * 
- * @param ctx       Pointer to the @ref hdlc_context_t structure to initialize.
- * @param tx_cb     Callback function for sending a byte to the hardware.
- * @param rx_cb     Callback function for receiving valid frames.
- * @param user_data Optional user pointer to pass to the callbacks.
+ * @param ctx           Pointer to the @ref hdlc_context_t structure to initialize.
+ * @param rx_buffer     Pointer to the user-supplied RX buffer.
+ * @param rx_buffer_len Length of the user-supplied RX buffer.
+ * @param tx_cb         Callback function for sending a byte to the hardware.
+ * @param rx_cb         Callback function for receiving valid frames.
+ * @param user_data     Optional user pointer to pass to the callbacks.
  */
-void hdlc_init(hdlc_context_t *ctx, hdlc_tx_byte_cb_t tx_cb, hdlc_on_frame_cb_t rx_cb, void *user_data);
+void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *rx_buffer, hdlc_u32 rx_buffer_len,
+               hdlc_tx_byte_cb_t tx_cb, hdlc_on_frame_cb_t rx_cb,
+               void *user_data);
 
 /**
  * @brief Input a received byte into the HDLC Parser.
@@ -44,8 +49,7 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_tx_byte_cb_t tx_cb, hdlc_on_frame_cb_t 
  * @warning **CRITICAL TIMING NOTE**: When the closing flag (0x7E) is received,
  * this function performs **O(N)** operations synchronously, including:
  * 1. CRC verification over the full frame.
- * 2. `memmove` to strip headers.
- * 3. Execution of the user `rx_cb`.
+ * 2. Execution of the user `rx_cb`.
  *
  * **DO NOT CALL FROM ISR** directly unless your baud rate is low, your frames
  * are short, and you understand the timing implications. For high-performance
@@ -58,6 +62,20 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_tx_byte_cb_t tx_cb, hdlc_on_frame_cb_t 
 void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte);
 
 /**
+ * @brief Input multiple received bytes into the HDLC Parser.
+ *
+ * Convenience wrapper that feeds an array of bytes into the parser
+ * by calling @ref hdlc_input_byte for each element.
+ *
+ * @warning Same ISR safety considerations as @ref hdlc_input_byte apply.
+ *
+ * @param ctx  Pointer to the initialized HDLC context.
+ * @param data Pointer to the byte array to process.
+ * @param len  Number of bytes in the array.
+ */
+void hdlc_input_bytes(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
+
+/**
  * @brief Send a complete HDLC Frame (Buffered).
  * 
  * Constructs a raw HDLC stream from the provided `frame` structure,
@@ -68,6 +86,36 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte);
  * @param frame Pointer to the frame structure to transmit.
  */
 void hdlc_send_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+
+
+/**
+ * @brief Encode a frame into a memory buffer.
+ * 
+ * Serializes the frame into the provided buffer. This is useful for users who
+ * want to control transmission scheduling or use a different transport layer.
+ * 
+ * @param frame      Pointer to the frame to encode.
+ * @param buffer     Destination buffer.
+ * @param buffer_len Size of the destination buffer.
+ * @param encoded_len Output pointer for the actual encoded length.
+ * @return true if successful, false if buffer is too small.
+ */
+bool hdlc_encode_frame(const hdlc_frame_t *frame, hdlc_u8 *buffer, hdlc_u32 buffer_len, hdlc_u32 *encoded_len);
+
+/**
+ * @brief Decode a raw HDLC frame from a buffer.
+ *
+ * Parses a raw byte buffer containing a full HDLC frame (with Flags and FCS),
+ * validates the CRC, un-escapes the content, and populates the frame structure.
+ *
+ * @param buffer          Source buffer containing the raw HDLC frame (including 0x7E flags).
+ * @param buffer_len      Length of the source buffer.
+ * @param frame           Pointer to the frame structure to populate.
+ * @param flat_buffer     Destination buffer to store the decoded (linearized) data (Addr, Ctrl, Info).
+ * @param flat_buffer_len Length of the destination buffer.
+ * @return true if frame is valid (CRC match, correct formatting), false otherwise.
+ */
+bool hdlc_decode_frame(const hdlc_u8 *buffer, hdlc_u32 buffer_len, hdlc_frame_t *frame, hdlc_u8 *flat_buffer, hdlc_u32 flat_buffer_len);
 
 /* 
  * --------------------------------------------------------------------------

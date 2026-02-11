@@ -57,7 +57,6 @@ static const hdlc_u16 fcstab[256] = {0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x5
  * @param data New data byte to include in the CRC.
  * @return hdlc_u16 Updated CRC value.
  */
-hdlc_u16 hdlc_crc_ccitt_update(hdlc_u16 fcs, hdlc_u8 data)
-{
+hdlc_u16 hdlc_crc_ccitt_update(hdlc_u16 fcs, hdlc_u8 data) {
     return (fcs >> 8) ^ fcstab[(fcs ^ data) & 0xff];
 }
