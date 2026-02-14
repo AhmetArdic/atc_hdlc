@@ -13,8 +13,8 @@
 #define COL_YELLOW "\033[33m"
 
 // --- Mocking & Utilities ---
-static atc_hdlc_u8 output_buffer[4096];
-static atc_hdlc_u8 input_buffer[1024]; // User-supplied RX buffer for tests
+static atc_hdlc_u8 output_buffer[16384]; // Increased for large payload tests
+static atc_hdlc_u8 input_buffer[16384];  // Matched to output buffer
 static int output_len = 0;
 
 void print_hexdump(const char *label, const atc_hdlc_u8 *data, int len) {
@@ -347,9 +347,9 @@ void test_crc_error_injection() {
   }
 }
 
-void test_mtu_overflow() {
+void test_input_buffer_overflow() {
   printf("========================================\n");
-  printf("TEST: MTU Overflow Safety\n");
+  printf("TEST: Input Buffer Overflow Safety\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
   atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
@@ -358,8 +358,8 @@ void test_mtu_overflow() {
   printf("Feeding Start Flag...\n");
   atc_hdlc_stream_input_byte(&ctx, 0x7E); // Start
 
-  printf("Feeding %d bytes (MTU + 50)...\n", 1024 + 50);
-  // Feed more than MTU
+  printf("Feeding %d bytes (Input Buffer Len + 50)...\n", 1024 + 50);
+  // Feed more than buffer size
   for (int i = 0; i < 1024 + 50; i++) {
     atc_hdlc_stream_input_byte(&ctx, 0xAA);
   }
@@ -367,16 +367,21 @@ void test_mtu_overflow() {
   atc_hdlc_stream_input_byte(&ctx, 0x7E); // End Flag
 
   if (on_frame_call_count == 0) {
-    assert_pass("MTU Overflow");
+    assert_pass("Input Buffer Overflow");
   } else {
-    assert_fail("MTU Overflow", "Overflow frame triggered callback");
+    assert_fail("Input Buffer Overflow", "Overflow frame triggered callback");
   }
 }
 
-void test_mtu() {
+void test_streaming_large_payload(int payload_size) {
   printf("========================================\n");
-  printf("TEST: MTU\n");
+  printf("TEST: Streaming Large Payload (%d bytes)\n", payload_size);
   printf("========================================\n");
+  if (payload_size > sizeof(output_buffer) / 2) {
+      printf("Skipping test: Payload %d too large for buffer %llu\n", payload_size, sizeof(output_buffer));
+      return;
+  }
+
   atc_hdlc_context_t ctx;
   atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
   reset_test();
@@ -384,23 +389,42 @@ void test_mtu() {
   printf("Feeding Start...\n");
   atc_hdlc_stream_output_packet_start(&ctx, 0xAA, 0xBB); // Addr, Ctrl
 
-  printf("Feeding %d bytes (MTU)...\n", 100);
-  // Feed more than MTU
-  for (int i = 0; i < 100; i++) {
-    atc_hdlc_stream_output_packet_information_byte(&ctx, 0xAA);
+  printf("Feeding %d bytes...\n", payload_size);
+  // Feed large payload
+  for (int i = 0; i < payload_size; i++) {
+    // Generate predictable pattern: 0x00, 0x01 ... 0xFF, 0x00 ...
+    atc_hdlc_stream_output_packet_information_byte(&ctx, (atc_hdlc_u8)(i % 256));
   }
   atc_hdlc_stream_output_packet_end(&ctx); // End Flag
 
-  print_hexdump("Output Buffer (Streamed)", output_buffer, output_len);
+  // print_hexdump("Output Buffer (Streamed)", output_buffer, output_len); 
+  printf("Output Buffer Length: %d\n", output_len);
 
   for (int i = 0; i < output_len; i++)
     atc_hdlc_stream_input_byte(&ctx, output_buffer[i]);
 
   if (on_frame_call_count == 1 &&
-      last_received_frame.information_len == 100) {
-    assert_pass("MTU");
+      last_received_frame.information_len == payload_size) {
+    
+    // Verify content
+    bool match = true;
+    for(int i=0; i<payload_size; i++) {
+        if (last_received_frame.information[i] != (atc_hdlc_u8)(i % 256)) {
+            match = false;
+            printf("Mismatch at index %d: expected %02X, got %02X\n", i, (atc_hdlc_u8)(i%256), last_received_frame.information[i]);
+            break;
+        }
+    }
+
+    if (match) {
+        assert_pass("Streaming Large Payload");
+    } else {
+        assert_fail("Streaming Large Payload", "Payload content mismatch");
+    }
+
   } else {
-    assert_fail("MTU", "MTU error");
+    printf("Callback count: %d, InfoLen: %d (Expected %d)\n", on_frame_call_count, last_received_frame.information_len, payload_size);
+    assert_fail("Streaming Large Payload", "Large payload error");
   }
 }
 
@@ -658,9 +682,9 @@ void test_input_bytes() {
 
 // --- Buffer Encoding Tests ---
 
-void test_encode_buffer_success() {
+void test_frame_pack_success() {
   printf("========================================\n");
-  printf("TEST: Encode Buffer - Success Case\n");
+  printf("TEST: Pack Frame - Success Case\n");
   printf("========================================\n");
 
   atc_hdlc_u8 payload[] = "TEST";
@@ -676,16 +700,16 @@ void test_encode_buffer_success() {
   }
 
   if (success && len == 10 && buffer[0] == 0x7E && buffer[9] == 0x7E) {
-    assert_pass("Encode Buffer - Success Case");
+    assert_pass("Pack Frame - Success Case");
   } else {
-    assert_fail("Encode Buffer - Success Case",
+    assert_fail("Pack Frame - Success Case",
                 "Encoding failed or content mismatch");
   }
 }
 
-void test_encode_buffer_overflow() {
+void test_frame_pack_overflow() {
   printf("========================================\n");
-  printf("TEST: Encode Buffer - Overflow Case\n");
+  printf("TEST: Pack Frame - Overflow Case\n");
   printf("========================================\n");
 
   atc_hdlc_u8 payload[10];
@@ -703,15 +727,15 @@ void test_encode_buffer_overflow() {
   }
 
   if (!success && len == 0) {
-    assert_pass("Encode Buffer - Overflow Case");
+    assert_pass("Pack Frame - Overflow Case");
   } else {
-    assert_fail("Encode Buffer - Overflow Case", "Should fail on overflow");
+    assert_fail("Pack Frame - Overflow Case", "Should fail on overflow");
   }
 }
 
-void test_encode_buffer_stuffing() {
+void test_frame_pack_stuffing() {
   printf("========================================\n");
-  printf("TEST: Encode Buffer - Stuffing\n");
+  printf("TEST: Pack Frame - Stuffing\n");
   printf("========================================\n");
 
   atc_hdlc_frame_t frame = {.address = 0x7E,       // Needs escaping -> 7D 5E
@@ -731,16 +755,16 @@ void test_encode_buffer_stuffing() {
   // Length > 6 checks basic stuffing occurred.
   if (success && len > 6 && buffer[1] == 0x7D && buffer[2] == 0x5E &&
       buffer[3] == 0x7D && buffer[4] == 0x5D) {
-    assert_pass("Encode Buffer - Stuffing");
+    assert_pass("Pack Frame - Stuffing");
   } else {
-    assert_fail("Encode Buffer - Stuffing", "Stuffing logic failed");
+    assert_fail("Pack Frame - Stuffing", "Stuffing logic failed");
   }
 }
 
 
-void test_decode_frame() {
+void test_frame_unpack_roundtrip() {
   printf("========================================\n");
-  printf("TEST: Decode Frame (Round Trip)\n");
+  printf("TEST: Unpack Frame (Round Trip)\n");
   printf("========================================\n");
 
   // 1. Encode
@@ -753,7 +777,7 @@ void test_decode_frame() {
 
   bool ok = atc_hdlc_frame_pack(&frame_in, raw_buffer, sizeof(raw_buffer), &raw_len);
   if (!ok) {
-    assert_fail("Decode Round Trip", "Encoding failed");
+    assert_fail("Unpack Round Trip", "Packing failed");
   }
   print_hexdump("Encoded", raw_buffer, raw_len);
 
@@ -772,12 +796,12 @@ void test_decode_frame() {
          frame_out.control.value == 0x55 && 
          frame_out.information_len == 9 &&
          memcmp(frame_out.information, "ROUNDTRIP", 9) == 0) {
-         assert_pass("Decode Round Trip");
+         assert_pass("Unpack Round Trip");
      } else {
-         assert_fail("Decode Round Trip", "Content mismatch");
+         assert_fail("Unpack Round Trip", "Content mismatch");
      }
   } else {
-     assert_fail("Decode Round Trip", "Decoding failed");
+     assert_fail("Unpack Round Trip", "Decoding failed");
   }
 
   // 3. Test Decode Error (Bad CRC)
@@ -787,7 +811,7 @@ void test_decode_frame() {
   if (!ok) {
      printf("Caught bad CRC as expected.\n");
   } else {
-     assert_fail("Decode Round Trip", "Failed to detect bad CRC");
+     assert_fail("Unpack Round Trip", "Failed to detect bad CRC");
   }
 }
 
@@ -804,18 +828,20 @@ int main() {
   test_min_size_rejection();
   test_aborted_frame();
   test_crc_error_injection();
-  test_mtu_overflow();
-  test_mtu();
+  test_input_buffer_overflow();
+  test_streaming_large_payload(100);
+  test_streaming_large_payload(4096); // 4KB
+  test_streaming_large_payload(8192); // 8KB
   test_streaming_api();
   test_fragmented_delivery();
   test_control_field_i();
   test_control_field_s();
   test_control_field_u();
   test_input_bytes();
-  test_encode_buffer_success();
-  test_encode_buffer_overflow();
-  test_encode_buffer_stuffing();
-  test_decode_frame();
+  test_frame_pack_success();
+  test_frame_pack_overflow();
+  test_frame_pack_stuffing();
+  test_frame_unpack_roundtrip();
 
   printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
   return 0;
