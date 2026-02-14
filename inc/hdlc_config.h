@@ -54,20 +54,20 @@ extern "C" {
  */
 
 /* Functions */
-#define hdlc_init                                                       ATC_HDLC_NAME(hdlc_init)
-#define hdlc_input_byte                                                 ATC_HDLC_NAME(hdlc_input_byte)
-#define hdlc_input_bytes                                                ATC_HDLC_NAME(hdlc_input_bytes)
-#define hdlc_send_frame                                                 ATC_HDLC_NAME(hdlc_send_frame)
-#define hdlc_encode_frame                                               ATC_HDLC_NAME(hdlc_encode_frame)
-#define hdlc_decode_frame                                               ATC_HDLC_NAME(hdlc_decode_frame)
+/* Functions */
+#define hdlc_stream_init                                                ATC_HDLC_NAME(hdlc_stream_init)
+#define hdlc_stream_input_byte                                          ATC_HDLC_NAME(hdlc_stream_input_byte)
+#define hdlc_stream_input_bytes                                         ATC_HDLC_NAME(hdlc_stream_input_bytes)
+#define hdlc_stream_output_frame                                        ATC_HDLC_NAME(hdlc_stream_output_frame)
+#define hdlc_frame_pack                                                 ATC_HDLC_NAME(hdlc_frame_pack)
+#define hdlc_frame_unpack                                               ATC_HDLC_NAME(hdlc_frame_unpack)
 #define hdlc_create_i_ctrl                                              ATC_HDLC_NAME(hdlc_create_i_ctrl)
 #define hdlc_create_s_ctrl                                              ATC_HDLC_NAME(hdlc_create_s_ctrl)
 #define hdlc_create_u_ctrl                                              ATC_HDLC_NAME(hdlc_create_u_ctrl)
-#define hdlc_send_packet_start                                          ATC_HDLC_NAME(hdlc_send_packet_start)
-#define hdlc_send_packet_information_byte                               ATC_HDLC_NAME(hdlc_send_packet_information_byte)
-#define hdlc_send_packet_information_bytes_array                        ATC_HDLC_NAME(hdlc_send_packet_information_bytes_array)
-#define hdlc_send_packet_end                                            ATC_HDLC_NAME(hdlc_send_packet_end)
-#define hdlc_crc_ccitt_update                                           ATC_HDLC_NAME(hdlc_crc_ccitt_update)
+#define hdlc_stream_output_packet_start                                 ATC_HDLC_NAME(hdlc_stream_output_packet_start)
+#define hdlc_stream_output_packet_information_byte                      ATC_HDLC_NAME(hdlc_stream_output_packet_information_byte)
+#define hdlc_stream_output_packet_information_bytes                     ATC_HDLC_NAME(hdlc_stream_output_packet_information_bytes)
+#define hdlc_stream_output_packet_end                                   ATC_HDLC_NAME(hdlc_stream_output_packet_end)
 
 /* Types */
 #define hdlc_u8                                                         ATC_HDLC_NAME(hdlc_u8)
@@ -77,7 +77,7 @@ extern "C" {
 #define hdlc_frame_type_t                                               ATC_HDLC_NAME(hdlc_frame_type_t)
 #define hdlc_control_t                                                  ATC_HDLC_NAME(hdlc_control_t)
 #define hdlc_frame_t                                                    ATC_HDLC_NAME(hdlc_frame_t)
-#define hdlc_tx_byte_cb_t                                               ATC_HDLC_NAME(hdlc_tx_byte_cb_t)
+#define hdlc_output_byte_cb_t                                           ATC_HDLC_NAME(hdlc_output_byte_cb_t)
 #define hdlc_on_frame_cb_t                                              ATC_HDLC_NAME(hdlc_on_frame_cb_t)
 #define hdlc_context_t                                                  ATC_HDLC_NAME(hdlc_context_t)
 

@@ -14,14 +14,14 @@
 #include "../inc/hdlc_types.h"
 
 /**
- * @brief RX State Machine States.
+ * @brief Input State Machine States.
  * Internal states for the byte-by-byte receive parser.
  */
 typedef enum {
-    HDLC_RX_HUNT = 0, /**< Searching for the Start Flag (0x7E) to sync. */
-    HDLC_RX_ADDRESS,  /**< Frame detected, expecting Address Byte next. */
-    HDLC_RX_DATA,     /**< Receiving Control or Payload Data. */
-    HDLC_RX_ESCAPE    /**< Previous byte was 0x7D (Escape), next byte needs XORing. */
-} hdlc_rx_state_t;
+    HDLC_INPUT_STATE_HUNT = 0, /**< Searching for the Start Flag (0x7E) to sync. */
+    HDLC_INPUT_STATE_ADDRESS,  /**< Frame detected, expecting Address Byte next. */
+    HDLC_INPUT_STATE_DATA,     /**< Receiving Control or Payload Data. */
+    HDLC_INPUT_STATE_ESCAPE    /**< Previous byte was 0x7D (Escape), next byte needs XORing. */
+} hdlc_input_state_t;
 
 #endif // HDLC_PRIVATE_H

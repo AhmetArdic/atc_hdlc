@@ -4,7 +4,7 @@
  * @date 02.02.2026
  * @brief Public API for the HDLC Library.
  * 
- * Provides function prototypes for initializing the library, sending frames,
+ * Provides function prototypes for initializing the library, packing/unpacking frames,
  * feeding received bytes into the parser, and handling streaming transmission.
  */
 
@@ -25,31 +25,31 @@ extern "C" {
  */
 
 /**
- * @brief Initialize the HDLC Context.
+ * @brief Initialize the HDLC Context for Stream Operations.
  * 
  * Sets up the HDLC instance, clears internal state, resets statistics,
  * and binds the user-provided callbacks.
  * 
  * @param ctx           Pointer to the @ref hdlc_context_t structure to initialize.
- * @param rx_buffer     Pointer to the user-supplied RX buffer.
- * @param rx_buffer_len Length of the user-supplied RX buffer.
- * @param tx_cb         Callback function for sending a byte to the hardware.
- * @param rx_cb         Callback function for receiving valid frames.
+ * @param buffer        Pointer to the user-supplied Input buffer.
+ * @param buffer_len    Length of the user-supplied Input buffer.
+ * @param output_cb     Callback function for sending a byte to the hardware.
+ * @param on_frame_cb   Callback function for receiving valid frames.
  * @param user_data     Optional user pointer to pass to the callbacks.
  */
-void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *rx_buffer, hdlc_u32 rx_buffer_len,
-               hdlc_tx_byte_cb_t tx_cb, hdlc_on_frame_cb_t rx_cb,
-               void *user_data);
+void hdlc_stream_init(hdlc_context_t *ctx, hdlc_u8 *buffer, hdlc_u32 buffer_len,
+                      hdlc_output_byte_cb_t output_cb,
+                      hdlc_on_frame_cb_t on_frame_cb, void *user_data);
 
 /**
- * @brief Input a received byte into the HDLC Parser.
+ * @brief Input a received byte into the HDLC Stream Parser.
  *
  * Checks for delimiters, handles byte-unstuffing, and buffers data.
  *
  * @warning **CRITICAL TIMING NOTE**: When the closing flag (0x7E) is received,
  * this function performs **O(N)** operations synchronously, including:
  * 1. CRC verification over the full frame.
- * 2. Execution of the user `rx_cb`.
+ * 2. Execution of the user `on_frame_cb`.
  *
  * **DO NOT CALL FROM ISR** directly unless your baud rate is low, your frames
  * are short, and you understand the timing implications. For high-performance
@@ -59,51 +59,51 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *rx_buffer, hdlc_u32 rx_buffer_len,
  * @param ctx  Pointer to the initialized HDLC context.
  * @param byte The raw byte received from the physical medium.
  */
-void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte);
+void hdlc_stream_input_byte(hdlc_context_t *ctx, hdlc_u8 byte);
 
 /**
- * @brief Input multiple received bytes into the HDLC Parser.
+ * @brief Input multiple received bytes into the HDLC Stream Parser.
  *
  * Convenience wrapper that feeds an array of bytes into the parser
- * by calling @ref hdlc_input_byte for each element.
+ * by calling @ref hdlc_stream_input_byte for each element.
  *
- * @warning Same ISR safety considerations as @ref hdlc_input_byte apply.
+ * @warning Same ISR safety considerations as @ref hdlc_stream_input_byte apply.
  *
  * @param ctx  Pointer to the initialized HDLC context.
  * @param data Pointer to the byte array to process.
  * @param len  Number of bytes in the array.
  */
-void hdlc_input_bytes(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
+void hdlc_stream_input_bytes(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
 
 /**
- * @brief Send a complete HDLC Frame (Buffered).
+ * @brief Output a complete HDLC Frame (Streaming).
  * 
  * Constructs a raw HDLC stream from the provided `frame` structure,
  * automatically handling Flag generation, Byte Stuffing, and CRC calculation.
- * The output bytes are sent immediately via the `tx_cb`.
+ * The output bytes are sent immediately via the `output_cb`.
  * 
  * @param ctx   Pointer to the initialized HDLC context.
  * @param frame Pointer to the frame structure to transmit.
  */
-void hdlc_send_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+void hdlc_stream_output_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 
 
 /**
- * @brief Encode a frame into a memory buffer.
+ * @brief Pack (Serialize) a frame into a memory buffer.
  * 
  * Serializes the frame into the provided buffer. This is useful for users who
  * want to control transmission scheduling or use a different transport layer.
  * 
- * @param frame      Pointer to the frame to encode.
+ * @param frame      Pointer to the frame to pack.
  * @param buffer     Destination buffer.
  * @param buffer_len Size of the destination buffer.
- * @param encoded_len Output pointer for the actual encoded length.
+ * @param encoded_len Output pointer for the actual packed length.
  * @return true if successful, false if buffer is too small.
  */
-bool hdlc_encode_frame(const hdlc_frame_t *frame, hdlc_u8 *buffer, hdlc_u32 buffer_len, hdlc_u32 *encoded_len);
+bool hdlc_frame_pack(const hdlc_frame_t *frame, hdlc_u8 *buffer, hdlc_u32 buffer_len, hdlc_u32 *encoded_len);
 
 /**
- * @brief Decode a raw HDLC frame from a buffer.
+ * @brief Unpack (Deserialize) a raw HDLC frame from a buffer.
  *
  * Parses a raw byte buffer containing a full HDLC frame (with Flags and FCS),
  * validates the CRC, un-escapes the content, and populates the frame structure.
@@ -115,7 +115,7 @@ bool hdlc_encode_frame(const hdlc_frame_t *frame, hdlc_u8 *buffer, hdlc_u32 buff
  * @param flat_buffer_len Length of the destination buffer.
  * @return true if frame is valid (CRC match, correct formatting), false otherwise.
  */
-bool hdlc_decode_frame(const hdlc_u8 *buffer, hdlc_u32 buffer_len, hdlc_frame_t *frame, hdlc_u8 *flat_buffer, hdlc_u32 flat_buffer_len);
+bool hdlc_frame_unpack(const hdlc_u8 *buffer, hdlc_u32 buffer_len, hdlc_frame_t *frame, hdlc_u8 *flat_buffer, hdlc_u32 flat_buffer_len);
 
 /* 
  * --------------------------------------------------------------------------
@@ -157,10 +157,10 @@ hdlc_control_t hdlc_create_u_ctrl(hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf);
  */
 
 /**
- * @brief Start a Streaming Packet Transmission.
+ * @brief Start a Streaming Packet Output.
  *
  * Begins a new frame transmission by sending the Start Flag (`0x7E`)
- * and initializing the internal TX CRC engine.
+ * and initializing the internal Output CRC engine.
  *
  * Use this API sequence for memory-constrained devices where constructing
  * a full `hdlc_frame_t` in RAM is not feasible.
@@ -169,10 +169,10 @@ hdlc_control_t hdlc_create_u_ctrl(hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf);
  * @param address The address byte to send.
  * @param control The control byte to send.
  */
-void hdlc_send_packet_start(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 control);
+void hdlc_stream_output_packet_start(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 control);
 
 /**
- * @brief Send a Information Byte in Streaming Mode.
+ * @brief Output a Information Byte in Streaming Mode.
  *
  * Sends a single byte of the frame content (Address, Control, or Data).
  * Automatically calculates CRC and performs Byte Stuffing (Escaping)
@@ -181,30 +181,30 @@ void hdlc_send_packet_start(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 contro
  * @param ctx Pointer to the initialized HDLC context.
  * @param information_byte The payload byte to send.
  */
-void hdlc_send_packet_information_byte(hdlc_context_t *ctx, hdlc_u8 information_byte);
+void hdlc_stream_output_packet_information_byte(hdlc_context_t *ctx, hdlc_u8 information_byte);
 
 /**
- * @brief Send a Information Bytes Array in Streaming Mode.
+ * @brief Output a Information Bytes Array in Streaming Mode.
  *
  * Sends a bytes array of the frame content (Address, Control, or Data).
  * Automatically calculates CRC and performs Byte Stuffing (Escaping)
  * on the fly if the byte matches Flag/Escape characters.
  *
  * @param ctx Pointer to the initialized HDLC context.
- * @param information_bytes_array The payload bytes array to send.
+ * @param information_bytes The payload bytes array to send.
  * @param len The length of payload bytes array to send.
  */
-void hdlc_send_packet_information_bytes_array(hdlc_context_t *ctx, const hdlc_u8* information_bytes_array, hdlc_u32 len);
+void hdlc_stream_output_packet_information_bytes(hdlc_context_t *ctx, const hdlc_u8* information_bytes, hdlc_u32 len);
 
 /**
- * @brief Finalize Streaming Packet Transmission.
+ * @brief Finalize Streaming Packet Output.
  *
  * Sends the calculated CRC (FCS) (handling any necessary stuffing),
  * and transmits the End Flag (`0x7E`).
  *
  * @param ctx Pointer to the initialized HDLC context.
  */
-void hdlc_send_packet_end(hdlc_context_t *ctx);
+void hdlc_stream_output_packet_end(hdlc_context_t *ctx);
 
 #ifdef __cplusplus
 }

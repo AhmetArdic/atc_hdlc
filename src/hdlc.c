@@ -26,10 +26,10 @@
  * @brief Initialize the HDLC Context.
  * @see hdlc.h
  */
-void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *rx_buffer, hdlc_u32 rx_buffer_len,
-               hdlc_tx_byte_cb_t tx_cb, hdlc_on_frame_cb_t rx_cb,
-               void *user_data) {
-  if (ctx == NULL || rx_buffer == NULL || rx_buffer_len < HDLC_MIN_FRAME_LEN) {
+void hdlc_stream_init(hdlc_context_t *ctx, hdlc_u8 *buffer, hdlc_u32 buffer_len,
+                      hdlc_output_byte_cb_t output_cb,
+                      hdlc_on_frame_cb_t on_frame_cb, void *user_data) {
+  if (ctx == NULL || buffer == NULL || buffer_len < HDLC_MIN_FRAME_LEN) {
     return;
   }
 
@@ -37,21 +37,21 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *rx_buffer, hdlc_u32 rx_buffer_len,
   memset(ctx, 0, sizeof(hdlc_context_t));
 
   // Initialize Buffer
-  ctx->rx_buffer = rx_buffer;
-  ctx->rx_buffer_len = rx_buffer_len;
+  ctx->input_buffer = buffer;
+  ctx->input_buffer_len = buffer_len;
 
   // Bind callbacks
-  ctx->tx_cb = tx_cb;
-  ctx->rx_cb = rx_cb;
+  ctx->output_byte_cb = output_cb;
+  ctx->on_frame_cb = on_frame_cb;
   ctx->user_data = user_data;
 
   // Initialize State
-  ctx->rx_state = HDLC_RX_HUNT;
+  ctx->input_state = HDLC_INPUT_STATE_HUNT;
 }
 
 /*
  * --------------------------------------------------------------------------
- * TRANSMIT ENGINE
+ * STREAMING TRANSMIT ENGINE
  * --------------------------------------------------------------------------
  */
 
@@ -75,17 +75,17 @@ typedef void (*hdlc_put_byte_fn)(hdlc_encode_ctx_t *enc_ctx, hdlc_u8 byte,
 /**
  * @brief Helper to write byte to hardware callback.
  */
-static void put_byte_direct(hdlc_encode_ctx_t *enc_ctx, hdlc_u8 byte,
+static void output_byte_to_callback(hdlc_encode_ctx_t *enc_ctx, hdlc_u8 byte,
                             hdlc_bool flush) {
-  if (enc_ctx->ctx && enc_ctx->ctx->tx_cb) {
-    enc_ctx->ctx->tx_cb(byte, flush, enc_ctx->ctx->user_data);
+  if (enc_ctx->ctx && enc_ctx->ctx->output_byte_cb) {
+    enc_ctx->ctx->output_byte_cb(byte, flush, enc_ctx->ctx->user_data);
   }
 }
 
 /**
  * @brief Helper to write byte to memory buffer.
  */
-static void put_byte_buffer(hdlc_encode_ctx_t *enc_ctx, hdlc_u8 byte,
+static void output_byte_to_buffer(hdlc_encode_ctx_t *enc_ctx, hdlc_u8 byte,
                             hdlc_bool flush) {
   (void)flush;
   if (enc_ctx->current_len < enc_ctx->buffer_len) {
@@ -95,52 +95,52 @@ static void put_byte_buffer(hdlc_encode_ctx_t *enc_ctx, hdlc_u8 byte,
   }
 }
 
-static inline void encode_byte(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn,
+static inline void pack_byte(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn,
                                hdlc_u8 byte, hdlc_bool flush) {
   put_fn(ctx, byte, flush);
 }
 
-static void encode_escaped(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn,
+static void pack_escaped(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn,
                            hdlc_u8 byte) {
   if (byte == HDLC_FLAG || byte == HDLC_ESCAPE) {
-    encode_byte(ctx, put_fn, HDLC_ESCAPE, false);
-    encode_byte(ctx, put_fn, byte ^ HDLC_XOR_MASK, false);
+    pack_byte(ctx, put_fn, HDLC_ESCAPE, false);
+    pack_byte(ctx, put_fn, byte ^ HDLC_XOR_MASK, false);
   } else {
-    encode_byte(ctx, put_fn, byte, false);
+    pack_byte(ctx, put_fn, byte, false);
   }
 }
 
-static void encode_escaped_crc_update(hdlc_encode_ctx_t *ctx,
+static void pack_escaped_crc_update(hdlc_encode_ctx_t *ctx,
                                       hdlc_put_byte_fn put_fn, hdlc_u8 byte,
                                       hdlc_u16 *crc) {
   *crc = hdlc_crc_ccitt_update(*crc, byte);
-  encode_escaped(ctx, put_fn, byte);
+  pack_escaped(ctx, put_fn, byte);
 }
 
-static hdlc_bool hdlc_encode_core(const hdlc_frame_t *frame,
+static hdlc_bool frame_pack_core(const hdlc_frame_t *frame,
                                   hdlc_put_byte_fn put_fn,
                                   hdlc_encode_ctx_t *enc_ctx) {
   hdlc_u16 crc = HDLC_FCS_INIT_VALUE;
 
   // Start Flag
-  encode_byte(enc_ctx, put_fn, HDLC_FLAG, false);
+  pack_byte(enc_ctx, put_fn, HDLC_FLAG, false);
   if (!enc_ctx->success)
     return false;
 
   // Address
-  encode_escaped_crc_update(enc_ctx, put_fn, frame->address, &crc);
+  pack_escaped_crc_update(enc_ctx, put_fn, frame->address, &crc);
   if (!enc_ctx->success)
     return false;
 
   // Control
-  encode_escaped_crc_update(enc_ctx, put_fn, frame->control.value, &crc);
+  pack_escaped_crc_update(enc_ctx, put_fn, frame->control.value, &crc);
   if (!enc_ctx->success)
     return false;
 
   // Payload
   if (frame->information != NULL && frame->information_len > 0) {
     for (hdlc_u16 i = 0; i < frame->information_len; i++) {
-      encode_escaped_crc_update(enc_ctx, put_fn, frame->information[i], &crc);
+      pack_escaped_crc_update(enc_ctx, put_fn, frame->information[i], &crc);
       if (!enc_ctx->success)
         return false;
     }
@@ -150,25 +150,25 @@ static hdlc_bool hdlc_encode_core(const hdlc_frame_t *frame,
   hdlc_u8 fcs_hi = (crc >> 8) & 0xFF;
   hdlc_u8 fcs_lo = crc & 0xFF;
 
-  encode_escaped(enc_ctx, put_fn, fcs_hi);
+  pack_escaped(enc_ctx, put_fn, fcs_hi);
   if (!enc_ctx->success)
     return false;
 
-  encode_escaped(enc_ctx, put_fn, fcs_lo);
+  pack_escaped(enc_ctx, put_fn, fcs_lo);
   if (!enc_ctx->success)
     return false;
 
   // End Flag
-  encode_byte(enc_ctx, put_fn, HDLC_FLAG, true);
+  pack_byte(enc_ctx, put_fn, HDLC_FLAG, true);
 
   return enc_ctx->success;
 }
 
 /**
- * @brief Send a complete HDLC Frame (Buffered).
+ * @brief Output a complete HDLC Frame (Streaming).
  * @see hdlc.h
  */
-void hdlc_send_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+void hdlc_stream_output_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   if (ctx == NULL || frame == NULL) {
     return;
   }
@@ -179,16 +179,16 @@ void hdlc_send_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
                                .current_len = 0,
                                .success = true};
 
-  hdlc_encode_core(frame, put_byte_direct, &enc_ctx);
-  ctx->stats_tx_frames++;
+  frame_pack_core(frame, output_byte_to_callback, &enc_ctx);
+  ctx->stats_output_frames++;
 }
 
 /**
- * @brief Encode a frame into a memory buffer.
+ * @brief Pack (Serialize) a frame into a memory buffer.
  * @see hdlc.h
  */
-bool hdlc_encode_frame(const hdlc_frame_t *frame, hdlc_u8 *buffer,
-                       hdlc_u32 buffer_len, hdlc_u32 *encoded_len) {
+bool hdlc_frame_pack(const hdlc_frame_t *frame, hdlc_u8 *buffer,
+                     hdlc_u32 buffer_len, hdlc_u32 *encoded_len) {
   if (frame == NULL || buffer == NULL || encoded_len == NULL) {
     return false;
   }
@@ -199,7 +199,7 @@ bool hdlc_encode_frame(const hdlc_frame_t *frame, hdlc_u8 *buffer,
                                .current_len = 0,
                                .success = true};
 
-  if (hdlc_encode_core(frame, put_byte_buffer, &enc_ctx)) {
+  if (frame_pack_core(frame, output_byte_to_buffer, &enc_ctx)) {
     *encoded_len = enc_ctx.current_len;
     return true;
   }
@@ -209,10 +209,10 @@ bool hdlc_encode_frame(const hdlc_frame_t *frame, hdlc_u8 *buffer,
 }
 
 /**
- * @brief Decode a raw HDLC frame from a buffer.
+ * @brief Unpack (Deserialize) a raw HDLC frame from a buffer.
  * @see hdlc.h
  */
-bool hdlc_decode_frame(const hdlc_u8 *buffer, hdlc_u32 buffer_len,
+bool hdlc_frame_unpack(const hdlc_u8 *buffer, hdlc_u32 buffer_len,
                        hdlc_frame_t *frame, hdlc_u8 *flat_buffer,
                        hdlc_u32 flat_buffer_len) {
   if (buffer == NULL || frame == NULL || flat_buffer == NULL) {
@@ -345,7 +345,7 @@ bool hdlc_decode_frame(const hdlc_u8 *buffer, hdlc_u32 buffer_len,
  * @param ctx   HDLC Context.
  * @param frame Received frame.
  */
-static void handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+static void stream_handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   // TODO: Implement I-Frame Logic
   // - Check Sequence Number N(S) against V(R)
   // - Check Piggybacked Ack N(R) against V(S)
@@ -360,7 +360,7 @@ static void handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
  * @param ctx   HDLC Context.
  * @param frame Received frame.
  */
-static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+static void stream_handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   // TODO: Implement S-Frame Logic
   // - Handle RR, RNR, REJ
   (void)ctx;
@@ -372,7 +372,7 @@ static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
  * @param ctx   HDLC Context.
  * @param frame Received frame.
  */
-static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+static void stream_handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   // TODO: Implement U-Frame Logic
   // - SABM: Send UA, Reset State
   // - DISC: Send UA, Go to Disconnected
@@ -390,29 +390,29 @@ static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
  *
  * @param ctx HDLC Context.
  */
-static void process_complete_frame(hdlc_context_t *ctx) {
+static void stream_process_complete_frame(hdlc_context_t *ctx) {
   // 1. Identify Frame Type based on Control Field
-  hdlc_u8 ctrl = ctx->rx_frame.control.value;
+  hdlc_u8 ctrl = ctx->input_frame_buffer.control.value;
 
   if ((ctrl & HDLC_FRAME_TYPE_MASK_I) == HDLC_FRAME_TYPE_VAL_I) {
-    ctx->rx_frame.type = HDLC_FRAME_I;
-    handle_i_frame(ctx, &ctx->rx_frame);
+    ctx->input_frame_buffer.type = HDLC_FRAME_I;
+    stream_handle_i_frame(ctx, &ctx->input_frame_buffer);
   } else if ((ctrl & HDLC_FRAME_TYPE_MASK_S) == HDLC_FRAME_TYPE_VAL_S) {
-    ctx->rx_frame.type = HDLC_FRAME_S;
-    handle_s_frame(ctx, &ctx->rx_frame);
+    ctx->input_frame_buffer.type = HDLC_FRAME_S;
+    stream_handle_s_frame(ctx, &ctx->input_frame_buffer);
   } else if ((ctrl & HDLC_FRAME_TYPE_MASK_U) == HDLC_FRAME_TYPE_VAL_U) {
-    ctx->rx_frame.type = HDLC_FRAME_U;
-    handle_u_frame(ctx, &ctx->rx_frame);
+    ctx->input_frame_buffer.type = HDLC_FRAME_U;
+    stream_handle_u_frame(ctx, &ctx->input_frame_buffer);
   } else {
-    ctx->rx_frame.type = HDLC_FRAME_INVALID;
+    ctx->input_frame_buffer.type = HDLC_FRAME_INVALID;
   }
 
   // 2. Notify User (Pass-through inspection)
-  if (ctx->rx_cb != NULL) {
-    ctx->rx_cb(&ctx->rx_frame, ctx->user_data);
+  if (ctx->on_frame_cb != NULL) {
+    ctx->on_frame_cb(&ctx->input_frame_buffer, ctx->user_data);
   }
 
-  ctx->stats_rx_frames++;
+  ctx->stats_input_frames++;
 }
 
 /**
@@ -421,53 +421,53 @@ static void process_complete_frame(hdlc_context_t *ctx) {
  * for delimiters, handles byte-unstuffing, and buffers data.
  * @see hdlc.h for detailed ISR usage warnings.
  */
-void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
+void hdlc_stream_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
   if (ctx == NULL) {
     return;
   }
 
   /* 1. Handle Frame Delimiters */
   if (byte == HDLC_FLAG) {
-    if (ctx->rx_state != HDLC_RX_HUNT) {
+    if (ctx->input_state != HDLC_INPUT_STATE_HUNT) {
       // Minimum size: Addr(1) + Ctrl(1) + FCS(2) = 4 bytes
-      if (ctx->rx_index >= HDLC_MIN_FRAME_LEN) {
+      if (ctx->input_index >= HDLC_MIN_FRAME_LEN) {
         // --- CRC Verification Strategy ---
         // 1. Re-calculate CRC over the "Data" portion (Addr..Payload).
         // 2. Compare calculated CRC with the received FCS bytes (last 2
         // bytes).
 
         hdlc_u16 calced_crc = HDLC_FCS_INIT_VALUE;
-        hdlc_u32 data_len = ctx->rx_index - HDLC_FCS_LEN; // Exclude FCS bytes
+        hdlc_u32 data_len = ctx->input_index - HDLC_FCS_LEN; // Exclude FCS bytes
 
         for (hdlc_u32 i = 0; i < data_len; i++) {
           calced_crc =
-              hdlc_crc_ccitt_update(calced_crc, ctx->rx_buffer[i]);
+              hdlc_crc_ccitt_update(calced_crc, ctx->input_buffer[i]);
         }
 
         // Extract Received FCS (Assuming MSB first order on wire -> Buffered as
         // Hi, Lo)
-        hdlc_fcs_t *fcs = (hdlc_fcs_t *)&ctx->rx_buffer[ctx->rx_index - HDLC_FCS_LEN];
+        hdlc_fcs_t *fcs = (hdlc_fcs_t *)&ctx->input_buffer[ctx->input_index - HDLC_FCS_LEN];
         hdlc_u16 rx_fcs = (fcs->fcs[0] << 8) | fcs->fcs[1];
 
         if (calced_crc == rx_fcs) {
           // Valid Frame!
 
           /* Construct the temporary frame descriptor (Zero-Copy) */
-          ctx->rx_frame.address = ctx->rx_buffer[0];
-          ctx->rx_frame.control.value = ctx->rx_buffer[1];
+          ctx->input_frame_buffer.address = ctx->input_buffer[0];
+          ctx->input_frame_buffer.control.value = ctx->input_buffer[1];
           
           // Information starts after Header (Addr+Ctrl), length is Total - (Header+FCS) = Total - 4
           // But only if total >= 4 (checked above)
           // Header Len = Address(1) + Control(1) = 2
           if (data_len > HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN) {
-             ctx->rx_frame.information = &ctx->rx_buffer[HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN];
-             ctx->rx_frame.information_len = (hdlc_u16)(data_len - (HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN));
+             ctx->input_frame_buffer.information = &ctx->input_buffer[HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN];
+             ctx->input_frame_buffer.information_len = (hdlc_u16)(data_len - (HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN));
           } else {
-             ctx->rx_frame.information = NULL;
-             ctx->rx_frame.information_len = 0;
+             ctx->input_frame_buffer.information = NULL;
+             ctx->input_frame_buffer.information_len = 0;
           }
 
-          process_complete_frame(ctx);
+          stream_process_complete_frame(ctx);
         } else {
           // CRC Error: Frame discarded silently (or logged)
           // printf("[LIB] CRC Fail: Calc=%04X Rx=%04X Len=%d\n", calced_crc,
@@ -478,33 +478,33 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
     }
 
     // Reset for next frame
-    ctx->rx_state = HDLC_RX_ADDRESS; // Expecting Address next
-    ctx->rx_index = 0;
-    ctx->rx_crc = HDLC_FCS_INIT_VALUE;
+    ctx->input_state = HDLC_INPUT_STATE_ADDRESS; // Expecting Address next
+    ctx->input_index = 0;
+    ctx->input_crc = HDLC_FCS_INIT_VALUE;
     return;
   }
 
   /* 2. Handle State Machine */
 
-  if (ctx->rx_state == HDLC_RX_HUNT) {
+  if (ctx->input_state == HDLC_INPUT_STATE_HUNT) {
     return; // Ignoring noise awaiting next Flag
   }
 
   if (byte == HDLC_ESCAPE) {
-    ctx->rx_state = HDLC_RX_ESCAPE;
+    ctx->input_state = HDLC_INPUT_STATE_ESCAPE;
     return;
   }
 
-  if (ctx->rx_state == HDLC_RX_ESCAPE) {
+  if (ctx->input_state == HDLC_INPUT_STATE_ESCAPE) {
     byte ^= HDLC_XOR_MASK;        // Un-escape
-    ctx->rx_state = HDLC_RX_DATA; // Return to normal state
+    ctx->input_state = HDLC_INPUT_STATE_DATA; // Return to normal state
   }
 
   /* 3. Validation & Buffering */
 
-  if (ctx->rx_index >= ctx->rx_buffer_len) {
+  if (ctx->input_index >= ctx->input_buffer_len) {
     // Overflow protection: Drop invalid large frame and hunt for next flag
-    ctx->rx_state = HDLC_RX_HUNT;
+    ctx->input_state = HDLC_INPUT_STATE_HUNT;
     return;
   }
 
@@ -512,20 +512,20 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
   // the "Recalculate over buffer" method on Frame End for robustness.
 
   // Store byte in buffer
-  ctx->rx_buffer[ctx->rx_index++] = byte;
+  ctx->input_buffer[ctx->input_index++] = byte;
 }
 
 /**
  * @brief Input multiple received bytes into the HDLC Parser.
  * @see hdlc.h
  */
-void hdlc_input_bytes(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
+void hdlc_stream_input_bytes(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
   if (ctx == NULL || data == NULL) {
     return;
   }
 
   for (hdlc_u32 i = 0; i < len; ++i) {
-    hdlc_input_byte(ctx, data[i]);
+    hdlc_stream_input_byte(ctx, data[i]);
   }
 }
 
@@ -540,10 +540,10 @@ void hdlc_input_bytes(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
  * @param ctx  HDLC Context.
  * @param byte Raw byte to transmit.
  */
-static inline void io_send_byte(hdlc_context_t *ctx, hdlc_u8 byte,
+static inline void stream_output_byte_raw(hdlc_context_t *ctx, hdlc_u8 byte,
                                 hdlc_bool flush) {
-  if (ctx->tx_cb != NULL) {
-    ctx->tx_cb(byte, flush, ctx->user_data);
+  if (ctx->output_byte_cb != NULL) {
+    ctx->output_byte_cb(byte, flush, ctx->user_data);
   }
 }
 
@@ -553,12 +553,12 @@ static inline void io_send_byte(hdlc_context_t *ctx, hdlc_u8 byte,
  * @param ctx  HDLC Context.
  * @param byte Data byte to send.
  */
-static void io_send_escaped(hdlc_context_t *ctx, hdlc_u8 byte) {
+static void stream_output_escaped(hdlc_context_t *ctx, hdlc_u8 byte) {
   if (byte == HDLC_FLAG || byte == HDLC_ESCAPE) {
-    io_send_byte(ctx, HDLC_ESCAPE, false);
-    io_send_byte(ctx, byte ^ HDLC_XOR_MASK, false);
+    stream_output_byte_raw(ctx, HDLC_ESCAPE, false);
+    stream_output_byte_raw(ctx, byte ^ HDLC_XOR_MASK, false);
   } else {
-    io_send_byte(ctx, byte, false);
+    stream_output_byte_raw(ctx, byte, false);
   }
 }
 
@@ -572,93 +572,93 @@ static void io_send_escaped(hdlc_context_t *ctx, hdlc_u8 byte) {
  * @param byte Data byte to send.
  * @param crc  Pointer to the running CRC to update.
  */
-static void io_send_escaped_crc_update(hdlc_context_t *ctx, hdlc_u8 byte,
+static void stream_output_escaped_crc_update(hdlc_context_t *ctx, hdlc_u8 byte,
                                        hdlc_u16 *crc) {
   *crc = hdlc_crc_ccitt_update(*crc, byte);
 
-  io_send_escaped(ctx, byte);
+  stream_output_escaped(ctx, byte);
 }
 
 /**
  * @brief Start a Streaming Packet Transmission.
  * @see hdlc.h
  */
-void hdlc_send_packet_start(hdlc_context_t *ctx, hdlc_u8 address,
-                            hdlc_u8 control) {
+void hdlc_stream_output_packet_start(hdlc_context_t *ctx, hdlc_u8 address,
+                                     hdlc_u8 control) {
   if (ctx == NULL) {
     return;
   }
 
   // Initialize CRC
-  ctx->tx_crc = HDLC_FCS_INIT_VALUE;
+  ctx->output_crc = HDLC_FCS_INIT_VALUE;
 
   // Send Start Flag
-  io_send_byte(ctx, HDLC_FLAG, false);
+  stream_output_byte_raw(ctx, HDLC_FLAG, false);
 
   // Send Address
   // Update CRC and Send Escaped
-  io_send_escaped_crc_update(ctx, address, &ctx->tx_crc);
+  stream_output_escaped_crc_update(ctx, address, &ctx->output_crc);
 
   // Send Control
   // Update CRC and Send Escaped
-  io_send_escaped_crc_update(ctx, control, &ctx->tx_crc);
+  stream_output_escaped_crc_update(ctx, control, &ctx->output_crc);
 }
 
 /**
- * @brief Send a Information Byte in Streaming Mode.
+ * @brief Output a Information Byte in Streaming Mode.
  * @see hdlc.h
  */
-void hdlc_send_packet_information_byte(hdlc_context_t *ctx,
-                                       hdlc_u8 information_byte) {
+void hdlc_stream_output_packet_information_byte(hdlc_context_t *ctx,
+                                                hdlc_u8 information_byte) {
   if (ctx == NULL) {
     return;
   }
 
   // Update CRC and Send Escaped
-  io_send_escaped_crc_update(ctx, information_byte, &ctx->tx_crc);
+  stream_output_escaped_crc_update(ctx, information_byte, &ctx->output_crc);
 }
 
 /**
- * @brief Send a Information Bytes Array in Streaming Mode.
+ * @brief Output a Information Bytes Array in Streaming Mode.
  * @see hdlc.h
  */
-void hdlc_send_packet_information_bytes_array(
-    hdlc_context_t *ctx, const hdlc_u8 *information_bytes_array, hdlc_u32 len) {
+void hdlc_stream_output_packet_information_bytes(
+    hdlc_context_t *ctx, const hdlc_u8 *information_bytes, hdlc_u32 len) {
   if (ctx == NULL) {
     return;
   }
 
   for (hdlc_u32 i = 0; i < len; ++i) {
     // Update CRC and Send Escaped
-    io_send_escaped_crc_update(ctx, information_bytes_array[i], &ctx->tx_crc);
+    stream_output_escaped_crc_update(ctx, information_bytes[i], &ctx->output_crc);
   }
 }
 
 /**
- * @brief Finalize Streaming Packet Transmission.
+ * @brief Finalize Streaming Packet Output.
  * @see hdlc.h
  */
-void hdlc_send_packet_end(hdlc_context_t *ctx) {
+void hdlc_stream_output_packet_end(hdlc_context_t *ctx) {
   if (ctx == NULL) {
     return;
   }
 
   // Finalize CRC
-  hdlc_u16 crc = ctx->tx_crc;
+  hdlc_u16 crc = ctx->output_crc;
 
   hdlc_u8 fcs_hi = (crc >> 8) & 0xFF;
   hdlc_u8 fcs_lo = crc & 0xFF;
 
   // Send FCS High
-  io_send_escaped(ctx, fcs_hi);
+  stream_output_escaped(ctx, fcs_hi);
 
   // Send FCS Low
-  io_send_escaped(ctx, fcs_lo);
+  stream_output_escaped(ctx, fcs_lo);
 
   // End Flag
-  io_send_byte(ctx, HDLC_FLAG, true);
+  stream_output_byte_raw(ctx, HDLC_FLAG, true);
 
-  ctx->stats_tx_frames++;
+  ctx->stats_output_frames++;
 }
 
 /*
