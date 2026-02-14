@@ -26,9 +26,9 @@
  * @brief Initialize the HDLC Context.
  * @see hdlc.h
  */
-void hdlc_stream_init(hdlc_context_t *ctx, hdlc_output_byte_cb_t output_cb,
-                      hdlc_on_frame_cb_t on_frame_cb, hdlc_u8 *buffer,
-                      hdlc_u32 buffer_len, void *user_data) {
+void hdlc_stream_init(hdlc_context_t *ctx, hdlc_u8 *buffer, hdlc_u32 buffer_len,
+                      hdlc_output_byte_cb_t output_cb,
+                      hdlc_on_frame_cb_t on_frame_cb, void *user_data) {
   if (ctx == NULL || buffer == NULL || buffer_len < HDLC_MIN_FRAME_LEN) {
     return;
   }
@@ -51,7 +51,7 @@ void hdlc_stream_init(hdlc_context_t *ctx, hdlc_output_byte_cb_t output_cb,
 
 /*
  * --------------------------------------------------------------------------
- * TRANSMIT ENGINE
+ * STREAMING TRANSMIT ENGINE
  * --------------------------------------------------------------------------
  */
 

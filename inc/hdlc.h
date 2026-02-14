@@ -31,15 +31,15 @@ extern "C" {
  * and binds the user-provided callbacks.
  * 
  * @param ctx           Pointer to the @ref hdlc_context_t structure to initialize.
- * @param output_cb     Callback function for sending a byte to the hardware.
- * @param on_frame_cb   Callback function for receiving valid frames.
  * @param buffer        Pointer to the user-supplied Input buffer.
  * @param buffer_len    Length of the user-supplied Input buffer.
+ * @param output_cb     Callback function for sending a byte to the hardware.
+ * @param on_frame_cb   Callback function for receiving valid frames.
  * @param user_data     Optional user pointer to pass to the callbacks.
  */
-void hdlc_stream_init(hdlc_context_t *ctx, hdlc_output_byte_cb_t output_cb,
-                      hdlc_on_frame_cb_t on_frame_cb, hdlc_u8 *buffer,
-                      hdlc_u32 buffer_len, void *user_data);
+void hdlc_stream_init(hdlc_context_t *ctx, hdlc_u8 *buffer, hdlc_u32 buffer_len,
+                      hdlc_output_byte_cb_t output_cb,
+                      hdlc_on_frame_cb_t on_frame_cb, void *user_data);
 
 /**
  * @brief Input a received byte into the HDLC Stream Parser.
