@@ -144,7 +144,7 @@ typedef union {
 typedef struct {
     hdlc_u8 address;                /**< Address Field. */
     hdlc_control_t control;         /**< Control Field. */
-    hdlc_u8* information;           /**< Pointer to Information Field (Payload). */
+    hdlc_u8 *information;           /**< Pointer to Information Field (Payload). */
     hdlc_u16 information_len;       /**< Length of valid data in information. */
     hdlc_frame_type_t type;         /**< Resolved Frame Type (I/S/U). */
 } hdlc_frame_t;
@@ -164,7 +164,7 @@ typedef struct {
  *                  Can be used to trigger hardware buffer flush.
  * @param user_data Pointer to user-defined context data.
  */
-typedef void (*hdlc_output_byte_cb_t)(hdlc_u8 byte, hdlc_bool flush, void* user_data);
+typedef void (*hdlc_output_byte_cb_t)(hdlc_u8 byte, hdlc_bool flush, void *user_data);
 
 /**
  * @brief Frame Received Callback.
@@ -174,7 +174,7 @@ typedef void (*hdlc_output_byte_cb_t)(hdlc_u8 byte, hdlc_bool flush, void* user_
  * @param frame     Pointer to the fully parsed HDLC frame structure.
  * @param user_data Pointer to user-defined context data.
  */
-typedef void (*hdlc_on_frame_cb_t)(const hdlc_frame_t* frame, void* user_data);
+typedef void (*hdlc_on_frame_cb_t)(const hdlc_frame_t* frame, void *user_data);
 
 /*
  * --------------------------------------------------------------------------

@@ -68,7 +68,6 @@ extern "C" {
 #define hdlc_stream_output_packet_information_byte                      ATC_HDLC_NAME(hdlc_stream_output_packet_information_byte)
 #define hdlc_stream_output_packet_information_bytes                     ATC_HDLC_NAME(hdlc_stream_output_packet_information_bytes)
 #define hdlc_stream_output_packet_end                                   ATC_HDLC_NAME(hdlc_stream_output_packet_end)
-#define hdlc_crc_ccitt_update                                           ATC_HDLC_NAME(hdlc_crc_ccitt_update)
 
 /* Types */
 #define hdlc_u8                                                         ATC_HDLC_NAME(hdlc_u8)
