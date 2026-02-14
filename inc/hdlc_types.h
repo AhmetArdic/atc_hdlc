@@ -144,7 +144,7 @@ typedef union {
 typedef struct {
     hdlc_u8 address;                /**< Address Field. */
     hdlc_control_t control;         /**< Control Field. */
-    hdlc_u8 *information;           /**< Pointer to Information Field (Payload). */
+    hdlc_u8* information;           /**< Pointer to Information Field (Payload). */
     hdlc_u16 information_len;       /**< Length of valid data in information. */
     hdlc_frame_type_t type;         /**< Resolved Frame Type (I/S/U). */
 } hdlc_frame_t;
@@ -164,7 +164,7 @@ typedef struct {
  *                  Can be used to trigger hardware buffer flush.
  * @param user_data Pointer to user-defined context data.
  */
-typedef void (*hdlc_tx_byte_cb_t)(hdlc_u8 byte, hdlc_bool flush, void *user_data);
+typedef void (*hdlc_output_byte_cb_t)(hdlc_u8 byte, hdlc_bool flush, void* user_data);
 
 /**
  * @brief Frame Received Callback.
@@ -174,7 +174,7 @@ typedef void (*hdlc_tx_byte_cb_t)(hdlc_u8 byte, hdlc_bool flush, void *user_data
  * @param frame     Pointer to the fully parsed HDLC frame structure.
  * @param user_data Pointer to user-defined context data.
  */
-typedef void (*hdlc_on_frame_cb_t)(const hdlc_frame_t *frame, void *user_data);
+typedef void (*hdlc_on_frame_cb_t)(const hdlc_frame_t* frame, void* user_data);
 
 /*
  * --------------------------------------------------------------------------
@@ -190,24 +190,24 @@ typedef void (*hdlc_on_frame_cb_t)(const hdlc_frame_t *frame, void *user_data);
  */
 typedef struct {
     /* Configuration & Callbacks */
-    hdlc_tx_byte_cb_t tx_cb;  /**< Hardware TX callback. */
-    hdlc_on_frame_cb_t rx_cb; /**< Application RX callback. */
+    hdlc_output_byte_cb_t output_byte_cb;  /**< Hardware TX callback. */
+    hdlc_on_frame_cb_t on_frame_cb; /**< Application RX callback. */
     void *user_data;          /**< User context passed to callbacks. */
 
     /* Receiver Engine State */
-    hdlc_u8 rx_state;        /**< Current internal parser state. */
-    hdlc_u8 *rx_buffer;      /**< Pointer to the user-supplied RX buffer. */
-    hdlc_u32 rx_buffer_len;  /**< Length of the user-supplied RX buffer. */
-    hdlc_u32 rx_index;       /**< Current write index in rx_buffer. */
-    hdlc_u16 rx_crc;         /**< Running RX CRC. */
-    hdlc_frame_t rx_frame;   /**< Temporary frame descriptor passed to callback. */
+    hdlc_u8 input_state;        /**< Current internal parser state. */
+    hdlc_u8 *input_buffer;      /**< Pointer to the user-supplied RX buffer. */
+    hdlc_u32 input_buffer_len;  /**< Length of the user-supplied RX buffer. */
+    hdlc_u32 input_index;       /**< Current write index in rx_buffer. */
+    hdlc_u16 input_crc;         /**< Running RX CRC. */
+    hdlc_frame_t input_frame_buffer;   /**< Temporary frame descriptor passed to callback. */
 
     /* Transmitter Engine State */
-    hdlc_u16 tx_crc; /**< Running CRC for streaming TX. */
+    hdlc_u16 output_crc; /**< Running CRC for streaming TX. */
 
     /* Statistics */
-    hdlc_u32 stats_rx_frames; /**< Count of valid frames received. */
-    hdlc_u32 stats_tx_frames; /**< Count of frames transmitted. */
+    hdlc_u32 stats_input_frames; /**< Count of valid frames received. */
+    hdlc_u32 stats_output_frames; /**< Count of frames transmitted. */
     hdlc_u32 stats_crc_errors; /**< Count of frames discarded due to CRC mismatch. */
 } hdlc_context_t;
 

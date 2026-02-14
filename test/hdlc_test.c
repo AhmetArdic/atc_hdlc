@@ -83,19 +83,19 @@ void test_basic_frame() {
   printf("TEST: Basic Frame (I-Frame)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_stream_init(&ctx, mock_tx_cb, mock_rx_cb, rx_buffer, sizeof(rx_buffer), NULL);
   reset_test();
 
   atc_hdlc_u8 payload[] = "TEST";
   atc_hdlc_frame_t frame_out = {
       .address = 0xFF, .control.value = 0x00, .information = payload, .information_len = 4};
 
-  atc_hdlc_send_frame(&ctx, &frame_out);
+  atc_hdlc_stream_output_frame(&ctx, &frame_out);
   print_hexdump("TX Buffer", tx_buffer, tx_len);
 
   printf("Feeding back bytes:\n");
   for (int i = 0; i < tx_len; i++) {
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
   }
 
   if (rx_callback_count == 1 &&
@@ -111,7 +111,7 @@ void test_empty_information() {
   printf("TEST: Empty Information (Header only)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_stream_init(&ctx, mock_tx_cb, mock_rx_cb, rx_buffer, sizeof(rx_buffer), NULL);
   reset_test();
 
   atc_hdlc_frame_t frame_out = {.address = 0xAA,
@@ -119,11 +119,11 @@ void test_empty_information() {
                                 .information = NULL,
                                 .information_len = 0};
 
-  atc_hdlc_send_frame(&ctx, &frame_out);
+  atc_hdlc_stream_output_frame(&ctx, &frame_out);
   print_hexdump("TX Buffer", tx_buffer, tx_len);
 
   for (int i = 0; i < tx_len; i++)
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
 
   if (rx_callback_count == 1 && last_rx_frame.information_len == 0 &&
       last_rx_frame.address == 0xAA) {
@@ -139,7 +139,7 @@ void test_byte_stuffing_heavy() {
   printf("TEST: Heavy Byte Stuffing\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_stream_init(&ctx, mock_tx_cb, mock_rx_cb, rx_buffer, sizeof(rx_buffer), NULL);
   reset_test();
 
   // Data with many flags and escapes
@@ -149,7 +149,7 @@ void test_byte_stuffing_heavy() {
                                 .information = tricky_data,
                                 .information_len = sizeof(tricky_data)};
 
-  atc_hdlc_send_frame(&ctx, &frame_out);
+  atc_hdlc_stream_output_frame(&ctx, &frame_out);
   print_hexdump("TX Buffer (Stuffed)", tx_buffer, tx_len);
 
   // Verify manually that buffer is larger than raw data
@@ -163,7 +163,7 @@ void test_byte_stuffing_heavy() {
   printf("Total raw escapes found: %d\n", escapes);
 
   for (int i = 0; i < tx_len; i++)
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
 
   if (rx_callback_count == 1 && memcmp(last_rx_frame.information, tricky_data,
                                        sizeof(tricky_data)) == 0) {
@@ -178,30 +178,30 @@ void test_garbage_noise() {
   printf("TEST: Garbage / Noise Rejection\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_stream_init(&ctx, mock_tx_cb, mock_rx_cb, rx_buffer, sizeof(rx_buffer), NULL);
   reset_test();
 
   // 1. Generate a valid frame
   atc_hdlc_u8 payload[] = {0xCC};
   atc_hdlc_frame_t frame_out = {
       .address = 0x05, .control.value = 0x05, .information = payload, .information_len = 1};
-  atc_hdlc_send_frame(&ctx, &frame_out); // Fills tx_buffer
+  atc_hdlc_stream_output_frame(&ctx, &frame_out); // Fills tx_buffer
 
   // 2. Inject noise BEFORE the frame
   atc_hdlc_u8 noise[] = {0x00, 0x12, 0x34, 0x56, 0xAA, 0xBB};
   printf("Injecting %ld bytes of noise before frame...\n", sizeof(noise));
   for (size_t i = 0; i < sizeof(noise); i++)
-    atc_hdlc_input_byte(&ctx, noise[i]);
+    atc_hdlc_stream_input_byte(&ctx, noise[i]);
 
   // 3. Inject the valid frame
   printf("Injecting valid frame...\n");
   for (int i = 0; i < tx_len; i++)
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
 
   // 4. Inject noise AFTER the frame
   printf("Injecting noise after frame...\n");
   for (size_t i = 0; i < sizeof(noise); i++)
-    atc_hdlc_input_byte(&ctx, noise[i]);
+    atc_hdlc_stream_input_byte(&ctx, noise[i]);
 
   // We expect exactly 1 frame
   if (rx_callback_count == 1) {
@@ -217,31 +217,31 @@ void test_consecutive_flags() {
   printf("TEST: Consecutive Flags (Inter-frame fill)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_stream_init(&ctx, mock_tx_cb, mock_rx_cb, rx_buffer, sizeof(rx_buffer), NULL);
   reset_test();
 
   atc_hdlc_frame_t frame_out = {
       .address = 0x10, .control.value = 0x10, .information = NULL, .information_len = 0};
-  atc_hdlc_send_frame(&ctx, &frame_out);
+  atc_hdlc_stream_output_frame(&ctx, &frame_out);
   // tx_buffer has valid frame.
   // Format: 7E ... 7E
 
   // Feed: 7E 7E 7E 7E [Frame] 7E 7E 7E
   printf("Feeding: 7E 7E 7E 7E\n");
-  atc_hdlc_input_byte(&ctx, 0x7E); // Flag
-  atc_hdlc_input_byte(&ctx, 0x7E); // Flag
-  atc_hdlc_input_byte(&ctx, 0x7E); // Flag
-  atc_hdlc_input_byte(&ctx, 0x7E); // Flag
+  atc_hdlc_stream_input_byte(&ctx, 0x7E); // Flag
+  atc_hdlc_stream_input_byte(&ctx, 0x7E); // Flag
+  atc_hdlc_stream_input_byte(&ctx, 0x7E); // Flag
+  atc_hdlc_stream_input_byte(&ctx, 0x7E); // Flag
 
   printf("Feeding Frame...\n");
   // Skip first byte of tx_buffer (it's 7E, already sent multiple) or valid to
   // send again? HDLC says adjacent flags are valid. send full buffer.
   for (int i = 0; i < tx_len; i++)
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
 
   printf("Feeding: 7E 7E\n");
-  atc_hdlc_input_byte(&ctx, 0x7E);
-  atc_hdlc_input_byte(&ctx, 0x7E);
+  atc_hdlc_stream_input_byte(&ctx, 0x7E);
+  atc_hdlc_stream_input_byte(&ctx, 0x7E);
 
   if (rx_callback_count == 1) {
     assert_pass("Consecutive Flags");
@@ -255,7 +255,7 @@ void test_min_size_rejection() {
   printf("TEST: Minimum Size Rejection (<4 bytes)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_stream_init(&ctx, mock_tx_cb, mock_rx_cb, rx_buffer, sizeof(rx_buffer), NULL);
   reset_test();
 
   // Construct a Tiny Frame: 7E 01 02 7E (Addr, Ctrl, No CRC) -> Size 2
@@ -264,14 +264,14 @@ void test_min_size_rejection() {
 
   printf("Feeding Tiny Frame (2 bytes information inside flags)...\n");
   for (size_t i = 0; i < sizeof(tiny); i++)
-    atc_hdlc_input_byte(&ctx, tiny[i]);
+    atc_hdlc_stream_input_byte(&ctx, tiny[i]);
 
   // Construct Frame with CRC but weird: 7E 01 02 03 7E -> Size 3 (Addr, Ctrl, 1
   // byte CRC?) -> Invalid
   atc_hdlc_u8 tiny2[] = {0x7E, 0x01, 0x02, 0x03, 0x7E};
   printf("Feeding Too Short Frame (3 bytes information inside flags)...\n");
   for (size_t i = 0; i < sizeof(tiny2); i++)
-    atc_hdlc_input_byte(&ctx, tiny2[i]);
+    atc_hdlc_stream_input_byte(&ctx, tiny2[i]);
 
   if (rx_callback_count == 0) {
     assert_pass("Min Size Rejection");
@@ -285,31 +285,31 @@ void test_aborted_frame() {
   printf("TEST: Aborted / Interrupted Frame\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_stream_init(&ctx, mock_tx_cb, mock_rx_cb, rx_buffer, sizeof(rx_buffer), NULL);
   reset_test();
 
   // Start a frame, write some data, then hit Flag immediately (Frame
   // Abort/Resync)
   printf("Start Frame (7E)...\n");
-  atc_hdlc_input_byte(&ctx, 0x7E);
-  atc_hdlc_input_byte(&ctx, 0xFF); // Addr
-  atc_hdlc_input_byte(&ctx, 0x00); // Ctrl
-  atc_hdlc_input_byte(&ctx, 0xAA); // Data
-  atc_hdlc_input_byte(&ctx, 0xBB); // Data
+  atc_hdlc_stream_input_byte(&ctx, 0x7E);
+  atc_hdlc_stream_input_byte(&ctx, 0xFF); // Addr
+  atc_hdlc_stream_input_byte(&ctx, 0x00); // Ctrl
+  atc_hdlc_stream_input_byte(&ctx, 0xAA); // Data
+  atc_hdlc_stream_input_byte(&ctx, 0xBB); // Data
 
   // Premature Flag!
   printf("Premature Flag (7E) -> Should reset\n");
-  atc_hdlc_input_byte(&ctx, 0x7E);
+  atc_hdlc_stream_input_byte(&ctx, 0x7E);
 
   // Now send a REAL valid frame immediately after
   atc_hdlc_frame_t frame_out = {
       .address = 0x01, .control.value = 0x11, .information = NULL, .information_len = 0};
-  atc_hdlc_send_frame(&ctx, &frame_out);
+  atc_hdlc_stream_output_frame(&ctx, &frame_out);
 
   // Send valid frame (skipping first 7E since we just sent one? No, safe to
   // send all)
   for (int i = 0; i < tx_len; i++)
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
 
   if (rx_callback_count == 1 && last_rx_frame.address == 0x01) {
     assert_pass("Aborted Frame");
@@ -325,20 +325,20 @@ void test_crc_error_injection() {
   printf("TEST: CRC Error Injection (Single Bit)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_stream_init(&ctx, mock_tx_cb, mock_rx_cb, rx_buffer, sizeof(rx_buffer), NULL);
   reset_test();
 
   atc_hdlc_u8 payload[] = "DATA";
   atc_hdlc_frame_t frame_out = {
       .address = 0xFF, .control.value = 0x00, .information = payload, .information_len = 4};
-  atc_hdlc_send_frame(&ctx, &frame_out);
+  atc_hdlc_stream_output_frame(&ctx, &frame_out);
 
   // Corrupt the last byte (part of CRC)
   tx_buffer[tx_len - 2] ^= 0x01;
 
   print_hexdump("TX Buffer (Corrupted)", tx_buffer, tx_len);
   for (int i = 0; i < tx_len; i++)
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
 
   if (rx_callback_count == 0 && ctx.stats_crc_errors == 1) {
     assert_pass("CRC Error Injection");
@@ -352,19 +352,19 @@ void test_mtu_overflow() {
   printf("TEST: MTU Overflow Safety\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_stream_init(&ctx, mock_tx_cb, mock_rx_cb, rx_buffer, sizeof(rx_buffer), NULL);
   reset_test();
 
   printf("Feeding Start Flag...\n");
-  atc_hdlc_input_byte(&ctx, 0x7E); // Start
+  atc_hdlc_stream_input_byte(&ctx, 0x7E); // Start
 
   printf("Feeding %d bytes (MTU + 50)...\n", 1024 + 50);
   // Feed more than MTU
   for (int i = 0; i < 1024 + 50; i++) {
-    atc_hdlc_input_byte(&ctx, 0xAA);
+    atc_hdlc_stream_input_byte(&ctx, 0xAA);
   }
 
-  atc_hdlc_input_byte(&ctx, 0x7E); // End Flag
+  atc_hdlc_stream_input_byte(&ctx, 0x7E); // End Flag
 
   if (rx_callback_count == 0) {
     assert_pass("MTU Overflow");
@@ -378,23 +378,23 @@ void test_mtu() {
   printf("TEST: MTU\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_stream_init(&ctx, mock_tx_cb, mock_rx_cb, rx_buffer, sizeof(rx_buffer), NULL);
   reset_test();
 
   printf("Feeding Start...\n");
-  atc_hdlc_send_packet_start(&ctx, 0xAA, 0xBB); // Addr, Ctrl
+  atc_hdlc_stream_output_packet_start(&ctx, 0xAA, 0xBB); // Addr, Ctrl
 
   printf("Feeding %d bytes (MTU)...\n", 100);
   // Feed more than MTU
   for (int i = 0; i < 100; i++) {
-    atc_hdlc_send_packet_information_byte(&ctx, 0xAA);
+    atc_hdlc_stream_output_packet_information_byte(&ctx, 0xAA);
   }
-  atc_hdlc_send_packet_end(&ctx); // End Flag
+  atc_hdlc_stream_output_packet_end(&ctx); // End Flag
 
   print_hexdump("TX Buffer (Streamed)", tx_buffer, tx_len);
 
   for (int i = 0; i < tx_len; i++)
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
 
   if (rx_callback_count == 1 &&
       last_rx_frame.information_len == 100) {
@@ -409,18 +409,18 @@ void test_streaming_api() {
   printf("TEST: Streaming API (Zero-Copy)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_stream_init(&ctx, mock_tx_cb, mock_rx_cb, rx_buffer, sizeof(rx_buffer), NULL);
   reset_test();
 
-  atc_hdlc_send_packet_start(&ctx, 0xAA, 0xBB);      // Addr, Ctrl
-  atc_hdlc_send_packet_information_byte(&ctx, 0x7E); // Data (Stuffing needed)
-  atc_hdlc_send_packet_information_byte(&ctx, 0x7D); // Data (Stuffing needed)
-  atc_hdlc_send_packet_end(&ctx);
+  atc_hdlc_stream_output_packet_start(&ctx, 0xAA, 0xBB);      // Addr, Ctrl
+  atc_hdlc_stream_output_packet_information_byte(&ctx, 0x7E); // Data (Stuffing needed)
+  atc_hdlc_stream_output_packet_information_byte(&ctx, 0x7D); // Data (Stuffing needed)
+  atc_hdlc_stream_output_packet_end(&ctx);
 
   print_hexdump("TX Buffer (Streamed)", tx_buffer, tx_len);
 
   for (int i = 0; i < tx_len; i++)
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
 
   if (rx_callback_count == 1 && last_rx_frame.information_len == 2) {
     // Information should be 7E 7D
@@ -437,18 +437,18 @@ void test_streaming_api() {
   reset_test();
 
   atc_hdlc_u8 information[] = {0x7E, 0x7D};
-  atc_hdlc_send_packet_start(&ctx, 0xAA, 0xBB);      // Addr, Ctrl
-  atc_hdlc_send_packet_information_byte(&ctx, 0x7C); // Data
-  atc_hdlc_send_packet_information_bytes_array(&ctx, information,
+  atc_hdlc_stream_output_packet_start(&ctx, 0xAA, 0xBB);      // Addr, Ctrl
+  atc_hdlc_stream_output_packet_information_byte(&ctx, 0x7C); // Data
+  atc_hdlc_stream_output_packet_information_bytes(&ctx, information,
                                                2);   // Data (Stuffing needed)
-  atc_hdlc_send_packet_information_byte(&ctx, 0x7F); // Data
-  atc_hdlc_send_packet_information_byte(&ctx, 0x7A); // Data
-  atc_hdlc_send_packet_end(&ctx);
+  atc_hdlc_stream_output_packet_information_byte(&ctx, 0x7F); // Data
+  atc_hdlc_stream_output_packet_information_byte(&ctx, 0x7A); // Data
+  atc_hdlc_stream_output_packet_end(&ctx);
 
   print_hexdump("TX Buffer (Streamed)", tx_buffer, tx_len);
 
   for (int i = 0; i < tx_len; i++)
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
 
   if (rx_callback_count == 1 && last_rx_frame.information_len == 5) {
     // Information should be 7C 7E 7D 7F 7A
@@ -471,19 +471,19 @@ void test_fragmented_delivery() {
   printf("TEST: Fragmented / Slow Delivery\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_stream_init(&ctx, mock_tx_cb, mock_rx_cb, rx_buffer, sizeof(rx_buffer), NULL);
   reset_test();
 
   atc_hdlc_u8 payload[] = "0123456789";
   atc_hdlc_frame_t frame_out = {
       .address = 0x99, .control.value = 0x88, .information = payload, .information_len = 10};
-  atc_hdlc_send_frame(&ctx, &frame_out);
+  atc_hdlc_stream_output_frame(&ctx, &frame_out);
 
   // Simulate UART getting bytes 1 by 1 with delays (conceptually)
   // or chunks.
   printf("Feeding bytes 1 by 1...\n");
   for (int i = 0; i < tx_len; i++) {
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
   }
 
   if (rx_callback_count != 1)
@@ -491,7 +491,7 @@ void test_fragmented_delivery() {
 
   // Reset and try CHUNKS
   reset_test();
-  atc_hdlc_send_frame(&ctx, &frame_out);
+  atc_hdlc_stream_output_frame(&ctx, &frame_out);
   rx_callback_count = 0;
 
   printf("Feeding in 3 chunks...\n");
@@ -501,15 +501,15 @@ void test_fragmented_delivery() {
 
   printf("Chunk 1 (%d bytes)\n", chunk1);
   for (int i = 0; i < chunk1; i++)
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
 
   printf("Chunk 2 (%d bytes)\n", chunk2);
   for (int i = chunk1; i < chunk1 + chunk2; i++)
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
 
   printf("Chunk 3 (%d bytes)\n", chunk3);
   for (int i = chunk1 + chunk2; i < tx_len; i++)
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
 
   if (rx_callback_count == 1) {
     assert_pass("Fragmented Delivery");
@@ -526,7 +526,7 @@ void test_control_field_i() {
   printf("========================================\n");
 
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_stream_init(&ctx, mock_tx_cb, mock_rx_cb, rx_buffer, sizeof(rx_buffer), NULL);
   reset_test();
 
   // N(S)=5, N(R)=3, P/F=1
@@ -537,9 +537,9 @@ void test_control_field_i() {
 
   printf("Generated I-Frame Ctrl Value: 0x%02X\n", i_frame.control.value);
 
-  atc_hdlc_send_frame(&ctx, &i_frame);
+  atc_hdlc_stream_output_frame(&ctx, &i_frame);
   for (int i = 0; i < tx_len; i++)
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
 
   if (rx_callback_count == 1 && last_rx_frame.type == HDLC_FRAME_I) {
     atc_hdlc_control_t rc = last_rx_frame.control;
@@ -562,7 +562,7 @@ void test_control_field_s() {
   printf("========================================\n");
 
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_stream_init(&ctx, mock_tx_cb, mock_rx_cb, rx_buffer, sizeof(rx_buffer), NULL);
   reset_test();
 
   // RR (S=00), N(R)=7, P/F=0
@@ -572,9 +572,9 @@ void test_control_field_s() {
                               .information_len = 0};
 
   printf("Generated S-Frame Ctrl Value: 0x%02X\n", s_frame.control.value);
-  atc_hdlc_send_frame(&ctx, &s_frame);
+  atc_hdlc_stream_output_frame(&ctx, &s_frame);
   for (int i = 0; i < tx_len; i++)
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
 
   if (rx_callback_count == 1 && last_rx_frame.type == HDLC_FRAME_S) {
     atc_hdlc_control_t rc = last_rx_frame.control;
@@ -597,7 +597,7 @@ void test_control_field_u() {
   printf("========================================\n");
 
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_stream_init(&ctx, mock_tx_cb, mock_rx_cb, rx_buffer, sizeof(rx_buffer), NULL);
   reset_test();
 
   // SABM: 0x2F (base) + P=1 => 0x3F
@@ -610,9 +610,9 @@ void test_control_field_u() {
   printf("Generated U-Frame (SABM) Ctrl Value: 0x%02X\n",
          u_frame.control.value);
 
-  atc_hdlc_send_frame(&ctx, &u_frame);
+  atc_hdlc_stream_output_frame(&ctx, &u_frame);
   for (int i = 0; i < tx_len; i++)
-    atc_hdlc_input_byte(&ctx, tx_buffer[i]);
+    atc_hdlc_stream_input_byte(&ctx, tx_buffer[i]);
 
   if (rx_callback_count == 1 && last_rx_frame.type == HDLC_FRAME_U) {
     atc_hdlc_control_t rc = last_rx_frame.control;
@@ -634,19 +634,19 @@ void test_input_bytes() {
   printf("TEST: Bulk Input (input_bytes)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), mock_tx_cb, mock_rx_cb, NULL);
+  atc_hdlc_stream_init(&ctx, mock_tx_cb, mock_rx_cb, rx_buffer, sizeof(rx_buffer), NULL);
   reset_test();
 
   // Build a valid frame
   atc_hdlc_u8 payload[] = "BULK";
   atc_hdlc_frame_t frame_out = {
       .address = 0xFF, .control.value = 0x00, .information = payload, .information_len = 4};
-  atc_hdlc_send_frame(&ctx, &frame_out);
+  atc_hdlc_stream_output_frame(&ctx, &frame_out);
   print_hexdump("TX Buffer", tx_buffer, tx_len);
 
   // Feed back using bulk API
-  printf("Feeding back using atc_hdlc_input_bytes...\n");
-  atc_hdlc_input_bytes(&ctx, tx_buffer, tx_len);
+  printf("Feeding back using atc_hdlc_stream_input_bytes...\n");
+  atc_hdlc_stream_input_bytes(&ctx, tx_buffer, tx_len);
 
   if (rx_callback_count == 1 && last_rx_frame.information_len == 4 &&
       memcmp(last_rx_frame.information, "BULK", 4) == 0) {
@@ -670,7 +670,7 @@ void test_encode_buffer_success() {
   atc_hdlc_u8 buffer[128];
   atc_hdlc_u32 len = 0;
 
-  bool success = atc_hdlc_encode_frame(&frame, buffer, sizeof(buffer), &len);
+  bool success = atc_hdlc_frame_pack(&frame, buffer, sizeof(buffer), &len);
   if (success) {
     print_hexdump("Encoded Buffer", buffer, len);
   }
@@ -697,7 +697,7 @@ void test_encode_buffer_overflow() {
   atc_hdlc_u8 buffer[5];
   atc_hdlc_u32 len = 0;
 
-  bool success = atc_hdlc_encode_frame(&frame, buffer, sizeof(buffer), &len);
+  bool success = atc_hdlc_frame_pack(&frame, buffer, sizeof(buffer), &len);
   if (success) {
     print_hexdump("Encoded Buffer", buffer, len);
   }
@@ -722,7 +722,7 @@ void test_encode_buffer_stuffing() {
   atc_hdlc_u8 buffer[128];
   atc_hdlc_u32 len = 0;
 
-  bool success = atc_hdlc_encode_frame(&frame, buffer, sizeof(buffer), &len);
+  bool success = atc_hdlc_frame_pack(&frame, buffer, sizeof(buffer), &len);
   if (success) {
     print_hexdump("Encoded Buffer", buffer, len);
   }
@@ -751,7 +751,7 @@ void test_decode_frame() {
   atc_hdlc_u8 raw_buffer[128];
   atc_hdlc_u32 raw_len = 0;
 
-  bool ok = atc_hdlc_encode_frame(&frame_in, raw_buffer, sizeof(raw_buffer), &raw_len);
+  bool ok = atc_hdlc_frame_pack(&frame_in, raw_buffer, sizeof(raw_buffer), &raw_len);
   if (!ok) {
     assert_fail("Decode Round Trip", "Encoding failed");
   }
@@ -762,7 +762,7 @@ void test_decode_frame() {
   atc_hdlc_u8 flat_buffer[128];
   memset(&frame_out, 0, sizeof(frame_out));
 
-  ok = atc_hdlc_decode_frame(raw_buffer, raw_len, &frame_out, flat_buffer, sizeof(flat_buffer));
+  ok = atc_hdlc_frame_unpack(raw_buffer, raw_len, &frame_out, flat_buffer, sizeof(flat_buffer));
 
   if (ok) {
      printf("Decoded Frame: Addr=%02X, Ctrl=%02X, InfoLen=%d\n", 
@@ -783,7 +783,7 @@ void test_decode_frame() {
   // 3. Test Decode Error (Bad CRC)
   printf("Testing Bad CRC...\n");
   raw_buffer[raw_len - 2] ^= 0xFF; // Corrupt FCS
-  ok = atc_hdlc_decode_frame(raw_buffer, raw_len, &frame_out, flat_buffer, sizeof(flat_buffer));
+  ok = atc_hdlc_frame_unpack(raw_buffer, raw_len, &frame_out, flat_buffer, sizeof(flat_buffer));
   if (!ok) {
      printf("Caught bad CRC as expected.\n");
   } else {
