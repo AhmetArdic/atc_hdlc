@@ -69,6 +69,7 @@ extern "C" {
 #define hdlc_output_packet_information_bytes                            ATC_HDLC_NAME_LOWERCASE(hdlc_output_packet_information_bytes)
 #define hdlc_output_packet_end                                          ATC_HDLC_NAME_LOWERCASE(hdlc_output_packet_end)
 #define hdlc_send_ui                                                    ATC_HDLC_NAME_LOWERCASE(hdlc_send_ui)
+#define hdlc_send_test                                                  ATC_HDLC_NAME_LOWERCASE(hdlc_send_test)
 #define hdlc_configure_addresses                                        ATC_HDLC_NAME_LOWERCASE(hdlc_configure_addresses)
 #define hdlc_connect                                                    ATC_HDLC_NAME_LOWERCASE(hdlc_connect)
 #define hdlc_disconnect                                                 ATC_HDLC_NAME_LOWERCASE(hdlc_disconnect)

@@ -72,6 +72,7 @@ static void hdlc_process_ua(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_dm(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_frmr(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_ui(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+static void hdlc_process_test(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 
 /*
  * --------------------------------------------------------------------------
@@ -598,6 +599,29 @@ static void hdlc_process_ui(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
 }
 
 /**
+ * @brief Process Received TEST Command.
+ *
+ * Echoes back a TEST response with the same data payload.
+ *
+ * @param ctx   HDLC Context.
+ * @param frame The received TEST frame.
+ */
+static void hdlc_process_test(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+    // Build TEST response: same modifier bits, F bit mirrors P bit
+    hdlc_output_packet_start(ctx, ctx->my_address,
+        hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST,
+                           frame->control.u_frame.pf).value);
+
+    // Echo the information field
+    if (frame->information != NULL && frame->information_len > 0) {
+        hdlc_output_packet_information_bytes(ctx, frame->information,
+                                            frame->information_len);
+    }
+
+    hdlc_output_packet_end(ctx);
+}
+
+/**
  * @brief Internal handler for Unnumbered (U) Frames.
  * @param ctx   HDLC Context.
  * @param frame Received frame.
@@ -639,6 +663,10 @@ static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     else if (m_lo == HDLC_U_MODIFIER_LO_SARM && m_hi == HDLC_U_MODIFIER_HI_SARM) {
         hdlc_process_sarm(ctx, frame);
     }
+    // TEST (Link Test)
+    else if (m_lo == HDLC_U_MODIFIER_LO_TEST && m_hi == HDLC_U_MODIFIER_HI_TEST) {
+        hdlc_process_test(ctx, frame);
+    }
   }
 
   // 2. Handle RESPONSES -> Addressed to PEER (but received by ME from Peer)
@@ -656,6 +684,11 @@ static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     // FRMR (Frame Reject)
     else if (m_lo == HDLC_U_MODIFIER_LO_FRMR && m_hi == HDLC_U_MODIFIER_HI_FRMR) {
         hdlc_process_frmr(ctx, frame);
+    }
+    // TEST (Link Test Response)
+    else if (m_lo == HDLC_U_MODIFIER_LO_TEST && m_hi == HDLC_U_MODIFIER_HI_TEST) {
+        // TEST response received - no special handling needed.
+        // The frame is passed to on_frame_cb by process_complete_frame.
     }
   }
 }
@@ -1033,6 +1066,22 @@ bool hdlc_send_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
   }
 
   // End Packet
+  hdlc_output_packet_end(ctx);
+  return true;
+}
+
+bool hdlc_send_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
+  if (ctx == NULL) return false;
+
+  // TEST Frame: m_lo=0, m_hi=7, P=1
+  hdlc_control_t ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST, 1);
+
+  hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
+
+  if (data != NULL && len > 0) {
+      hdlc_output_packet_information_bytes(ctx, data, len);
+  }
+
   hdlc_output_packet_end(ctx);
   return true;
 }

@@ -63,6 +63,10 @@ typedef enum {
 #define HDLC_U_MODIFIER_LO_UI   0
 #define HDLC_U_MODIFIER_HI_UI   0
 
+/* TEST: 111 00 -> m_hi=7, m_lo=0 */
+#define HDLC_U_MODIFIER_LO_TEST 0
+#define HDLC_U_MODIFIER_HI_TEST 7
+
 /* FRMR Information Field Constants */
 #define HDLC_FRMR_INFO_MIN_LEN  3
 

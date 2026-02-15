@@ -99,6 +99,20 @@ bool hdlc_is_connected(hdlc_context_t *ctx);
 bool hdlc_send_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
 
 /**
+ * @brief Send a TEST command frame.
+ *
+ * Sends a TEST frame with optional data payload to the peer.
+ * The remote station should echo this data back in a TEST response.
+ * Used for link integrity verification.
+ *
+ * @param ctx  Pointer to the initialized HDLC context.
+ * @param data Pointer to the test data payload (can be NULL).
+ * @param len  Length of the test data payload.
+ * @return true if the frame was sent successfully, false otherwise.
+ */
+bool hdlc_send_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
+
+/**
  * @brief Input a received byte into the HDLC Parser.
  *
  * Checks for delimiters, handles byte-unstuffing, and buffers data.

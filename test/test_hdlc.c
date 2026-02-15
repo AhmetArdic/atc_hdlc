@@ -972,6 +972,197 @@ void test_ui_frame_reception(void) {
     }
 }
 
+void test_test_frame(void) {
+    printf("========================================\n");
+    printf("TEST: TEST Frame (Link Loopback)\n");
+    printf("========================================\n");
+
+    atc_hdlc_context_t ctx;
+    atc_hdlc_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+
+    // --- 1. Send TEST command ---
+    printf("Phase 1: Sending TEST command...\n");
+    reset_test();
+    atc_hdlc_u8 test_data[] = "LOOPBACK";
+    atc_hdlc_send_test(&ctx, test_data, 8);
+
+    if (output_len == 0) {
+        test_fail("TEST Send", "No output produced");
+    }
+    print_hexdump("TEST TX", output_buffer, output_len);
+
+    // Decode the sent frame to verify
+    atc_hdlc_frame_t decoded;
+    atc_hdlc_u8 flat[256];
+    if (!atc_hdlc_frame_unpack(output_buffer, output_len, &decoded, flat, sizeof(flat))) {
+        test_fail("TEST Send", "Failed to decode sent TEST frame");
+    }
+    // Verify: Address=peer(0x02), Type=U, Modifier=TEST(m_hi=7,m_lo=0)
+    if (decoded.address != 0x02) {
+        test_fail("TEST Send", "Address not peer");
+    }
+    if (decoded.type != HDLC_FRAME_U) {
+        test_fail("TEST Send", "Frame type not U");
+    }
+    if (decoded.control.u_frame.m_lo != 0 || decoded.control.u_frame.m_hi != 7) {
+        test_fail("TEST Send", "Modifier bits not TEST");
+    }
+    if (decoded.control.u_frame.pf != 1) {
+        test_fail("TEST Send", "P bit not set");
+    }
+    if (decoded.information_len != 8 || memcmp(decoded.information, "LOOPBACK", 8) != 0) {
+        test_fail("TEST Send", "Data mismatch in sent frame");
+    }
+    printf("[PASS] TEST command sent correctly.\n");
+
+    // --- 2. Receive TEST command -> verify auto-echo ---
+    printf("Phase 2: Receiving TEST command (expecting auto-echo)...\n");
+    reset_test();
+
+    // Build a TEST command frame addressed to ME (0x01)
+    // Control: 11 00 P=1 00 11 -> TEST with P=1
+    atc_hdlc_frame_t test_cmd = {
+        .address = 0x01,
+        .control = atc_hdlc_create_u_ctrl(0, 7, 1), // TEST P=1
+        .information = (atc_hdlc_u8*)"PING",
+        .information_len = 4,
+        .type = HDLC_FRAME_U
+    };
+
+    atc_hdlc_u8 packed[256];
+    atc_hdlc_u32 packed_len = 0;
+    atc_hdlc_frame_pack(&test_cmd, packed, sizeof(packed), &packed_len);
+    print_hexdump("TEST RX (command)", packed, packed_len);
+
+    // Feed into parser
+    atc_hdlc_input_bytes(&ctx, packed, packed_len);
+
+    // Verify: frame was received by on_frame_cb
+    if (on_frame_call_count != 1) {
+        test_fail("TEST Echo", "Frame not received by callback");
+    }
+    if (last_received_frame.type != HDLC_FRAME_U) {
+        test_fail("TEST Echo", "Received frame type not U");
+    }
+    printf("[PASS] TEST command received.\n");
+
+    // Verify: auto-echo response was generated
+    if (output_len == 0) {
+        test_fail("TEST Echo", "No echo response generated");
+    }
+    print_hexdump("TEST TX (echo)", output_buffer, output_len);
+
+    // Decode the echo response
+    atc_hdlc_frame_t echo_decoded;
+    atc_hdlc_u8 echo_flat[256];
+    if (!atc_hdlc_frame_unpack(output_buffer, output_len, &echo_decoded, echo_flat, sizeof(echo_flat))) {
+        test_fail("TEST Echo", "Failed to decode echo response");
+    }
+
+    // Verify echo: my_address(0x01), TEST modifier, F=1, same data
+    if (echo_decoded.address != 0x01) {
+        test_fail("TEST Echo", "Echo address not my_address");
+    }
+    if (echo_decoded.control.u_frame.m_lo != 0 || echo_decoded.control.u_frame.m_hi != 7) {
+        test_fail("TEST Echo", "Echo modifier not TEST");
+    }
+    if (echo_decoded.control.u_frame.pf != 1) {
+        test_fail("TEST Echo", "Echo F bit not mirrored");
+    }
+    if (echo_decoded.information_len != 4 || memcmp(echo_decoded.information, "PING", 4) != 0) {
+        test_fail("TEST Echo", "Echo data mismatch");
+    }
+    printf("[PASS] Echo data integrity verified.\n");
+
+    test_pass("TEST Frame (Link Loopback)");
+}
+
+void test_test_frame_null_loopback(void) {
+    printf("========================================\n");
+    printf("TEST: TEST Frame NULL Loopback\n");
+    printf("========================================\n");
+
+    atc_hdlc_context_t ctx;
+    atc_hdlc_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+
+    // --- Phase 1: Send TEST with NULL data ---
+    printf("Phase 1: Sending TEST with NULL data...\n");
+    reset_test();
+    atc_hdlc_send_test(&ctx, NULL, 0);
+
+    if (output_len == 0) {
+        test_fail("TEST NULL Send", "No output produced");
+    }
+    print_hexdump("TEST TX (NULL)", output_buffer, output_len);
+
+    // Decode to verify no information field
+    atc_hdlc_frame_t decoded;
+    atc_hdlc_u8 flat[256];
+    if (!atc_hdlc_frame_unpack(output_buffer, output_len, &decoded, flat, sizeof(flat))) {
+        test_fail("TEST NULL Send", "Failed to decode");
+    }
+    if (decoded.information_len != 0) {
+        test_fail("TEST NULL Send", "Information field should be empty");
+    }
+    if (decoded.control.u_frame.m_lo != 0 || decoded.control.u_frame.m_hi != 7) {
+        test_fail("TEST NULL Send", "Not a TEST frame");
+    }
+    printf("[PASS] TEST with NULL data sent correctly (no payload).\n");
+
+    // --- Phase 2: Feed TX output directly into input (full loopback) ---
+    printf("Phase 2: Feeding TX output into input (full loopback)...\n");
+    // Save the TX frame
+    atc_hdlc_u8 tx_copy[256];
+    int tx_len = output_len;
+    memcpy(tx_copy, output_buffer, tx_len);
+
+    // Now reset and reconfigure as the "peer" receiving this frame
+    // The frame is addressed to 0x02 (peer), so set my_address=0x02
+    reset_test();
+    atc_hdlc_configure_addresses(&ctx, 0x02, 0x01);
+
+    // Feed the raw TX bytes into the parser
+    atc_hdlc_input_bytes(&ctx, tx_copy, tx_len);
+
+    // Verify: frame was received
+    if (on_frame_call_count != 1) {
+        test_fail("TEST NULL Loopback", "Frame not received");
+    }
+    if (last_received_frame.type != HDLC_FRAME_U) {
+        test_fail("TEST NULL Loopback", "Type not U");
+    }
+    if (last_received_frame.information_len != 0) {
+        test_fail("TEST NULL Loopback", "Unexpected payload in received frame");
+    }
+    printf("[PASS] Loopback frame received correctly.\n");
+
+    // Verify: auto-echo was generated (TEST response)
+    if (output_len == 0) {
+        test_fail("TEST NULL Loopback", "No echo response generated");
+    }
+    print_hexdump("TEST TX (echo)", output_buffer, output_len);
+
+    atc_hdlc_frame_t echo;
+    atc_hdlc_u8 echo_flat[256];
+    if (!atc_hdlc_frame_unpack(output_buffer, output_len, &echo, echo_flat, sizeof(echo_flat))) {
+        test_fail("TEST NULL Loopback", "Failed to decode echo");
+    }
+    if (echo.address != 0x02) {
+        test_fail("TEST NULL Loopback", "Echo address wrong");
+    }
+    if (echo.control.u_frame.m_lo != 0 || echo.control.u_frame.m_hi != 7) {
+        test_fail("TEST NULL Loopback", "Echo not TEST");
+    }
+    if (echo.information_len != 0) {
+        test_fail("TEST NULL Loopback", "Echo should have no payload");
+    }
+    printf("[PASS] Echo with empty payload verified.\n");
+
+    test_pass("TEST Frame NULL Loopback");
+}
+
 int main() {
   printf("\n%sSTARTING COMPREHENSIVE HDLC TEST SUITE%s\n", COL_YELLOW,
          COL_RESET);
@@ -1002,6 +1193,8 @@ int main() {
   test_ui_frame_transmission();
   test_ui_frame_reception();
   test_broadcast_behavior();
+  test_test_frame();
+  test_test_frame_null_loopback();
 
   printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
   return 0;
