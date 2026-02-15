@@ -11,11 +11,11 @@
 // -----------------------------------------------------------------------------
 // Mocks & Helpers
 // -----------------------------------------------------------------------------
-static hdlc_context_t ctx;
+static atc_hdlc_context_t ctx;
 static uint8_t rx_buffer[1024];
 static uint8_t captured_tx_buffer[256];
 static uint32_t captured_tx_len = 0;
-static hdlc_protocol_state_t last_state_change = (hdlc_protocol_state_t)-1;
+static atc_hdlc_protocol_state_t last_state_change = (atc_hdlc_protocol_state_t)-1;
 static int state_change_call_count = 0;
 
 void on_tx_byte(uint8_t byte, bool flush, void *user_data) {
@@ -26,13 +26,13 @@ void on_tx_byte(uint8_t byte, bool flush, void *user_data) {
     }
 }
 
-void on_rx_frame(const hdlc_frame_t *frame, void *user_data) {
+void on_rx_frame(const atc_hdlc_frame_t *frame, void *user_data) {
     (void)frame;
     (void)user_data;
 }
 
 
-void on_state_change(hdlc_protocol_state_t state, void *user_data) {
+void on_state_change(atc_hdlc_protocol_state_t state, void *user_data) {
     (void)user_data;
     last_state_change = state;
     state_change_call_count++;
@@ -40,17 +40,17 @@ void on_state_change(hdlc_protocol_state_t state, void *user_data) {
 
 // Helper to reset test state
 void setup_context(void) {
-    hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), on_tx_byte, on_rx_frame, on_state_change, NULL);
-    hdlc_configure_addresses(&ctx, 0x01, 0x02); // Me=0x01, Peer=0x02
+    atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), on_tx_byte, on_rx_frame, on_state_change, NULL);
+    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02); // Me=0x01, Peer=0x02
     captured_tx_len = 0;
     state_change_call_count = 0;
-    last_state_change = (hdlc_protocol_state_t)-1;
+    last_state_change = (atc_hdlc_protocol_state_t)-1;
 }
 
 // Helper to inspect the last transmitted frame (assumes it's a valid frame)
 // Returns pointer to the frame starting at captured_tx_buffer
-void decode_last_tx(hdlc_frame_t *decoded_frame, uint8_t *flat_buf, uint32_t flat_len) {
-    bool res = hdlc_frame_unpack(captured_tx_buffer, captured_tx_len, decoded_frame, flat_buf, flat_len);
+void decode_last_tx(atc_hdlc_frame_t *decoded_frame, uint8_t *flat_buf, uint32_t flat_len) {
+    bool res = atc_hdlc_frame_unpack(captured_tx_buffer, captured_tx_len, decoded_frame, flat_buf, flat_len);
     assert(res && "Failed to unpack transmitted frame");
 }
 
@@ -80,14 +80,14 @@ void decode_last_tx(hdlc_frame_t *decoded_frame, uint8_t *flat_buf, uint32_t fla
 void test_init_state(void) {
     setup_context();
     ASSERT_EQ(ctx.current_state, HDLC_STATE_DISCONNECTED);
-    ASSERT_TRUE(!hdlc_is_connected(&ctx));
+    ASSERT_TRUE(!atc_hdlc_is_connected(&ctx));
     PASS();
 }
 
 void test_connect_sends_sabm(void) {
     setup_context();
     
-    bool res = hdlc_connect(&ctx);
+    bool res = atc_hdlc_connect(&ctx);
     ASSERT_TRUE(res);
     
     // 1. Check State Transition
@@ -96,7 +96,7 @@ void test_connect_sends_sabm(void) {
     ASSERT_EQ(last_state_change, HDLC_STATE_CONNECTING);
 
     // 2. Check Output Frame (SABM to Peer)
-    hdlc_frame_t frame_out;
+    atc_hdlc_frame_t frame_out;
     uint8_t flat[32];
     decode_last_tx(&frame_out, flat, sizeof(flat));
 
@@ -108,12 +108,12 @@ void test_connect_sends_sabm(void) {
 
 void test_connect_complete_on_ua(void) {
     setup_context();
-    hdlc_connect(&ctx); // Go to CONNECTING
+    atc_hdlc_connect(&ctx); // Go to CONNECTING
     captured_tx_len = 0; // Clear TX buffer
     state_change_call_count = 0; // Clear counters
 
     // Simulate Receiving UA from Peer
-    hdlc_frame_t ua_frame;
+    atc_hdlc_frame_t ua_frame;
     ua_frame.address = 0x02; // Peer's address (Response)
     ua_frame.control.value = 0x73; // UA with F=1
     ua_frame.information = NULL;
@@ -122,16 +122,16 @@ void test_connect_complete_on_ua(void) {
 
     uint8_t packed[32];
     uint32_t packed_len = 0;
-    hdlc_frame_pack(&ua_frame, packed, sizeof(packed), &packed_len);
+    atc_hdlc_frame_pack(&ua_frame, packed, sizeof(packed), &packed_len);
 
     // Feed bytes
-    hdlc_input_bytes(&ctx, packed, packed_len);
+    atc_hdlc_input_bytes(&ctx, packed, packed_len);
 
     // Verify State Change
     ASSERT_EQ(ctx.current_state, HDLC_STATE_CONNECTED);
     ASSERT_EQ(state_change_call_count, 1);
     ASSERT_EQ(last_state_change, HDLC_STATE_CONNECTED);
-    ASSERT_TRUE(hdlc_is_connected(&ctx));
+    ASSERT_TRUE(atc_hdlc_is_connected(&ctx));
     PASS();
 }
 
@@ -142,14 +142,14 @@ void test_disconnect_flow(void) {
     state_change_call_count = 0;
 
     // Send Disconnect
-    bool res = hdlc_disconnect(&ctx);
+    bool res = atc_hdlc_disconnect(&ctx);
     ASSERT_TRUE(res);
 
     // 1. Check State
     ASSERT_EQ(ctx.current_state, HDLC_STATE_DISCONNECTING);
     
     // 2. Check Output Frame (DISC to Peer)
-    hdlc_frame_t frame_out;
+    atc_hdlc_frame_t frame_out;
     uint8_t flat[32];
     decode_last_tx(&frame_out, flat, sizeof(flat));
     ASSERT_EQ(frame_out.address, 0x02);
@@ -160,7 +160,7 @@ void test_disconnect_flow(void) {
     // Clear buffer
     captured_tx_len = 0;
     
-    hdlc_frame_t ua_frame;
+    atc_hdlc_frame_t ua_frame;
     ua_frame.address = 0x02;
     ua_frame.control.value = 0x73; // UA(F=1)
     ua_frame.information = NULL;
@@ -168,8 +168,8 @@ void test_disconnect_flow(void) {
 
     uint8_t packed[32];
     uint32_t packed_len = 0;
-    hdlc_frame_pack(&ua_frame, packed, sizeof(packed), &packed_len);
-    hdlc_input_bytes(&ctx, packed, packed_len);
+    atc_hdlc_frame_pack(&ua_frame, packed, sizeof(packed), &packed_len);
+    atc_hdlc_input_bytes(&ctx, packed, packed_len);
 
     // Check State
     ASSERT_EQ(ctx.current_state, HDLC_STATE_DISCONNECTED);
@@ -182,7 +182,7 @@ void test_passive_open(void) {
     // Simulate Receiving SABM from Peer (Command)
     // Addressed to ME (0x01).
     // SABM(P=1) = 0x3F.
-    hdlc_frame_t sabm_frame;
+    atc_hdlc_frame_t sabm_frame;
     sabm_frame.address = 0x01;
     sabm_frame.control.value = 0x3F;
     sabm_frame.information = NULL;
@@ -190,16 +190,16 @@ void test_passive_open(void) {
 
     uint8_t packed[32];
     uint32_t packed_len = 0;
-    hdlc_frame_pack(&sabm_frame, packed, sizeof(packed), &packed_len);
+    atc_hdlc_frame_pack(&sabm_frame, packed, sizeof(packed), &packed_len);
     
-    hdlc_input_bytes(&ctx, packed, packed_len);
+    atc_hdlc_input_bytes(&ctx, packed, packed_len);
 
     // 1. Should be CONNECTED
     ASSERT_EQ(ctx.current_state, HDLC_STATE_CONNECTED);
     ASSERT_EQ(state_change_call_count, 1);
 
     // 2. Should have sent UA (Response from Me)
-    hdlc_frame_t frame_out;
+    atc_hdlc_frame_t frame_out;
     uint8_t flat[32];
     decode_last_tx(&frame_out, flat, sizeof(flat));
 
@@ -210,7 +210,7 @@ void test_passive_open(void) {
 
 void test_frmr_reception(void) {
     setup_context();
-    hdlc_connect(&ctx); // Connect first
+    atc_hdlc_connect(&ctx); // Connect first
     // Force Connected state for testing
     ctx.current_state = HDLC_STATE_CONNECTED;
     state_change_call_count = 0; // Clear counters
@@ -223,19 +223,19 @@ void test_frmr_reception(void) {
     
     uint8_t frmr_payload[] = {0x11, 0x1A, 0x90};
 
-    hdlc_frame_t frmr_frame;
+    atc_hdlc_frame_t frmr_frame;
     frmr_frame.address = 0x02; // From Peer
-    frmr_frame.control = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_FRMR, HDLC_U_MODIFIER_HI_FRMR, 0); // F=0
+    frmr_frame.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_FRMR, HDLC_U_MODIFIER_HI_FRMR, 0); // F=0
     frmr_frame.information = frmr_payload;
     frmr_frame.information_len = sizeof(frmr_payload);
     frmr_frame.type = HDLC_FRAME_U;
 
     uint8_t packed[32];
     uint32_t packed_len = 0;
-    hdlc_frame_pack(&frmr_frame, packed, sizeof(packed), &packed_len);
+    atc_hdlc_frame_pack(&frmr_frame, packed, sizeof(packed), &packed_len);
 
     // Feed bytes
-    hdlc_input_bytes(&ctx, packed, packed_len);
+    atc_hdlc_input_bytes(&ctx, packed, packed_len);
 
     // Verify State Change -> DISCONNECTED
     ASSERT_EQ(ctx.current_state, HDLC_STATE_DISCONNECTED);
@@ -249,22 +249,22 @@ void test_mode_rejection(void) {
     // M=100 00 -> Hi=4, Lo=0. P=1.
     // Ctrl: 100 1 00 11 -> 1001 0011 -> 0x93
     
-    hdlc_frame_t params_frame;
+    atc_hdlc_frame_t params_frame;
     params_frame.address = 0x01; // To Me
-    params_frame.control = hdlc_create_u_ctrl(0, 4, 1); // SNRM, P=1, Hi=4, Lo=0
+    params_frame.control = atc_hdlc_create_u_ctrl(0, 4, 1); // SNRM, P=1, Hi=4, Lo=0
     params_frame.information = NULL;
     params_frame.information_len = 0;
     params_frame.type = HDLC_FRAME_U;
 
     uint8_t packed[32];
     uint32_t packed_len = 0;
-    hdlc_frame_pack(&params_frame, packed, sizeof(packed), &packed_len);
+    atc_hdlc_frame_pack(&params_frame, packed, sizeof(packed), &packed_len);
     
     // Clear TX capture
     captured_tx_len = 0;
 
     // Feed bytes
-    hdlc_input_bytes(&ctx, packed, packed_len);
+    atc_hdlc_input_bytes(&ctx, packed, packed_len);
 
     for(int i=0; i<captured_tx_len; i++) printf("%02X ", captured_tx_buffer[i]);
     printf("\n");
@@ -273,7 +273,7 @@ void test_mode_rejection(void) {
     ASSERT_EQ(ctx.current_state, HDLC_STATE_DISCONNECTED);
 
     // 2. Output should be DM
-    hdlc_frame_t frame_out;
+    atc_hdlc_frame_t frame_out;
     uint8_t flat[32];
     decode_last_tx(&frame_out, flat, sizeof(flat));
 
