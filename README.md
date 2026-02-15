@@ -11,7 +11,7 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
     *   **CRC-16-CCITT** (Polynomial `0x1021`) with pre-computed 256-entry LUT for fast validation.
     *   Recalculate & Compare verification strategy on the receiver side.
 *   **Flexible Transmission**:
-    *   **Streaming Mode**:
+    *   **Packet Mode**:
         *   **Buffered**: Construct a full `atc_hdlc_frame_t` and send it in one call using the context.
         *   **Zero-Copy**: Send frames byte-by-byte (`start` → `data` → `end`) for ultra-low memory environments.
     *   **Stateless Mode**: Pack/Unpack frames directly into memory buffers without using the `hdlc_context_t` or callbacks. Ideal for purely functional usage.
@@ -25,7 +25,7 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
     *   Frame Type dispatcher.
 *   **Developer Experience**:
     *   Modern **CMake** build system (C99).
-    *   **Unit tests** covering edge cases (byte stuffing, CRC errors, overflow, fragmentation, control field loopback, streaming API).
+    *   **Unit tests** covering edge cases (byte stuffing, CRC errors, overflow, fragmentation, control field loopback, packet API).
     *   **Configurable Symbol Prefix**: All public symbols are prefixed (default `atc_`) to avoid collisions. Changeable at compile time via `ATC_HDLC_PREFIX`.
     *   **C++ compatible** (`extern "C"` wrappers).
 
@@ -34,7 +34,7 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
 ```
 .
 ├── inc/
-│   ├── hdlc.h          # Public API (init, send, receive, streaming)
+│   ├── hdlc.h          # Public API (init, send, receive, packet processing)
 │   ├── hdlc_types.h    # Public types (frame, context, callbacks, control field)
 │   └── hdlc_config.h   # Configuration (prefix, max frame length)
 ├── src/
@@ -152,7 +152,7 @@ To use this library in your own project:
     // Initialize the context
     atc_hdlc_context_t ctx;
     uint8_t buffer[256];
-    atc_hdlc_stream_init(&ctx, buffer, sizeof(buffer), my_output_byte, my_on_frame, my_on_state, NULL);
+    atc_hdlc_init(&ctx, buffer, sizeof(buffer), my_output_byte, my_on_frame, my_on_state, NULL);
     
     // Configure Addresses (My Address, Peer Address)
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
@@ -163,7 +163,7 @@ To use this library in your own project:
 
 5.  **Feed received bytes into the parser**:
 
-    > ⚠️ **ISR Safety**: `atc_hdlc_stream_input_byte` performs an **O(N) CRC verification loop** when the closing flag (`0x7E`) is received and also invokes the user `rx_cb` callback synchronously. **Do NOT call directly from a high-frequency ISR.** Use a Ring Buffer to decouple reception from processing.
+    > ⚠️ **ISR Safety**: `atc_hdlc_input_byte` performs an **O(N) CRC verification loop** when the closing flag (`0x7E`) is received and also invokes the user `rx_cb` callback synchronously. **Do NOT call directly from a high-frequency ISR.** Use a Ring Buffer to decouple reception from processing.
 
     ```c
     // ISR: Just push bytes into a ring buffer
@@ -176,17 +176,17 @@ To use this library in your own project:
     void main_loop(void) {
         uint8_t byte;
         while (ring_buffer_pop(&rx_buf, &byte)) {
-            atc_hdlc_stream_input_byte(&ctx, byte);
+            atc_hdlc_input_byte(&ctx, byte);
         }
     }
 
     // Or use bulk input for DMA / batch transfers
     void process_dma_buffer(uint8_t *buf, uint32_t len) {
-        atc_hdlc_stream_input_bytes(&ctx, buf, len);
+        atc_hdlc_input_bytes(&ctx, buf, len);
     }
     ```
 
-6.  **Streaming Mode (Buffered)**:
+6.  **Packet Mode (Buffered)**:
     Construct a frame structure and let the library handle transmission via the `output_cb`.
     ```c
     atc_hdlc_frame_t frame = {
@@ -195,22 +195,22 @@ To use this library in your own project:
         .information_len = 4
     };
     memcpy(frame.information, "TEST", 4);
-    atc_hdlc_stream_output_frame(&ctx, &frame);
+    atc_hdlc_output_frame(&ctx, &frame);
     ```
 
-7.  **Streaming Mode (Zero-Copy)**:
+7.  **Packet Mode (Zero-Copy)**:
     For memory-constrained devices where allocating a full frame buffer is not feasible:
     ```c
     // Start: sends Flag + Address + Control (with CRC init)
-    atc_hdlc_stream_output_packet_start(&ctx, 0x01, 0x03);
+    atc_hdlc_output_packet_start(&ctx, 0x01, 0x03);
 
     // Data: byte-by-byte or array (stuffing handled automatically)
-    atc_hdlc_stream_output_packet_information_byte(&ctx, 0xAA);
+    atc_hdlc_output_packet_information_byte(&ctx, 0xAA);
     uint8_t payload[] = {0x10, 0x20, 0x30};
-    atc_hdlc_stream_output_packet_information_bytes(&ctx, payload, 3);
+    atc_hdlc_output_packet_information_bytes(&ctx, payload, 3);
 
     // End: sends CRC + Flag
-    atc_hdlc_stream_output_packet_end(&ctx);
+    atc_hdlc_output_packet_end(&ctx);
     ```
 
 8.  **Stateless Mode (Pack)**:
@@ -251,18 +251,19 @@ Configuration is done in `inc/hdlc_config.h`:
 
 ## 📖 API Reference
 
-### Streaming Mode
+### Packet Mode (Formatted & Zero-Copy)
 
 | Function | Description |
 |---|---|
-| `atc_hdlc_stream_init()` | Initialize context and bind callbacks |
-| `atc_hdlc_stream_input_byte()` | Feed a single received byte into the parser |
-| `atc_hdlc_stream_input_bytes()` | Feed a byte array into the parser (bulk) |
-| `atc_hdlc_stream_output_frame()` | Send a complete frame (buffered) |
-| `atc_hdlc_stream_output_packet_start()` | Begin streaming TX (Flag + Address + Control) |
-| `atc_hdlc_stream_output_packet_information_byte()` | Send a single data byte (with stuffing) |
-| `atc_hdlc_stream_output_packet_information_bytes()` | Send a data array (with stuffing) |
-| `atc_hdlc_stream_output_packet_end()` | Finalize streaming TX (CRC + Flag) |
+| `atc_hdlc_init()` | Initialize context and bind callbacks |
+| `atc_hdlc_input_byte()` | Feed a single received byte into the parser |
+| `atc_hdlc_input_bytes()` | Feed a byte array into the parser (bulk) |
+| `atc_hdlc_output_frame()` | Send a complete frame (buffered) |
+| `atc_hdlc_output_packet_start()` | Begin packet TX (Flag + Address + Control) |
+| `atc_hdlc_output_packet_information_byte()` | Send a single data byte (with stuffing) |
+| `atc_hdlc_output_packet_information_bytes()` | Send a data array (with stuffing) |
+| `atc_hdlc_output_packet_end()` | Finalize packet TX (CRC + Flag) |
+| `atc_hdlc_send_ui()` | Send unacknowledged data (UI Frame) |
 
 ### Connection Management
 

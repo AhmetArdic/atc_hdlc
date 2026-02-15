@@ -40,7 +40,7 @@ void on_state_change(hdlc_protocol_state_t state, void *user_data) {
 
 // Helper to reset test state
 void setup_context(void) {
-    hdlc_stream_init(&ctx, rx_buffer, sizeof(rx_buffer), on_tx_byte, on_rx_frame, on_state_change, NULL);
+    hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), on_tx_byte, on_rx_frame, on_state_change, NULL);
     hdlc_configure_addresses(&ctx, 0x01, 0x02); // Me=0x01, Peer=0x02
     captured_tx_len = 0;
     state_change_call_count = 0;
@@ -125,7 +125,7 @@ void test_connect_complete_on_ua(void) {
     hdlc_frame_pack(&ua_frame, packed, sizeof(packed), &packed_len);
 
     // Feed bytes
-    hdlc_stream_input_bytes(&ctx, packed, packed_len);
+    hdlc_input_bytes(&ctx, packed, packed_len);
 
     // Verify State Change
     ASSERT_EQ(ctx.current_state, HDLC_STATE_CONNECTED);
@@ -169,7 +169,7 @@ void test_disconnect_flow(void) {
     uint8_t packed[32];
     uint32_t packed_len = 0;
     hdlc_frame_pack(&ua_frame, packed, sizeof(packed), &packed_len);
-    hdlc_stream_input_bytes(&ctx, packed, packed_len);
+    hdlc_input_bytes(&ctx, packed, packed_len);
 
     // Check State
     ASSERT_EQ(ctx.current_state, HDLC_STATE_DISCONNECTED);
@@ -192,7 +192,7 @@ void test_passive_open(void) {
     uint32_t packed_len = 0;
     hdlc_frame_pack(&sabm_frame, packed, sizeof(packed), &packed_len);
     
-    hdlc_stream_input_bytes(&ctx, packed, packed_len);
+    hdlc_input_bytes(&ctx, packed, packed_len);
 
     // 1. Should be CONNECTED
     ASSERT_EQ(ctx.current_state, HDLC_STATE_CONNECTED);
@@ -235,7 +235,7 @@ void test_frmr_reception(void) {
     hdlc_frame_pack(&frmr_frame, packed, sizeof(packed), &packed_len);
 
     // Feed bytes
-    hdlc_stream_input_bytes(&ctx, packed, packed_len);
+    hdlc_input_bytes(&ctx, packed, packed_len);
 
     // Verify State Change -> DISCONNECTED
     ASSERT_EQ(ctx.current_state, HDLC_STATE_DISCONNECTED);
@@ -264,7 +264,7 @@ void test_mode_rejection(void) {
     captured_tx_len = 0;
 
     // Feed bytes
-    hdlc_stream_input_bytes(&ctx, packed, packed_len);
+    hdlc_input_bytes(&ctx, packed, packed_len);
 
     for(int i=0; i<captured_tx_len; i++) printf("%02X ", captured_tx_buffer[i]);
     printf("\n");

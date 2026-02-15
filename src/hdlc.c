@@ -26,7 +26,7 @@
  * @brief Initialize the HDLC Context.
  * @see hdlc.h
  */
-void hdlc_stream_init(hdlc_context_t *ctx, hdlc_u8 *buffer, hdlc_u32 buffer_len,
+void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *buffer, hdlc_u32 buffer_len,
                       hdlc_output_byte_cb_t output_cb,
                       hdlc_on_frame_cb_t on_frame_cb,
                       hdlc_on_state_change_cb_t on_state_change_cb,
@@ -71,7 +71,9 @@ static void hdlc_process_sarm(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_disc(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_ua(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_dm(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+static void hdlc_process_dm(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_frmr(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+static void hdlc_process_ui(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 
 /*
  * --------------------------------------------------------------------------
@@ -216,10 +218,10 @@ static hdlc_bool frame_pack_core(const hdlc_frame_t *frame,
 }
 
 /**
- * @brief Output a complete HDLC Frame (Streaming).
+ * @brief Output a complete HDLC Frame.
  * @see hdlc.h
  */
-void hdlc_stream_output_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+void hdlc_output_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   if (ctx == NULL || frame == NULL) {
     return;
   }
@@ -396,7 +398,7 @@ bool hdlc_frame_unpack(const hdlc_u8 *buffer, hdlc_u32 buffer_len,
  * @param ctx   HDLC Context.
  * @param frame Received frame.
  */
-static void stream_handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+static void handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   // TODO: Implement I-Frame Logic
   // - Check Sequence Number N(S) against V(R)
   // - Check Piggybacked Ack N(R) against V(S)
@@ -411,7 +413,7 @@ static void stream_handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame
  * @param ctx   HDLC Context.
  * @param frame Received frame.
  */
-static void stream_handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   // TODO: Implement S-Frame Logic
   // - Handle RR, RNR, REJ
   (void)ctx;
@@ -448,8 +450,8 @@ static void hdlc_set_state(hdlc_context_t *ctx, hdlc_protocol_state_t new_state)
  */
 static inline void hdlc_send_u_frame(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf) {
     hdlc_control_t ctrl = hdlc_create_u_ctrl(m_lo, m_hi, pf);
-    hdlc_stream_output_packet_start(ctx, address, ctrl.value);
-    hdlc_stream_output_packet_end(ctx);
+    hdlc_output_packet_start(ctx, address, ctrl.value);
+    hdlc_output_packet_end(ctx);
 }
 
 /**
@@ -582,15 +584,37 @@ static void hdlc_process_frmr(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
 }
 
 /**
+ * @brief Process Received UI Command.
+ * @param ctx   HDLC Context.
+ * @param frame The received UI frame.
+ */
+static void hdlc_process_ui(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+    // UI frames are unnumbered and unacknowledged.
+    // They are passed to the user application if connected (or maybe even if not?).
+    // Standard often allows UI in any state, but usually mostly in Connected.
+    // Let's pass it through via the generic on_frame_cb mechanism which happens
+    // after this dispatcher in `stream_process_complete_frame`.
+    
+    // However, `process_complete_frame` calls `handle_u_frame` (this function)
+    // AND then calls `ctx->on_frame_cb`. 
+    // So we don't strictly need to do anything here unless we want to filter it
+    // based on state. 
+    
+    // For now, we just acknowledge receipt internally (no protocol ACK).
+    (void)ctx;
+    (void)frame;
+}
+
+/**
  * @brief Internal handler for Unnumbered (U) Frames.
  * @param ctx   HDLC Context.
  * @param frame Received frame.
  */
-static void stream_handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   hdlc_u8 m_lo = frame->control.u_frame.m_lo;
   hdlc_u8 m_hi = frame->control.u_frame.m_hi;
 
-  // 1. Handle COMMANDS (SABM, SNRM, SARM, DISC) -> Addressed to ME
+  // 1. Handle COMMANDS -> Addressed to ME
   if (frame->address == ctx->my_address) {
     
     // SABM (Set Asynchronous Balanced Mode)
@@ -609,9 +633,13 @@ static void stream_handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame
     else if (m_lo == HDLC_U_MODIFIER_LO_DISC && m_hi == HDLC_U_MODIFIER_HI_DISC) {
         hdlc_process_disc(ctx, frame);
     }
+    // UI (Unnumbered Information)
+    else if (m_lo == HDLC_U_MODIFIER_LO_UI && m_hi == HDLC_U_MODIFIER_HI_UI) {
+        hdlc_process_ui(ctx, frame);
+    }
   }
 
-  // 2. Handle RESPONSES (UA, DM, FRMR) -> Addressed to PEER (but received by ME from Peer)
+  // 2. Handle RESPONSES -> Addressed to PEER (but received by ME from Peer)
   else if (frame->address == ctx->peer_address) {
     
     // UA (Unnumbered Acknowledgment)
@@ -638,19 +666,20 @@ static void stream_handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame
  *
  * @param ctx HDLC Context.
  */
-static void stream_process_complete_frame(hdlc_context_t *ctx) {
+static void process_complete_frame(hdlc_context_t *ctx) {
   // 1. Identify Frame Type based on Control Field
   hdlc_u8 ctrl = ctx->input_frame_buffer.control.value;
 
   if ((ctrl & HDLC_FRAME_TYPE_MASK_I) == HDLC_FRAME_TYPE_VAL_I) {
     ctx->input_frame_buffer.type = HDLC_FRAME_I;
-    stream_handle_i_frame(ctx, &ctx->input_frame_buffer);
+    ctx->input_frame_buffer.type = HDLC_FRAME_I;
+    handle_i_frame(ctx, &ctx->input_frame_buffer);
   } else if ((ctrl & HDLC_FRAME_TYPE_MASK_S) == HDLC_FRAME_TYPE_VAL_S) {
     ctx->input_frame_buffer.type = HDLC_FRAME_S;
-    stream_handle_s_frame(ctx, &ctx->input_frame_buffer);
+    handle_s_frame(ctx, &ctx->input_frame_buffer);
   } else if ((ctrl & HDLC_FRAME_TYPE_MASK_U) == HDLC_FRAME_TYPE_VAL_U) {
     ctx->input_frame_buffer.type = HDLC_FRAME_U;
-    stream_handle_u_frame(ctx, &ctx->input_frame_buffer);
+    handle_u_frame(ctx, &ctx->input_frame_buffer);
   } else {
     ctx->input_frame_buffer.type = HDLC_FRAME_INVALID;
   }
@@ -669,7 +698,7 @@ static void stream_process_complete_frame(hdlc_context_t *ctx) {
  * for delimiters, handles byte-unstuffing, and buffers data.
  * @see hdlc.h for detailed ISR usage warnings.
  */
-void hdlc_stream_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
+void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
   if (ctx == NULL) {
     return;
   }
@@ -715,7 +744,7 @@ void hdlc_stream_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
              ctx->input_frame_buffer.information_len = 0;
           }
 
-          stream_process_complete_frame(ctx);
+          process_complete_frame(ctx);
         } else {
           // CRC Error: Frame discarded silently (or logged)
           // printf("[LIB] CRC Fail: Calc=%04X Rx=%04X Len=%d\n", calced_crc,
@@ -767,13 +796,13 @@ void hdlc_stream_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
  * @brief Input multiple received bytes into the HDLC Parser.
  * @see hdlc.h
  */
-void hdlc_stream_input_bytes(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
+void hdlc_input_bytes(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
   if (ctx == NULL || data == NULL) {
     return;
   }
 
   for (hdlc_u32 i = 0; i < len; ++i) {
-    hdlc_stream_input_byte(ctx, data[i]);
+    hdlc_input_byte(ctx, data[i]);
   }
 }
 
@@ -788,7 +817,7 @@ void hdlc_stream_input_bytes(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 
  * @param ctx  HDLC Context.
  * @param byte Raw byte to transmit.
  */
-static inline void stream_output_byte_raw(hdlc_context_t *ctx, hdlc_u8 byte,
+static inline void output_byte_raw(hdlc_context_t *ctx, hdlc_u8 byte,
                                 hdlc_bool flush) {
   if (ctx->output_byte_cb != NULL) {
     ctx->output_byte_cb(byte, flush, ctx->user_data);
@@ -801,12 +830,12 @@ static inline void stream_output_byte_raw(hdlc_context_t *ctx, hdlc_u8 byte,
  * @param ctx  HDLC Context.
  * @param byte Data byte to send.
  */
-static void stream_output_escaped(hdlc_context_t *ctx, hdlc_u8 byte) {
+static void output_escaped(hdlc_context_t *ctx, hdlc_u8 byte) {
   if (byte == HDLC_FLAG || byte == HDLC_ESCAPE) {
-    stream_output_byte_raw(ctx, HDLC_ESCAPE, false);
-    stream_output_byte_raw(ctx, byte ^ HDLC_XOR_MASK, false);
+    output_byte_raw(ctx, HDLC_ESCAPE, false);
+    output_byte_raw(ctx, byte ^ HDLC_XOR_MASK, false);
   } else {
-    stream_output_byte_raw(ctx, byte, false);
+    output_byte_raw(ctx, byte, false);
   }
 }
 
@@ -820,18 +849,18 @@ static void stream_output_escaped(hdlc_context_t *ctx, hdlc_u8 byte) {
  * @param byte Data byte to send.
  * @param crc  Pointer to the running CRC to update.
  */
-static void stream_output_escaped_crc_update(hdlc_context_t *ctx, hdlc_u8 byte,
+static void output_escaped_crc_update(hdlc_context_t *ctx, hdlc_u8 byte,
                                        hdlc_u16 *crc) {
   *crc = hdlc_crc_ccitt_update(*crc, byte);
 
-  stream_output_escaped(ctx, byte);
+  output_escaped(ctx, byte);
 }
 
 /**
- * @brief Start a Streaming Packet Transmission.
+ * @brief Start a Packet Transmission.
  * @see hdlc.h
  */
-void hdlc_stream_output_packet_start(hdlc_context_t *ctx, hdlc_u8 address,
+void hdlc_output_packet_start(hdlc_context_t *ctx, hdlc_u8 address,
                                      hdlc_u8 control) {
   if (ctx == NULL) {
     return;
@@ -841,36 +870,36 @@ void hdlc_stream_output_packet_start(hdlc_context_t *ctx, hdlc_u8 address,
   ctx->output_crc = HDLC_FCS_INIT_VALUE;
 
   // Send Start Flag
-  stream_output_byte_raw(ctx, HDLC_FLAG, false);
+  output_byte_raw(ctx, HDLC_FLAG, false);
 
   // Send Address
   // Update CRC and Send Escaped
-  stream_output_escaped_crc_update(ctx, address, &ctx->output_crc);
+  output_escaped_crc_update(ctx, address, &ctx->output_crc);
 
   // Send Control
   // Update CRC and Send Escaped
-  stream_output_escaped_crc_update(ctx, control, &ctx->output_crc);
+  output_escaped_crc_update(ctx, control, &ctx->output_crc);
 }
 
 /**
- * @brief Output a Information Byte in Streaming Mode.
+ * @brief Output a Information Byte.
  * @see hdlc.h
  */
-void hdlc_stream_output_packet_information_byte(hdlc_context_t *ctx,
+void hdlc_output_packet_information_byte(hdlc_context_t *ctx,
                                                 hdlc_u8 information_byte) {
   if (ctx == NULL) {
     return;
   }
 
   // Update CRC and Send Escaped
-  stream_output_escaped_crc_update(ctx, information_byte, &ctx->output_crc);
+  output_escaped_crc_update(ctx, information_byte, &ctx->output_crc);
 }
 
 /**
- * @brief Output a Information Bytes Array in Streaming Mode.
+ * @brief Output a Information Bytes Array.
  * @see hdlc.h
  */
-void hdlc_stream_output_packet_information_bytes(
+void hdlc_output_packet_information_bytes(
     hdlc_context_t *ctx, const hdlc_u8 *information_bytes, hdlc_u32 len) {
   if (ctx == NULL) {
     return;
@@ -878,15 +907,15 @@ void hdlc_stream_output_packet_information_bytes(
 
   for (hdlc_u32 i = 0; i < len; ++i) {
     // Update CRC and Send Escaped
-    stream_output_escaped_crc_update(ctx, information_bytes[i], &ctx->output_crc);
+    output_escaped_crc_update(ctx, information_bytes[i], &ctx->output_crc);
   }
 }
 
 /**
- * @brief Finalize Streaming Packet Output.
+ * @brief Finalize Packet Output.
  * @see hdlc.h
  */
-void hdlc_stream_output_packet_end(hdlc_context_t *ctx) {
+void hdlc_output_packet_end(hdlc_context_t *ctx) {
   if (ctx == NULL) {
     return;
   }
@@ -898,13 +927,13 @@ void hdlc_stream_output_packet_end(hdlc_context_t *ctx) {
   hdlc_u8 fcs_lo = crc & 0xFF;
 
   // Send FCS High
-  stream_output_escaped(ctx, fcs_hi);
+  output_escaped(ctx, fcs_hi);
 
   // Send FCS Low
-  stream_output_escaped(ctx, fcs_lo);
+  output_escaped(ctx, fcs_lo);
 
   // End Flag
-  stream_output_byte_raw(ctx, HDLC_FLAG, true);
+  output_byte_raw(ctx, HDLC_FLAG, true);
 
   ctx->stats_output_frames++;
 }
@@ -963,8 +992,8 @@ bool hdlc_connect(hdlc_context_t *ctx) {
 
   // Send SABM
   hdlc_control_t ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1); // P=1
-  hdlc_stream_output_packet_start(ctx, ctx->peer_address, ctrl.value);
-  hdlc_stream_output_packet_end(ctx);
+  hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
+  hdlc_output_packet_end(ctx);
 
   hdlc_set_state(ctx, HDLC_STATE_CONNECTING);
   return true;
@@ -975,8 +1004,8 @@ bool hdlc_disconnect(hdlc_context_t *ctx) {
 
   // Send DISC
   hdlc_control_t ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_DISC, HDLC_U_MODIFIER_HI_DISC, 1); // P=1
-  hdlc_stream_output_packet_start(ctx, ctx->peer_address, ctrl.value);
-  hdlc_stream_output_packet_end(ctx);
+  hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
+  hdlc_output_packet_end(ctx);
 
   hdlc_set_state(ctx, HDLC_STATE_DISCONNECTING);
   return true;
@@ -984,4 +1013,24 @@ bool hdlc_disconnect(hdlc_context_t *ctx) {
 
 bool hdlc_is_connected(hdlc_context_t *ctx) {
   return (ctx != NULL && ctx->current_state == HDLC_STATE_CONNECTED);
+}
+
+bool hdlc_send_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
+  if (ctx == NULL) return false;
+
+  // UI Frame Control: 11 00 P 000 (Val=0x03 if P=0, 0x13 if P=1)
+  // M_LO=0, M_HI=0
+  hdlc_control_t ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_UI, HDLC_U_MODIFIER_HI_UI, 0); // P=0 usually
+
+  // Start Packet
+  hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
+  
+  // Send Data
+  if (data != NULL && len > 0) {
+      hdlc_output_packet_information_bytes(ctx, data, len);
+  }
+
+  // End Packet
+  hdlc_output_packet_end(ctx);
+  return true;
 }
