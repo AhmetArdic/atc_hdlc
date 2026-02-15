@@ -30,16 +30,60 @@ extern "C" {
  * Sets up the HDLC instance, clears internal state, resets statistics,
  * and binds the user-provided callbacks.
  * 
- * @param ctx           Pointer to the @ref hdlc_context_t structure to initialize.
- * @param buffer        Pointer to the user-supplied Input buffer.
- * @param buffer_len    Length of the user-supplied Input buffer.
- * @param output_cb     Callback function for sending a byte to the hardware.
- * @param on_frame_cb   Callback function for receiving valid frames.
- * @param user_data     Optional user pointer to pass to the callbacks.
+ * @param ctx                Pointer to the @ref hdlc_context_t structure to initialize.
+ * @param buffer             Pointer to the user-supplied Input buffer.
+ * @param buffer_len         Length of the user-supplied Input buffer.
+ * @param output_cb          Callback function for sending a byte to the hardware.
+ * @param on_frame_cb        Callback function for receiving valid frames.
+ * @param on_state_change_cb Callback function for connection state changes (Optional, can be NULL).
+ * @param user_data          Optional user pointer to pass to the callbacks.
  */
 void hdlc_stream_init(hdlc_context_t *ctx, hdlc_u8 *buffer, hdlc_u32 buffer_len,
                       hdlc_output_byte_cb_t output_cb,
-                      hdlc_on_frame_cb_t on_frame_cb, void *user_data);
+                      hdlc_on_frame_cb_t on_frame_cb,
+                      hdlc_on_state_change_cb_t on_state_change_cb,
+                      void *user_data);
+
+/**
+ * @brief Configure Station Addresses.
+ *
+ * Sets the logical address for this station and the expected peer address.
+ *
+ * @param ctx       Pointer to the initialized HDLC context.
+ * @param my_addr   Address of this station (used for RX filtering).
+ * @param peer_addr Address of the remote station (used for TX frames).
+ */
+void hdlc_configure_addresses(hdlc_context_t *ctx, hdlc_u8 my_addr, hdlc_u8 peer_addr);
+
+/**
+ * @brief Initiate a Logical Connection (SABM).
+ *
+ * Sends a Set Asynchronous Balanced Mode (SABM) frame to the peer
+ * and transitions to the HDLC_STATE_CONNECTING state.
+ *
+ * @param ctx Pointer to the initialized HDLC context.
+ * @return true if command sent successfully (does not mean connected yet).
+ */
+bool hdlc_connect(hdlc_context_t *ctx);
+
+/**
+ * @brief Terminate a Logical Connection (DISC).
+ *
+ * Sends a Disconnect (DISC) frame to the peer and transitions
+ * to the HDLC_STATE_DISCONNECTING state.
+ *
+ * @param ctx Pointer to the initialized HDLC context.
+ * @return true if command sent successfully.
+ */
+bool hdlc_disconnect(hdlc_context_t *ctx);
+
+/**
+ * @brief Check if Connected.
+ *
+ * @param ctx Pointer to the initialized HDLC context.
+ * @return true if state is HDLC_STATE_CONNECTED, false otherwise.
+ */
+bool hdlc_is_connected(hdlc_context_t *ctx);
 
 /**
  * @brief Input a received byte into the HDLC Stream Parser.

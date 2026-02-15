@@ -18,7 +18,11 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
 *   **Protocol Infrastructure**:
     *   Built-in support for I-Frames, S-Frames, and U-Frames with bit-field accessors.
     *   Control Field helper functions for constructing each frame type.
-    *   Frame Type dispatcher (ready for ABM logic).
+    *   **Asynchronous Balanced Mode (ABM)**:
+        *   Full Connection Management (`SABM`, `UA`, `DISC`, `DM`).
+        *   Explicit rejection of unsupported modes (`SNRM`, `SARM`) with `DM`.
+        *   Connection State Machine (`DISCONNECTED` ↔ `CONNECTING` ↔ `CONNECTED` ↔ `DISCONNECTING`).
+    *   Frame Type dispatcher.
 *   **Developer Experience**:
     *   Modern **CMake** build system (C99).
     *   **Unit tests** covering edge cases (byte stuffing, CRC errors, overflow, fragmentation, control field loopback, streaming API).
@@ -128,13 +132,33 @@ To use this library in your own project:
         process_frame(frame->address, frame->control.value,
                       frame->information, frame->information_len);
     }
+
+    // On State Change: Called when the connection state changes
+    void my_on_state(atc_hdlc_protocol_state_t state, void *user_data) {
+        switch(state) {
+            case ATC_HDLC_STATE_CONNECTED:
+                printf("Connected!\n");
+                break;
+            case ATC_HDLC_STATE_DISCONNECTED:
+                printf("Disconnected!\n");
+                break;
+             // ...
+        }
+    }
     ```
 
 4.  **Initialize the context**:
     ```c
+    // Initialize the context
     atc_hdlc_context_t ctx;
     uint8_t buffer[256];
-    atc_hdlc_stream_init(&ctx, buffer, sizeof(buffer), my_output_byte, my_on_frame, NULL);
+    atc_hdlc_stream_init(&ctx, buffer, sizeof(buffer), my_output_byte, my_on_frame, my_on_state, NULL);
+    
+    // Configure Addresses (My Address, Peer Address)
+    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+
+    // Initiate Connection
+    atc_hdlc_connect(&ctx);
     ```
 
 5.  **Feed received bytes into the parser**:
@@ -240,6 +264,15 @@ Configuration is done in `inc/hdlc_config.h`:
 | `atc_hdlc_stream_output_packet_information_bytes()` | Send a data array (with stuffing) |
 | `atc_hdlc_stream_output_packet_end()` | Finalize streaming TX (CRC + Flag) |
 
+### Connection Management
+
+| Function | Description |
+|---|---|
+| `atc_hdlc_configure_addresses()` | Set source and destination addresses |
+| `atc_hdlc_connect()` | Initiate connection (sends SABM) |
+| `atc_hdlc_disconnect()` | Terminate connection (sends DISC) |
+| `atc_hdlc_is_connected()` | Check if currently connected |
+
 ### Stateless Mode
 
 | Function | Description |
@@ -260,4 +293,5 @@ Configuration is done in `inc/hdlc_config.h`:
 ```c
 typedef void (*atc_hdlc_output_byte_cb_t)(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data);
 typedef void (*atc_hdlc_on_frame_cb_t)(const atc_hdlc_frame_t *frame, void *user_data);
+typedef void (*atc_hdlc_on_state_change_cb_t)(atc_hdlc_protocol_state_t state, void *user_data);
 ```

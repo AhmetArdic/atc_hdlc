@@ -83,7 +83,7 @@ void test_basic_frame() {
   printf("TEST: Basic Frame (I-Frame)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
+  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   reset_test();
 
   atc_hdlc_u8 payload[] = "TEST";
@@ -111,7 +111,7 @@ void test_empty_information() {
   printf("TEST: Empty Information (Header only)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
+  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   reset_test();
 
   atc_hdlc_frame_t frame_out = {.address = 0xAA,
@@ -139,7 +139,7 @@ void test_byte_stuffing_heavy() {
   printf("TEST: Heavy Byte Stuffing\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
+  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   reset_test();
 
   // Data with many flags and escapes
@@ -178,7 +178,7 @@ void test_garbage_noise() {
   printf("TEST: Garbage / Noise Rejection\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
+  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   reset_test();
 
   // 1. Generate a valid frame
@@ -217,7 +217,7 @@ void test_consecutive_flags() {
   printf("TEST: Consecutive Flags (Inter-frame fill)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
+  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   reset_test();
 
   atc_hdlc_frame_t frame_out = {
@@ -255,7 +255,7 @@ void test_min_size_rejection() {
   printf("TEST: Minimum Size Rejection (<4 bytes)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
+  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   reset_test();
 
   // Construct a Tiny Frame: 7E 01 02 7E (Addr, Ctrl, No CRC) -> Size 2
@@ -285,7 +285,7 @@ void test_aborted_frame() {
   printf("TEST: Aborted / Interrupted Frame\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
+  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   reset_test();
 
   // Start a frame, write some data, then hit Flag immediately (Frame
@@ -325,7 +325,7 @@ void test_crc_error_injection() {
   printf("TEST: CRC Error Injection (Single Bit)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
+  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   reset_test();
 
   atc_hdlc_u8 payload[] = "DATA";
@@ -352,7 +352,7 @@ void test_input_buffer_overflow() {
   printf("TEST: Input Buffer Overflow Safety\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
+  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   reset_test();
 
   printf("Feeding Start Flag...\n");
@@ -383,7 +383,7 @@ void test_streaming_large_payload(int payload_size) {
   }
 
   atc_hdlc_context_t ctx;
-  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
+  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   reset_test();
 
   printf("Feeding Start...\n");
@@ -433,7 +433,7 @@ void test_streaming_api() {
   printf("TEST: Streaming API (Zero-Copy)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
+  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   reset_test();
 
   atc_hdlc_stream_output_packet_start(&ctx, 0xAA, 0xBB);      // Addr, Ctrl
@@ -495,7 +495,7 @@ void test_fragmented_delivery() {
   printf("TEST: Fragmented / Slow Delivery\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
+  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   reset_test();
 
   atc_hdlc_u8 payload[] = "0123456789";
@@ -550,7 +550,7 @@ void test_control_field_i() {
   printf("========================================\n");
 
   atc_hdlc_context_t ctx;
-  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
+  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   reset_test();
 
   // N(S)=5, N(R)=3, P/F=1
@@ -586,7 +586,7 @@ void test_control_field_s() {
   printf("========================================\n");
 
   atc_hdlc_context_t ctx;
-  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
+  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   reset_test();
 
   // RR (S=00), N(R)=7, P/F=0
@@ -621,7 +621,7 @@ void test_control_field_u() {
   printf("========================================\n");
 
   atc_hdlc_context_t ctx;
-  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
+  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   reset_test();
 
   // SABM: 0x2F (base) + P=1 => 0x3F
@@ -658,7 +658,7 @@ void test_input_bytes() {
   printf("TEST: Bulk Input (input_bytes)\n");
   printf("========================================\n");
   atc_hdlc_context_t ctx;
-  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL);
+  atc_hdlc_stream_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   reset_test();
 
   // Build a valid frame

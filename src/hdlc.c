@@ -28,7 +28,9 @@
  */
 void hdlc_stream_init(hdlc_context_t *ctx, hdlc_u8 *buffer, hdlc_u32 buffer_len,
                       hdlc_output_byte_cb_t output_cb,
-                      hdlc_on_frame_cb_t on_frame_cb, void *user_data) {
+                      hdlc_on_frame_cb_t on_frame_cb,
+                      hdlc_on_state_change_cb_t on_state_change_cb,
+                      void *user_data) {
   if (ctx == NULL || buffer == NULL || buffer_len < HDLC_MIN_FRAME_LEN) {
     return;
   }
@@ -43,11 +45,33 @@ void hdlc_stream_init(hdlc_context_t *ctx, hdlc_u8 *buffer, hdlc_u32 buffer_len,
   // Bind callbacks
   ctx->output_byte_cb = output_cb;
   ctx->on_frame_cb = on_frame_cb;
+  ctx->on_state_change_cb = on_state_change_cb;
   ctx->user_data = user_data;
 
   // Initialize State
   ctx->input_state = HDLC_INPUT_STATE_HUNT;
+  ctx->current_state = HDLC_STATE_DISCONNECTED;
 }
+
+/*
+ * --------------------------------------------------------------------------
+ * PRIVATE HELPER DECLARATIONS
+ * --------------------------------------------------------------------------
+ */
+
+// U-Frame Transmission Helpers
+static inline void hdlc_send_u_frame(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf);
+static inline void hdlc_send_ua(hdlc_context_t *ctx, hdlc_u8 pf);
+static inline void hdlc_send_dm(hdlc_context_t *ctx, hdlc_u8 pf);
+
+// U-Frame Processing Helpers
+static void hdlc_process_sabm(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+static void hdlc_process_snrm(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+static void hdlc_process_sarm(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+static void hdlc_process_disc(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+static void hdlc_process_ua(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+static void hdlc_process_dm(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+static void hdlc_process_frmr(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 
 /*
  * --------------------------------------------------------------------------
@@ -95,11 +119,24 @@ static void output_byte_to_buffer(hdlc_encode_ctx_t *enc_ctx, hdlc_u8 byte,
   }
 }
 
+/**
+ * @brief Helper to write a byte using the abstract put_fn.
+ * @param ctx       Encoding Context.
+ * @param put_fn    Function pointer to write byte.
+ * @param byte      Byte to write.
+ * @param flush     Flush flag.
+ */
 static inline void pack_byte(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn,
                                hdlc_u8 byte, hdlc_bool flush) {
   put_fn(ctx, byte, flush);
 }
 
+/**
+ * @brief Write a byte with HDLC escaping if needed.
+ * @param ctx       Encoding Context.
+ * @param put_fn    Function pointer to write byte.
+ * @param byte      Byte to write.
+ */
 static void pack_escaped(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn,
                            hdlc_u8 byte) {
   if (byte == HDLC_FLAG || byte == HDLC_ESCAPE) {
@@ -110,6 +147,13 @@ static void pack_escaped(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn,
   }
 }
 
+/**
+ * @brief Update CRC and write byte (escaped) to output.
+ * @param ctx       Encoding Context.
+ * @param put_fn    Function pointer to write byte.
+ * @param byte      Byte to write.
+ * @param crc       Pointer to CRC to update.
+ */
 static void pack_escaped_crc_update(hdlc_encode_ctx_t *ctx,
                                       hdlc_put_byte_fn put_fn, hdlc_u8 byte,
                                       hdlc_u16 *crc) {
@@ -117,6 +161,13 @@ static void pack_escaped_crc_update(hdlc_encode_ctx_t *ctx,
   pack_escaped(ctx, put_fn, byte);
 }
 
+/**
+ * @brief Core logic for serializing an HDLC frame.
+ * @param frame     Frame to serialize.
+ * @param put_fn    Function to write bytes (to buffer or stream).
+ * @param enc_ctx   Encoding Context.
+ * @return true on success, false on error (e.g. buffer overflow).
+ */
 static hdlc_bool frame_pack_core(const hdlc_frame_t *frame,
                                   hdlc_put_byte_fn put_fn,
                                   hdlc_encode_ctx_t *enc_ctx) {
@@ -368,17 +419,214 @@ static void stream_handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame
 }
 
 /**
+ * @brief Helper to update the HDLC State and trigger the callback.
+ * @param ctx       HDLC Context.
+ * @param new_state New State to transition to.
+ */
+static void hdlc_set_state(hdlc_context_t *ctx, hdlc_protocol_state_t new_state) {
+  if (ctx->current_state != new_state) {
+    ctx->current_state = new_state;
+    if (ctx->on_state_change_cb != NULL) {
+      ctx->on_state_change_cb(new_state, ctx->user_data);
+    }
+  }
+}
+
+/*
+ * --------------------------------------------------------------------------
+ * U-FRAME HELPER IMPLEMENTATIONS
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Helper to send a Generic U-Frame.
+ * @param ctx       HDLC Context.
+ * @param address   Destination Address.
+ * @param m_lo      Lower 2 bits of Modifier.
+ * @param m_hi      Upper 3 bits of Modifier.
+ * @param pf        Poll/Final bit.
+ */
+static inline void hdlc_send_u_frame(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf) {
+    hdlc_control_t ctrl = hdlc_create_u_ctrl(m_lo, m_hi, pf);
+    hdlc_stream_output_packet_start(ctx, address, ctrl.value);
+    hdlc_stream_output_packet_end(ctx);
+}
+
+/**
+ * @brief Helper to send an Unnumbered Acknowledgment (UA).
+ * @param ctx   HDLC Context.
+ * @param pf    Final bit (matches Command's P bit).
+ */
+static inline void hdlc_send_ua(hdlc_context_t *ctx, hdlc_u8 pf) {
+    // UA is always a response, so it carries our address (in ABM context, or correct response logic)
+    // Actually, usually responses use the address of the command they are acknowledging?
+    // In ABM: "Command: dest addr. Response: dest addr." 
+    // Wait, earlier logic used `ctx->my_address`.
+    hdlc_send_u_frame(ctx, ctx->my_address, HDLC_U_MODIFIER_LO_UA, HDLC_U_MODIFIER_HI_UA, pf);
+}
+
+/**
+ * @brief Helper to send a Disconnected Mode (DM) response.
+ * @param ctx   HDLC Context.
+ * @param pf    Final bit (matches Command's P bit).
+ */
+static inline void hdlc_send_dm(hdlc_context_t *ctx, hdlc_u8 pf) {
+    // Address = My Address (Response from Me)
+    hdlc_send_u_frame(ctx, ctx->my_address, HDLC_U_MODIFIER_LO_DM, HDLC_U_MODIFIER_HI_DM, pf);
+}
+
+/**
+ * @brief Process Received SABM Command.
+ * @param ctx   HDLC Context.
+ * @param frame The received SABM frame.
+ */
+static void hdlc_process_sabm(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+    // Accept connection
+    // Reset variables (TODO: Phase 2 variables)
+    hdlc_set_state(ctx, HDLC_STATE_CONNECTED);
+
+    // Send UA (Response matches Command P bit with F bit)
+    hdlc_send_ua(ctx, frame->control.u_frame.pf);
+}
+
+/**
+ * @brief Process Received SNRM Command (Not Supported).
+ * @param ctx   HDLC Context.
+ * @param frame The received SNRM frame.
+ */
+static void hdlc_process_snrm(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+    // SNRM Not Supported -> Send DM (Disconnected Mode)
+    hdlc_send_dm(ctx, frame->control.u_frame.pf);
+}
+
+/**
+ * @brief Process Received SARM Command (Not Supported).
+ * @param ctx   HDLC Context.
+ * @param frame The received SARM frame.
+ */
+static void hdlc_process_sarm(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+    // SARM Not Supported -> Send DM (Disconnected Mode)
+    hdlc_send_dm(ctx, frame->control.u_frame.pf);
+}
+
+/**
+ * @brief Process Received DISC Command.
+ * @param ctx   HDLC Context.
+ * @param frame The received DISC frame.
+ */
+static void hdlc_process_disc(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+    hdlc_set_state(ctx, HDLC_STATE_DISCONNECTED);
+
+    // Send UA
+    hdlc_send_ua(ctx, frame->control.u_frame.pf);
+}
+
+/**
+ * @brief Process Received UA Response.
+ * @param ctx   HDLC Context.
+ * @param frame The received UA frame.
+ */
+static void hdlc_process_ua(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+    (void)frame; // PF bit interaction with timer recovery (TODO)
+    if (ctx->current_state == HDLC_STATE_CONNECTING) {
+        hdlc_set_state(ctx, HDLC_STATE_CONNECTED);
+    } else if (ctx->current_state == HDLC_STATE_DISCONNECTING) {
+        hdlc_set_state(ctx, HDLC_STATE_DISCONNECTED);
+    }
+}
+
+/**
+ * @brief Process Received DM Response.
+ * @param ctx   HDLC Context.
+ * @param frame The received DM frame.
+ */
+static void hdlc_process_dm(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+    (void)frame;
+    // Peer is disconnected. If we were trying to connect, we failed.
+    hdlc_set_state(ctx, HDLC_STATE_DISCONNECTED);
+}
+
+/**
+ * @brief Process Received FRMR Response.
+ * @param ctx   HDLC Context.
+ * @param frame The received FRMR frame.
+ */
+static void hdlc_process_frmr(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+   // Parsing FRMR payload for detailed error reporting
+   if (frame->information_len >= HDLC_FRMR_INFO_MIN_LEN) {
+       hdlc_frmr_data_t frmr_data;
+       memset(&frmr_data, 0, sizeof(frmr_data));
+       
+       // Byte 0: Rejected Control Field
+       frmr_data.rejected_control = frame->information[0];
+       
+       // Byte 1: 0 V(S) C/R V(R)
+       hdlc_u8 byte1 = frame->information[1];
+       frmr_data.v_s = (byte1 >> HDLC_FRMR_VS_SHIFT) & HDLC_FRMR_VS_MASK;
+       frmr_data.cr  = (byte1 & HDLC_FRMR_CR_BIT) ? true : false;
+       frmr_data.v_r = (byte1 >> HDLC_FRMR_VR_SHIFT) & HDLC_FRMR_VR_MASK;
+
+       // Byte 2: W X Y Z V 0 0 0
+       hdlc_u8 byte2 = frame->information[2];
+       frmr_data.errors.w = (byte2 & HDLC_FRMR_W_BIT);
+       frmr_data.errors.x = (byte2 & HDLC_FRMR_X_BIT);
+       frmr_data.errors.y = (byte2 & HDLC_FRMR_Y_BIT);
+       frmr_data.errors.z = (byte2 & HDLC_FRMR_Z_BIT);
+       frmr_data.errors.v = (byte2 & HDLC_FRMR_V_BIT);
+       
+       (void)frmr_data; // Suppress unused warning
+   }
+
+   // Treat as fatal error -> Disconnect.
+   hdlc_set_state(ctx, HDLC_STATE_DISCONNECTED);
+}
+
+/**
  * @brief Internal handler for Unnumbered (U) Frames.
  * @param ctx   HDLC Context.
  * @param frame Received frame.
  */
 static void stream_handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
-  // TODO: Implement U-Frame Logic
-  // - SABM: Send UA, Reset State
-  // - DISC: Send UA, Go to Disconnected
-  // - UA: Connection Established
-  (void)ctx;
-  (void)frame;
+  hdlc_u8 m_lo = frame->control.u_frame.m_lo;
+  hdlc_u8 m_hi = frame->control.u_frame.m_hi;
+
+  // 1. Handle COMMANDS (SABM, SNRM, SARM, DISC) -> Addressed to ME
+  if (frame->address == ctx->my_address) {
+    
+    // SABM (Set Asynchronous Balanced Mode)
+    if (m_lo == HDLC_U_MODIFIER_LO_SABM && m_hi == HDLC_U_MODIFIER_HI_SABM) {
+        hdlc_process_sabm(ctx, frame);
+    }
+    // SNRM (Set Normal Response Mode)
+    else if (m_lo == HDLC_U_MODIFIER_LO_SNRM && m_hi == HDLC_U_MODIFIER_HI_SNRM) {
+        hdlc_process_snrm(ctx, frame);
+    }
+    // SARM (Set Asynchronous Response Mode)
+    else if (m_lo == HDLC_U_MODIFIER_LO_SARM && m_hi == HDLC_U_MODIFIER_HI_SARM) {
+        hdlc_process_sarm(ctx, frame);
+    }
+    // DISC (Disconnect)
+    else if (m_lo == HDLC_U_MODIFIER_LO_DISC && m_hi == HDLC_U_MODIFIER_HI_DISC) {
+        hdlc_process_disc(ctx, frame);
+    }
+  }
+
+  // 2. Handle RESPONSES (UA, DM, FRMR) -> Addressed to PEER (but received by ME from Peer)
+  else if (frame->address == ctx->peer_address) {
+    
+    // UA (Unnumbered Acknowledgment)
+    if (m_lo == HDLC_U_MODIFIER_LO_UA && m_hi == HDLC_U_MODIFIER_HI_UA) {
+        hdlc_process_ua(ctx, frame);
+    }
+    // DM (Disconnected Mode)
+    else if (m_lo == HDLC_U_MODIFIER_LO_DM && m_hi == HDLC_U_MODIFIER_HI_DM) {
+        hdlc_process_dm(ctx, frame);
+    }
+    // FRMR (Frame Reject)
+    else if (m_lo == HDLC_U_MODIFIER_LO_FRMR && m_hi == HDLC_U_MODIFIER_HI_FRMR) {
+        hdlc_process_frmr(ctx, frame);
+    }
+  }
 }
 
 /**
@@ -694,4 +942,46 @@ hdlc_control_t hdlc_create_u_ctrl(hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf) {
   ctrl.u_frame.pf = pf;
   ctrl.u_frame.m_hi = m_hi;
   return ctrl;
+}
+
+/*
+ * --------------------------------------------------------------------------
+ * CONNECTION MANAGEMENT
+ * --------------------------------------------------------------------------
+ */
+
+
+void hdlc_configure_addresses(hdlc_context_t *ctx, hdlc_u8 my_addr, hdlc_u8 peer_addr) {
+  if (ctx) {
+    ctx->my_address = my_addr;
+    ctx->peer_address = peer_addr;
+  }
+}
+
+bool hdlc_connect(hdlc_context_t *ctx) {
+  if (ctx == NULL) return false;
+
+  // Send SABM
+  hdlc_control_t ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1); // P=1
+  hdlc_stream_output_packet_start(ctx, ctx->peer_address, ctrl.value);
+  hdlc_stream_output_packet_end(ctx);
+
+  hdlc_set_state(ctx, HDLC_STATE_CONNECTING);
+  return true;
+}
+
+bool hdlc_disconnect(hdlc_context_t *ctx) {
+  if (ctx == NULL) return false;
+
+  // Send DISC
+  hdlc_control_t ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_DISC, HDLC_U_MODIFIER_HI_DISC, 1); // P=1
+  hdlc_stream_output_packet_start(ctx, ctx->peer_address, ctrl.value);
+  hdlc_stream_output_packet_end(ctx);
+
+  hdlc_set_state(ctx, HDLC_STATE_DISCONNECTING);
+  return true;
+}
+
+bool hdlc_is_connected(hdlc_context_t *ctx) {
+  return (ctx != NULL && ctx->current_state == HDLC_STATE_CONNECTED);
 }

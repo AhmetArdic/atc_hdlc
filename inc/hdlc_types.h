@@ -149,6 +149,42 @@ typedef struct {
     hdlc_frame_type_t type;         /**< Resolved Frame Type (I/S/U). */
 } hdlc_frame_t;
 
+/**
+ * @brief Frame Reject (FRMR) Information Fields.
+ * Standard format for the information field of an FRMR response.
+ */
+typedef struct {
+    hdlc_u16 rejected_control; /**< Copy of the rejected control field. */
+    hdlc_u8 v_s;               /**< Current Send Sequence Number V(S). */
+    hdlc_u8 v_r;               /**< Current Receive Sequence Number V(R). */
+    hdlc_bool cr;              /**< Command/Response flag. */
+    struct {
+        hdlc_bool w; /**< Control field undefined/unimplemented. */
+        hdlc_bool x; /**< Info field not allowed with this frame. */
+        hdlc_bool y; /**< Info field too long. */
+        hdlc_bool z; /**< Invalid N(R). */
+        hdlc_bool v; /**< Invalid N(S). */
+    } errors;
+} hdlc_frmr_data_t;
+
+/*
+ * --------------------------------------------------------------------------
+ * PROTOCOL STATES
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief HDLC Protocol States.
+ *
+ * Defines the connection state of the HDLC station.
+ */
+typedef enum {
+    HDLC_STATE_DISCONNECTED, /**< No logical connection. Messages ignored except SABM. */
+    HDLC_STATE_CONNECTING,   /**< SABM sent, waiting for UA. */
+    HDLC_STATE_CONNECTED,    /**< Logical connection established. Ready for I-frames. */
+    HDLC_STATE_DISCONNECTING /**< DISC sent, waiting for UA. */
+} hdlc_protocol_state_t;
+
 /*
  * --------------------------------------------------------------------------
  * CALLBACK DEFINITIONS
@@ -176,6 +212,17 @@ typedef void (*hdlc_output_byte_cb_t)(hdlc_u8 byte, hdlc_bool flush, void *user_
  */
 typedef void (*hdlc_on_frame_cb_t)(const hdlc_frame_t* frame, void *user_data);
 
+/**
+ * @brief Connection State Change Callback.
+ *
+ * Notifies the application when the logical connection state changes
+ * (e.g., Connected, Disconnected).
+ *
+ * @param state     The new state of the connection.
+ * @param user_data Pointer to user-defined context data.
+ */
+typedef void (*hdlc_on_state_change_cb_t)(hdlc_protocol_state_t state, void *user_data);
+
 /*
  * --------------------------------------------------------------------------
  * CONTEXT STRUCTURE
@@ -190,9 +237,15 @@ typedef void (*hdlc_on_frame_cb_t)(const hdlc_frame_t* frame, void *user_data);
  */
 typedef struct {
     /* Configuration & Callbacks */
-    hdlc_output_byte_cb_t output_byte_cb;  /**< Hardware TX callback. */
-    hdlc_on_frame_cb_t on_frame_cb; /**< Application RX callback. */
-    void *user_data;          /**< User context passed to callbacks. */
+    hdlc_output_byte_cb_t output_byte_cb;   /**< Hardware TX callback. */
+    hdlc_on_frame_cb_t on_frame_cb;         /**< Application RX callback. */
+    hdlc_on_state_change_cb_t on_state_change_cb; /**< State change callback. */
+    void *user_data;                        /**< User context passed to callbacks. */
+
+    /* Protocol Logic State */
+    volatile hdlc_protocol_state_t current_state; /**< Current connection state. */
+    hdlc_u8 my_address;                           /**< Local station address. */
+    hdlc_u8 peer_address;                         /**< Remote station address. */
 
     /* Receiver Engine State */
     hdlc_u8 input_state;        /**< Current internal parser state. */

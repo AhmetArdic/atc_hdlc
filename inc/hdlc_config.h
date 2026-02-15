@@ -55,6 +55,7 @@ extern "C" {
 
 /* Functions */
 /* Functions */
+/* Functions */
 #define hdlc_stream_init                                                ATC_HDLC_NAME(hdlc_stream_init)
 #define hdlc_stream_input_byte                                          ATC_HDLC_NAME(hdlc_stream_input_byte)
 #define hdlc_stream_input_bytes                                         ATC_HDLC_NAME(hdlc_stream_input_bytes)
@@ -68,6 +69,10 @@ extern "C" {
 #define hdlc_stream_output_packet_information_byte                      ATC_HDLC_NAME(hdlc_stream_output_packet_information_byte)
 #define hdlc_stream_output_packet_information_bytes                     ATC_HDLC_NAME(hdlc_stream_output_packet_information_bytes)
 #define hdlc_stream_output_packet_end                                   ATC_HDLC_NAME(hdlc_stream_output_packet_end)
+#define hdlc_configure_addresses                                        ATC_HDLC_NAME(hdlc_configure_addresses)
+#define hdlc_connect                                                    ATC_HDLC_NAME(hdlc_connect)
+#define hdlc_disconnect                                                 ATC_HDLC_NAME(hdlc_disconnect)
+#define hdlc_is_connected                                               ATC_HDLC_NAME(hdlc_is_connected)
 
 /* Types */
 #define hdlc_u8                                                         ATC_HDLC_NAME(hdlc_u8)
@@ -75,10 +80,12 @@ extern "C" {
 #define hdlc_u32                                                        ATC_HDLC_NAME(hdlc_u32)
 #define hdlc_bool                                                       ATC_HDLC_NAME(hdlc_bool)
 #define hdlc_frame_type_t                                               ATC_HDLC_NAME(hdlc_frame_type_t)
+#define hdlc_protocol_state_t                                           ATC_HDLC_NAME(hdlc_protocol_state_t)
 #define hdlc_control_t                                                  ATC_HDLC_NAME(hdlc_control_t)
 #define hdlc_frame_t                                                    ATC_HDLC_NAME(hdlc_frame_t)
 #define hdlc_output_byte_cb_t                                           ATC_HDLC_NAME(hdlc_output_byte_cb_t)
 #define hdlc_on_frame_cb_t                                              ATC_HDLC_NAME(hdlc_on_frame_cb_t)
+#define hdlc_on_state_change_cb_t                                       ATC_HDLC_NAME(hdlc_on_state_change_cb_t)
 #define hdlc_context_t                                                  ATC_HDLC_NAME(hdlc_context_t)
 
 #ifdef __cplusplus
