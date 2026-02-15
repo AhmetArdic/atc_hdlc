@@ -22,6 +22,10 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
         *   Full Connection Management (`SABM`, `UA`, `DISC`, `DM`).
         *   Explicit rejection of unsupported modes (`SNRM`, `SARM`) with `DM`.
         *   Connection State Machine (`DISCONNECTED` ↔ `CONNECTING` ↔ `CONNECTED` ↔ `DISCONNECTING`).
+    *   **Multi-Slave / Broadcast Support**:
+        *   Broadcast Address (`0xFF`) support for UI frames.
+        *   Slaves silently ignore broadcast connection management commands (`SABM`, `DISC`) to prevent bus contention.
+        *   Broadcast UI frames are accepted without generating a response.
     *   Frame Type dispatcher.
 *   **Developer Experience**:
     *   Modern **CMake** build system (C99).
@@ -43,7 +47,10 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
 │   ├── hdlc_crc.h      # Internal CRC API
 │   └── hdlc_private.h  # Internal RX state machine definitions
 ├── test/
-│   └── hdlc_test.c     # Unit test suite
+│   ├── test_hdlc.c                  # Core protocol unit tests
+│   ├── test_connection_management.c # State machine & connection tests
+│   ├── test_common.c                # Shared test utilities (colors, assertions)
+│   └── test_common.h                # Shared test header
 ├── CMakeLists.txt      # Root CMake configuration
 └── README.md           # This file
 ```
@@ -247,7 +254,6 @@ Configuration is done in `inc/hdlc_config.h`:
 | Parameter | Default | Description |
 |---|---|---|
 | `ATC_HDLC_PREFIX` | `atc_` | Symbol prefix for all public API functions and types |
-| `HDLC_MAX_FRAME_LEN` | `256` | Maximum raw frame buffer size in bytes (including overhead) |
 
 ## 📖 API Reference
 
