@@ -1,33 +1,15 @@
 #include "hdlc.h"
+#include "test_common.h"
 #include <ctype.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-// --- ANSI Colors for Verbose Output ---
-#define COL_RESET "\033[0m"
-#define COL_GREEN "\033[32m"
-#define COL_RED "\033[31m"
-#define COL_CYAN "\033[36m"
-#define COL_YELLOW "\033[33m"
-
 // --- Mocking & Utilities ---
 static atc_hdlc_u8 output_buffer[16384]; // Increased for large payload tests
 static atc_hdlc_u8 input_buffer[16384];  // Matched to output buffer
 static int output_len = 0;
-
-void print_hexdump(const char *label, const atc_hdlc_u8 *data, int len) {
-  printf("%s%s (%d bytes):%s ", COL_CYAN, label, len, COL_RESET);
-  for (int i = 0; i < len; i++) {
-    printf("%02X ", data[i]);
-  }
-  printf(" | ");
-  for (int i = 0; i < len; i++) {
-    printf("%c", isprint(data[i]) ? data[i] : '.');
-  }
-  printf("\n");
-}
 
 void mock_output_byte_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data) {
   (void)user_data;
@@ -65,17 +47,6 @@ void reset_test() {
   memset(&last_received_frame, 0, sizeof(atc_hdlc_frame_t));
 }
 
-// --- Test Helpers ---
-
-void assert_pass(const char *test_name) {
-  printf("%s[PASS] %s%s\n\n", COL_GREEN, test_name, COL_RESET);
-}
-
-void assert_fail(const char *test_name, const char *reason) {
-  printf("%s[FAIL] %s: %s%s\n", COL_RED, test_name, reason, COL_RESET);
-  exit(1);
-}
-
 // --- Tests ---
 
 void test_basic_frame() {
@@ -100,9 +71,9 @@ void test_basic_frame() {
 
   if (on_frame_call_count == 1 &&
       memcmp(last_received_frame.information, "TEST", 4) == 0) {
-    assert_pass("Basic Frame");
+    test_pass("Basic Frame");
   } else {
-    assert_fail("Basic Frame", "Frame not received correctly");
+    test_fail("Basic Frame", "Frame not received correctly");
   }
 }
 
@@ -127,9 +98,9 @@ void test_empty_information() {
 
   if (on_frame_call_count == 1 && last_received_frame.information_len == 0 &&
       last_received_frame.address == 0xAA) {
-    assert_pass("Empty Information");
+    test_pass("Empty Information");
   } else {
-    assert_fail("Empty Information",
+    test_fail("Empty Information",
                 "Failed to receive empty information frame");
   }
 }
@@ -167,9 +138,9 @@ void test_byte_stuffing_heavy() {
 
   if (on_frame_call_count == 1 && memcmp(last_received_frame.information, tricky_data,
                                        sizeof(tricky_data)) == 0) {
-    assert_pass("Heavy Stuffing");
+    test_pass("Heavy Stuffing");
   } else {
-    assert_fail("Heavy Stuffing", "Information mismatch after unstuffing");
+    test_fail("Heavy Stuffing", "Information mismatch after unstuffing");
   }
 }
 
@@ -205,9 +176,9 @@ void test_garbage_noise() {
 
   // We expect exactly 1 frame
   if (on_frame_call_count == 1) {
-    assert_pass("Garbage Noise");
+    test_pass("Garbage Noise");
   } else {
-    assert_fail("Garbage Noise",
+    test_fail("Garbage Noise",
                 "Noise caused valid frame drop or phantom frame");
   }
 }
@@ -244,9 +215,9 @@ void test_consecutive_flags() {
   atc_hdlc_input_byte(&ctx, 0x7E);
 
   if (on_frame_call_count == 1) {
-    assert_pass("Consecutive Flags");
+    test_pass("Consecutive Flags");
   } else {
-    assert_fail("Consecutive Flags", "Multiple flags caused parsing error");
+    test_fail("Consecutive Flags", "Multiple flags caused parsing error");
   }
 }
 
@@ -274,9 +245,9 @@ void test_min_size_rejection() {
     atc_hdlc_input_byte(&ctx, tiny2[i]);
 
   if (on_frame_call_count == 0) {
-    assert_pass("Min Size Rejection");
+    test_pass("Min Size Rejection");
   } else {
-    assert_fail("Min Size Rejection", "Short frames were accepted!");
+    test_fail("Min Size Rejection", "Short frames were accepted!");
   }
 }
 
@@ -312,9 +283,9 @@ void test_aborted_frame() {
     atc_hdlc_input_byte(&ctx, output_buffer[i]);
 
   if (on_frame_call_count == 1 && last_received_frame.address == 0x01) {
-    assert_pass("Aborted Frame");
+    test_pass("Aborted Frame");
   } else {
-    assert_fail("Aborted Frame", "Recovery from aborted frame failed");
+    test_fail("Aborted Frame", "Recovery from aborted frame failed");
   }
 }
 
@@ -341,9 +312,9 @@ void test_crc_error_injection() {
     atc_hdlc_input_byte(&ctx, output_buffer[i]);
 
   if (on_frame_call_count == 0 && ctx.stats_crc_errors == 1) {
-    assert_pass("CRC Error Injection");
+    test_pass("CRC Error Injection");
   } else {
-    assert_fail("CRC Error Injection", "Bad CRC was accepted or not counted");
+    test_fail("CRC Error Injection", "Bad CRC was accepted or not counted");
   }
 }
 
@@ -367,9 +338,9 @@ void test_input_buffer_overflow() {
   atc_hdlc_input_byte(&ctx, 0x7E); // End Flag
 
   if (on_frame_call_count == 0) {
-    assert_pass("Input Buffer Overflow");
+    test_pass("Input Buffer Overflow");
   } else {
-    assert_fail("Input Buffer Overflow", "Overflow frame triggered callback");
+    test_fail("Input Buffer Overflow", "Overflow frame triggered callback");
   }
 }
 
@@ -417,14 +388,14 @@ void test_streaming_large_payload(int payload_size) {
     }
 
     if (match) {
-        assert_pass("Streaming Large Payload");
+        test_pass("Streaming Large Payload");
     } else {
-        assert_fail("Streaming Large Payload", "Payload content mismatch");
+        test_fail("Streaming Large Payload", "Payload content mismatch");
     }
 
   } else {
     printf("Callback count: %d, InfoLen: %d (Expected %d)\n", on_frame_call_count, last_received_frame.information_len, payload_size);
-    assert_fail("Streaming Large Payload", "Large payload error");
+    test_fail("Streaming Large Payload", "Large payload error");
   }
 }
 
@@ -450,12 +421,12 @@ void test_streaming_api() {
     // Information should be 7E 7D
     if (last_received_frame.information[0] == 0x7E &&
         last_received_frame.information[1] == 0x7D) {
-      assert_pass("Streaming API");
+      test_pass("Streaming API");
     } else {
-      assert_fail("Streaming API", "Information content mismatch");
+      test_fail("Streaming API", "Information content mismatch");
     }
   } else {
-    assert_fail("Streaming API", "Frame not received");
+    test_fail("Streaming API", "Frame not received");
   }
 
   reset_test();
@@ -481,12 +452,12 @@ void test_streaming_api() {
         last_received_frame.information[2] == 0x7D &&
         last_received_frame.information[3] == 0x7F &&
         last_received_frame.information[4] == 0x7A) {
-      assert_pass("Streaming API");
+      test_pass("Streaming API");
     } else {
-      assert_fail("Streaming API", "Information content mismatch");
+      test_fail("Streaming API", "Information content mismatch");
     }
   } else {
-    assert_fail("Streaming API", "Frame not received");
+    test_fail("Streaming API", "Frame not received");
   }
 }
 
@@ -511,7 +482,7 @@ void test_fragmented_delivery() {
   }
 
   if (on_frame_call_count != 1)
-    assert_fail("Fragmented 1-by-1", "Failed simple loop");
+    test_fail("Fragmented 1-by-1", "Failed simple loop");
 
   // Reset and try CHUNKS
   reset_test();
@@ -536,9 +507,9 @@ void test_fragmented_delivery() {
     atc_hdlc_input_byte(&ctx, output_buffer[i]);
 
   if (on_frame_call_count == 1) {
-    assert_pass("Fragmented Delivery");
+    test_pass("Fragmented Delivery");
   } else {
-    assert_fail("Fragmented Delivery", "Chunked delivery failed");
+    test_fail("Fragmented Delivery", "Chunked delivery failed");
   }
 }
 
@@ -571,12 +542,12 @@ void test_control_field_i() {
            rc.i_frame.nr, rc.i_frame.pf);
 
     if (rc.i_frame.ns == 5 && rc.i_frame.nr == 3 && rc.i_frame.pf == 1) {
-      assert_pass("I-Frame Loopback");
+      test_pass("I-Frame Loopback");
     } else {
-      assert_fail("I-Frame", "Field content mismatch");
+      test_fail("I-Frame", "Field content mismatch");
     }
   } else {
-    assert_fail("I-Frame", "Frame not received or wrong type");
+    test_fail("I-Frame", "Frame not received or wrong type");
   }
 }
 
@@ -606,12 +577,12 @@ void test_control_field_s() {
            rc.s_frame.nr, rc.s_frame.pf);
 
     if (rc.s_frame.s == 0 && rc.s_frame.nr == 7) {
-      assert_pass("S-Frame Loopback");
+      test_pass("S-Frame Loopback");
     } else {
-      assert_fail("S-Frame", "Field content mismatch");
+      test_fail("S-Frame", "Field content mismatch");
     }
   } else {
-    assert_fail("S-Frame", "Frame not received or wrong type");
+    test_fail("S-Frame", "Frame not received or wrong type");
   }
 }
 
@@ -644,12 +615,12 @@ void test_control_field_u() {
            rc.u_frame.m_hi, rc.u_frame.pf);
 
     if (rc.value == 0x3F) {
-      assert_pass("U-Frame Loopback");
+      test_pass("U-Frame Loopback");
     } else {
-      assert_fail("U-Frame", "Field content mismatch");
+      test_fail("U-Frame", "Field content mismatch");
     }
   } else {
-    assert_fail("U-Frame", "Frame not received or wrong type");
+    test_fail("U-Frame", "Frame not received or wrong type");
   }
 }
 
@@ -674,9 +645,9 @@ void test_input_bytes() {
 
   if (on_frame_call_count == 1 && last_received_frame.information_len == 4 &&
       memcmp(last_received_frame.information, "BULK", 4) == 0) {
-    assert_pass("Bulk Input (input_bytes)");
+    test_pass("Bulk Input (input_bytes)");
   } else {
-    assert_fail("Bulk Input (input_bytes)", "Frame not received correctly");
+    test_fail("Bulk Input (input_bytes)", "Frame not received correctly");
   }
 }
 
@@ -700,9 +671,9 @@ void test_frame_pack_success() {
   }
 
   if (success && len == 10 && buffer[0] == 0x7E && buffer[9] == 0x7E) {
-    assert_pass("Pack Frame - Success Case");
+    test_pass("Pack Frame - Success Case");
   } else {
-    assert_fail("Pack Frame - Success Case",
+    test_fail("Pack Frame - Success Case",
                 "Encoding failed or content mismatch");
   }
 }
@@ -727,9 +698,9 @@ void test_frame_pack_overflow() {
   }
 
   if (!success && len == 0) {
-    assert_pass("Pack Frame - Overflow Case");
+    test_pass("Pack Frame - Overflow Case");
   } else {
-    assert_fail("Pack Frame - Overflow Case", "Should fail on overflow");
+    test_fail("Pack Frame - Overflow Case", "Should fail on overflow");
   }
 }
 
@@ -755,9 +726,9 @@ void test_frame_pack_stuffing() {
   // Length > 6 checks basic stuffing occurred.
   if (success && len > 6 && buffer[1] == 0x7D && buffer[2] == 0x5E &&
       buffer[3] == 0x7D && buffer[4] == 0x5D) {
-    assert_pass("Pack Frame - Stuffing");
+    test_pass("Pack Frame - Stuffing");
   } else {
-    assert_fail("Pack Frame - Stuffing", "Stuffing logic failed");
+    test_fail("Pack Frame - Stuffing", "Stuffing logic failed");
   }
 }
 
@@ -777,7 +748,7 @@ void test_frame_unpack_roundtrip() {
 
   bool ok = atc_hdlc_frame_pack(&frame_in, raw_buffer, sizeof(raw_buffer), &raw_len);
   if (!ok) {
-    assert_fail("Unpack Round Trip", "Packing failed");
+    test_fail("Unpack Round Trip", "Packing failed");
   }
   print_hexdump("Encoded", raw_buffer, raw_len);
 
@@ -796,12 +767,12 @@ void test_frame_unpack_roundtrip() {
          frame_out.control.value == 0x55 && 
          frame_out.information_len == 9 &&
          memcmp(frame_out.information, "ROUNDTRIP", 9) == 0) {
-         assert_pass("Unpack Round Trip");
+         test_pass("Unpack Round Trip");
      } else {
-       assert_fail("Unpack Round Trip", "Fields mismatch");
+       test_fail("Unpack Round Trip", "Fields mismatch");
      }
   } else {
-    assert_fail("Unpack Round Trip", "Unpack returned false");
+    test_fail("Unpack Round Trip", "Unpack returned false");
   }
 
   // 3. Test Decode Error (Bad CRC)
@@ -811,7 +782,7 @@ void test_frame_unpack_roundtrip() {
   if (!ok) {
      printf("Caught bad CRC as expected.\n");
   } else {
-     assert_fail("Unpack Round Trip", "Failed to detect bad CRC");
+     test_fail("Unpack Round Trip", "Failed to detect bad CRC");
   }
 }
 
@@ -846,14 +817,14 @@ void test_broadcast_behavior() {
     if (on_frame_call_count == 1 && last_received_frame.address == HDLC_BROADCAST_ADDRESS) {
         printf("[PASS] Broadcast UI received by application.\n");
     } else {
-        assert_fail("Broadcast UI", "Broadcast Frame not delivered to app");
+        test_fail("Broadcast UI", "Broadcast Frame not delivered to app");
     }
 
     // Check: Should not generate a response
     if (output_len == 0) {
         printf("[PASS] Broadcast UI generated NO response.\n");
     } else {
-        assert_fail("Broadcast UI", "Slave replied to Broadcast UI!");
+        test_fail("Broadcast UI", "Slave replied to Broadcast UI!");
     }
 
     // 2. Broadcast SABM (P=1)
@@ -873,14 +844,14 @@ void test_broadcast_behavior() {
     if (ctx.current_state == HDLC_STATE_DISCONNECTED) {
         printf("[PASS] Broadcast SABM ignored (State verification).\n");
     } else {
-        assert_fail("Broadcast SABM", "Broadcast SABM changed state!");
+        test_fail("Broadcast SABM", "Broadcast SABM changed state!");
     }
 
     // Check: Should not generate a response (UA/DM)
     if (output_len == 0) {
         printf("[PASS] Broadcast SABM generated NO response.\n");
     } else {
-        assert_fail("Broadcast SABM", "Slave replied to Broadcast SABM!");
+        test_fail("Broadcast SABM", "Slave replied to Broadcast SABM!");
     }
 
     // 3. Invalid Broadcast DISC
@@ -904,13 +875,13 @@ void test_broadcast_behavior() {
     if (ctx.current_state == HDLC_STATE_CONNECTED) {
          printf("[PASS] Broadcast DISC ignored (State verification).\n");
     } else {
-         assert_fail("Broadcast DISC", "Broadcast DISC disconnected the station!");
+         test_fail("Broadcast DISC", "Broadcast DISC disconnected the station!");
     }
     
     if (output_len == 0) {
         printf("[PASS] Broadcast DISC generated NO response.\n");
     } else {
-        assert_fail("Broadcast DISC", "Slave replied to Broadcast DISC!");
+        test_fail("Broadcast DISC", "Slave replied to Broadcast DISC!");
     }
 
     // 4. Foreign Address (Address Filter)
@@ -934,10 +905,10 @@ void test_broadcast_behavior() {
     if (output_len == 0) {
         printf("[PASS] Foreign Frame generated NO response.\n");
     } else {
-         assert_fail("Foreign Address", "Slave replied to Foreign Logic!");
+         test_fail("Foreign Address", "Slave replied to Foreign Logic!");
     }
 
-    assert_pass("Broadcast Behavior");
+    test_pass("Broadcast Behavior");
 }
 
 void test_ui_frame_transmission(void) {
@@ -957,12 +928,12 @@ void test_ui_frame_transmission(void) {
          // Check Control Field for UI (0x03 or 0x13)
         // Addr=0x02 (Peer)
         if (output_buffer[0] == 0x7E && output_buffer[1] == 0x02 && (output_buffer[2] & 0xEF) == 0x03) {
-            assert_pass("UI Frame Transmission");
+            test_pass("UI Frame Transmission");
         } else {
-             assert_fail("UI Frame Transmission", "Header mismatch");
+             test_fail("UI Frame Transmission", "Header mismatch");
         }
     } else {
-        assert_fail("UI Frame Transmission", "Send failed or length too short");
+        test_fail("UI Frame Transmission", "Send failed or length too short");
     }
 }
 
@@ -995,9 +966,9 @@ void test_ui_frame_reception(void) {
         (last_received_frame.control.value & 0xEF) == 0x03 &&
         last_received_frame.information_len == 5 &&
         memcmp(last_received_frame.information, "WORLD", 5) == 0) {
-        assert_pass("UI Frame Reception");
+        test_pass("UI Frame Reception");
     } else {
-        assert_fail("UI Frame Reception", "Frame mismatch or not received");
+        test_fail("UI Frame Reception", "Frame mismatch or not received");
     }
 }
 
