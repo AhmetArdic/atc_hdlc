@@ -5,11 +5,7 @@
  * @brief Configuration parameters for the HDLC Library.
  *
  * This file contains compile-time configuration macros to tailor the HDLC
- * library to specific embedded system constraints, such as memory usage (MTU),
- * window sizes, and internal buffer limits.
- *
- * @note Adjust these values based on your target architecture and application
- * requirements.
+ * library to specific embedded system constraints.
  */
 
 #ifndef HDLC_CONFIG_H
