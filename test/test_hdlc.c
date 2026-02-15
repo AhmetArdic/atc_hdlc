@@ -798,10 +798,10 @@ void test_frame_unpack_roundtrip() {
          memcmp(frame_out.information, "ROUNDTRIP", 9) == 0) {
          assert_pass("Unpack Round Trip");
      } else {
-         assert_fail("Unpack Round Trip", "Content mismatch");
+       assert_fail("Unpack Round Trip", "Fields mismatch");
      }
   } else {
-     assert_fail("Unpack Round Trip", "Decoding failed");
+    assert_fail("Unpack Round Trip", "Unpack returned false");
   }
 
   // 3. Test Decode Error (Bad CRC)
@@ -813,6 +813,131 @@ void test_frame_unpack_roundtrip() {
   } else {
      assert_fail("Unpack Round Trip", "Failed to detect bad CRC");
   }
+}
+
+void test_broadcast_behavior() {
+    printf("========================================\n");
+    printf("TEST: Broadcast Behavior\n");
+    printf("========================================\n");
+
+    atc_hdlc_context_t ctx;
+    atc_hdlc_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    reset_test();
+    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02); // My=0x01, Peer=0x02
+
+    atc_hdlc_u8 packed_frame[128];
+    atc_hdlc_u32 packed_len = 0;
+    atc_hdlc_u8 payload[] = "ROUNDTRIP"; // Re-use payload from previous test
+
+    // 1. Broadcast UI (Valid, no response)
+    printf("Testing Broadcast UI reception...\n");
+    atc_hdlc_frame_t ui_frame = {
+        .address = HDLC_BROADCAST_ADDRESS, .control.value = 0x03, // UI
+        .information = payload, .information_len = 9};
+    
+    atc_hdlc_output_frame(&ctx, &ui_frame);
+    packed_len = output_len;
+    memcpy(packed_frame, output_buffer, packed_len);
+    reset_test();
+    
+    atc_hdlc_input_bytes(&ctx, packed_frame, packed_len);
+
+    // Check: Should be received by app
+    if (on_frame_call_count == 1 && last_received_frame.address == HDLC_BROADCAST_ADDRESS) {
+        printf("[PASS] Broadcast UI received by application.\n");
+    } else {
+        assert_fail("Broadcast UI", "Broadcast Frame not delivered to app");
+    }
+
+    // Check: Should not generate a response
+    if (output_len == 0) {
+        printf("[PASS] Broadcast UI generated NO response.\n");
+    } else {
+        assert_fail("Broadcast UI", "Slave replied to Broadcast UI!");
+    }
+
+    // 2. Broadcast SABM (P=1)
+    printf("Testing Broadcast SABM...\n");
+    atc_hdlc_frame_t sabm_frame = {
+        .address = HDLC_BROADCAST_ADDRESS, .control.value = 0x3F, // SABM(P=1)
+        .information = NULL, .information_len = 0};
+
+    atc_hdlc_output_frame(&ctx, &sabm_frame);
+    packed_len = output_len;
+    memcpy(packed_frame, output_buffer, packed_len);
+    reset_test(); // clear tx buffer
+
+    atc_hdlc_input_bytes(&ctx, packed_frame, packed_len);
+
+    // Check: Should not change state (SABM is for point-to-point)
+    if (ctx.current_state == HDLC_STATE_DISCONNECTED) {
+        printf("[PASS] Broadcast SABM ignored (State verification).\n");
+    } else {
+        assert_fail("Broadcast SABM", "Broadcast SABM changed state!");
+    }
+
+    // Check: Should not generate a response (UA/DM)
+    if (output_len == 0) {
+        printf("[PASS] Broadcast SABM generated NO response.\n");
+    } else {
+        assert_fail("Broadcast SABM", "Slave replied to Broadcast SABM!");
+    }
+
+    // 3. Invalid Broadcast DISC
+    printf("Testing Broadcast DISC rejection...\n");
+    reset_test();
+    // Ensure we are connected first to test if DISC disconnects us
+    ctx.current_state = HDLC_STATE_CONNECTED;
+    
+    atc_hdlc_frame_t disc_frame = {
+        .address = HDLC_BROADCAST_ADDRESS, .control.value = 0x53, // DISC(P=1) -> 0x53
+        .information = NULL, .information_len = 0};
+    
+    atc_hdlc_output_frame(&ctx, &disc_frame);
+    packed_len = output_len;
+    memcpy(packed_frame, output_buffer, packed_len);
+    reset_test(); // clear tx buffer
+
+    atc_hdlc_input_bytes(&ctx, packed_frame, packed_len);
+
+    // Check: Should remain CONNECTED (Broadcast DISC ignored)
+    if (ctx.current_state == HDLC_STATE_CONNECTED) {
+         printf("[PASS] Broadcast DISC ignored (State verification).\n");
+    } else {
+         assert_fail("Broadcast DISC", "Broadcast DISC disconnected the station!");
+    }
+    
+    if (output_len == 0) {
+        printf("[PASS] Broadcast DISC generated NO response.\n");
+    } else {
+        assert_fail("Broadcast DISC", "Slave replied to Broadcast DISC!");
+    }
+
+    // 4. Foreign Address (Address Filter)
+    // Frame addressed to 0x99 (Not Me=0x01, Not Broadcast=0xFF)
+    // Depending on implementation, this might callback (promiscuous) or not.
+    // BUT it MUST NOT generate a response or change state.
+    printf("Testing Foreign Address (0x99) handling...\n");
+    reset_test();
+    
+    atc_hdlc_frame_t foreign_frame = {
+        .address = 0x99, .control.value = 0x03, .information = payload, .information_len = 9};
+    
+    atc_hdlc_output_frame(&ctx, &foreign_frame);
+    packed_len = output_len;
+    memcpy(packed_frame, output_buffer, packed_len);
+    reset_test();
+
+    atc_hdlc_input_bytes(&ctx, packed_frame, packed_len);
+
+    // Protocol Logic Check: Implicitly satisfied if output_len == 0 (no UA/DM)
+    if (output_len == 0) {
+        printf("[PASS] Foreign Frame generated NO response.\n");
+    } else {
+         assert_fail("Foreign Address", "Slave replied to Foreign Logic!");
+    }
+
+    assert_pass("Broadcast Behavior");
 }
 
 void test_ui_frame_transmission(void) {
@@ -905,6 +1030,7 @@ int main() {
   test_frame_unpack_roundtrip();
   test_ui_frame_transmission();
   test_ui_frame_reception();
+  test_broadcast_behavior();
 
   printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
   return 0;

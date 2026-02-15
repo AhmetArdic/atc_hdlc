@@ -25,6 +25,16 @@ extern "C" {
  * DEFINITIONS
  * --------------------------------------------------------------------------
  */
+/**
+ * @brief HDLC Broadcast Address.
+ *
+ * Frames sent to this address are processed by all stations but
+ * never generate a response (ACK/UA).
+ */
+#ifndef HDLC_BROADCAST_ADDRESS
+#define HDLC_BROADCAST_ADDRESS 0xFF
+#endif
+
 #define HDLC_FLAG_LEN               (1)     /**< Flag. */
 #define HDLC_ADDRESS_LEN            (1)     /**< Address Field. */
 #define HDLC_CONTROL_LEN            (1)     /**< Control Field. */

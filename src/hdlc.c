@@ -614,12 +614,30 @@ static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   hdlc_u8 m_lo = frame->control.u_frame.m_lo;
   hdlc_u8 m_hi = frame->control.u_frame.m_hi;
 
-  // 1. Handle COMMANDS -> Addressed to ME
-  if (frame->address == ctx->my_address) {
+  // 1. Handle COMMANDS -> Addressed to ME or BROADCAST
+  if (frame->address == ctx->my_address || frame->address == HDLC_BROADCAST_ADDRESS) {
     
+    // Optimization: Check for UI Frame first (Most common & valid for Broadcast)
+    if (m_lo == HDLC_U_MODIFIER_LO_UI && m_hi == HDLC_U_MODIFIER_HI_UI) {
+         hdlc_process_ui(ctx, frame);
+         return;
+    }
+
+    // Filter: All other commands MUST be Unicast (Addressed to ME)
+    // If this is a Broadcast frame, we ignore everything else.
+    if (frame->address == HDLC_BROADCAST_ADDRESS) {
+        return; 
+    }
+
+    // --- Unicast-Only Commands ---
+
     // SABM (Set Asynchronous Balanced Mode)
     if (m_lo == HDLC_U_MODIFIER_LO_SABM && m_hi == HDLC_U_MODIFIER_HI_SABM) {
         hdlc_process_sabm(ctx, frame);
+    }
+    // DISC (Disconnect)
+    else if (m_lo == HDLC_U_MODIFIER_LO_DISC && m_hi == HDLC_U_MODIFIER_HI_DISC) {
+        hdlc_process_disc(ctx, frame);
     }
     // SNRM (Set Normal Response Mode)
     else if (m_lo == HDLC_U_MODIFIER_LO_SNRM && m_hi == HDLC_U_MODIFIER_HI_SNRM) {
@@ -629,17 +647,10 @@ static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     else if (m_lo == HDLC_U_MODIFIER_LO_SARM && m_hi == HDLC_U_MODIFIER_HI_SARM) {
         hdlc_process_sarm(ctx, frame);
     }
-    // DISC (Disconnect)
-    else if (m_lo == HDLC_U_MODIFIER_LO_DISC && m_hi == HDLC_U_MODIFIER_HI_DISC) {
-        hdlc_process_disc(ctx, frame);
-    }
-    // UI (Unnumbered Information)
-    else if (m_lo == HDLC_U_MODIFIER_LO_UI && m_hi == HDLC_U_MODIFIER_HI_UI) {
-        hdlc_process_ui(ctx, frame);
-    }
   }
 
   // 2. Handle RESPONSES -> Addressed to PEER (but received by ME from Peer)
+  // Responses are never Broadcast.
   else if (frame->address == ctx->peer_address) {
     
     // UA (Unnumbered Acknowledgment)
