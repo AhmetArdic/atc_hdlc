@@ -11,17 +11,25 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
     *   **CRC-16-CCITT** (Polynomial `0x1021`) with pre-computed 256-entry LUT for fast validation.
     *   Recalculate & Compare verification strategy on the receiver side.
 *   **Flexible Transmission**:
-    *   **Streaming Mode**:
+    *   **Packet Mode**:
         *   **Buffered**: Construct a full `atc_hdlc_frame_t` and send it in one call using the context.
         *   **Zero-Copy**: Send frames byte-by-byte (`start` → `data` → `end`) for ultra-low memory environments.
     *   **Stateless Mode**: Pack/Unpack frames directly into memory buffers without using the `hdlc_context_t` or callbacks. Ideal for purely functional usage.
 *   **Protocol Infrastructure**:
     *   Built-in support for I-Frames, S-Frames, and U-Frames with bit-field accessors.
     *   Control Field helper functions for constructing each frame type.
-    *   Frame Type dispatcher (ready for ABM logic).
+    *   **Asynchronous Balanced Mode (ABM)**:
+        *   Full Connection Management (`SABM`, `UA`, `DISC`, `DM`).
+        *   Explicit rejection of unsupported modes (`SNRM`, `SARM`) with `DM`.
+        *   Connection State Machine (`DISCONNECTED` ↔ `CONNECTING` ↔ `CONNECTED` ↔ `DISCONNECTING`).
+    *   **Multi-Slave / Broadcast Support**:
+        *   Broadcast Address (`0xFF`) support for UI frames.
+        *   Slaves silently ignore broadcast connection management commands (`SABM`, `DISC`) to prevent bus contention.
+        *   Broadcast UI frames are accepted without generating a response.
+    *   Frame Type dispatcher.
 *   **Developer Experience**:
     *   Modern **CMake** build system (C99).
-    *   **Unit tests** covering edge cases (byte stuffing, CRC errors, overflow, fragmentation, control field loopback, streaming API).
+    *   **Unit tests** covering edge cases (byte stuffing, CRC errors, overflow, fragmentation, control field loopback, packet API).
     *   **Configurable Symbol Prefix**: All public symbols are prefixed (default `atc_`) to avoid collisions. Changeable at compile time via `ATC_HDLC_PREFIX`.
     *   **C++ compatible** (`extern "C"` wrappers).
 
@@ -30,7 +38,7 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
 ```
 .
 ├── inc/
-│   ├── hdlc.h          # Public API (init, send, receive, streaming)
+│   ├── hdlc.h          # Public API (init, send, receive, packet processing)
 │   ├── hdlc_types.h    # Public types (frame, context, callbacks, control field)
 │   └── hdlc_config.h   # Configuration (prefix, max frame length)
 ├── src/
@@ -39,7 +47,10 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
 │   ├── hdlc_crc.h      # Internal CRC API
 │   └── hdlc_private.h  # Internal RX state machine definitions
 ├── test/
-│   └── hdlc_test.c     # Unit test suite
+│   ├── test_hdlc.c                  # Core protocol unit tests
+│   ├── test_connection_management.c # State machine & connection tests
+│   ├── test_common.c                # Shared test utilities (colors, assertions)
+│   └── test_common.h                # Shared test header
 ├── CMakeLists.txt      # Root CMake configuration
 └── README.md           # This file
 ```
@@ -74,36 +85,35 @@ ctest --verbose
 
 ### Example Output
 ```text
-STARTING COMPREHENSIVE HDLC TEST SUITE
-----------------------------------------
-
 ========================================
 TEST: Basic Frame (I-Frame)
 ========================================
-TX Buffer (10 bytes): 7E FF 00 54 45 53 54 80 55 7E
-   [RX EVENT] Frame Received!
+   [ON FRAME EVENT] Frame Received!
    Type: 0, Addr: FF, Ctrl: 00, Information Len: 4
    Information: 54 45 53 54
 [PASS] Basic Frame
 
 ========================================
-TEST: Heavy Byte Stuffing
+TEST: Byte Stuffing Heavy
 ========================================
-TX Buffer (Stuffed) (17 bytes): 7E 01 03 7D 5E 7D 5E 7D 5D 7D 5D 7D 5E 00 19 0C 7E
+   [ON FRAME EVENT] Frame Received!
+   Type: 0, Addr: 01, Ctrl: 03, Information Len: 5
 [PASS] Heavy Stuffing
 
 ...
 
 ========================================
-TEST: Control Field - I-Frame Loopback
+TEST: Broadcast Behavior
 ========================================
-Generated I-Frame Ctrl Value: 0x7A
-Received: Type=I, N(S)=5, N(R)=3, P/F=1
-[PASS] I-Frame Loopback
+Testing Broadcast UI reception...
+   [ON FRAME EVENT] Frame Received!
+   Type: 2, Addr: FF, Ctrl: 03, Information Len: 9
+[PASS] Broadcast UI received by application.
+[PASS] Broadcast UI generated NO response.
+...
+[PASS] Broadcast Behavior
 
 ALL TESTS PASSED SUCCESSFULLY!
-1/1 Test #1: HDLC_Unit_Tests ..................   Passed    0.00 sec
-100% tests passed, 0 tests failed out of 1
 ```
 
 ## 📦 Integration
@@ -128,18 +138,38 @@ To use this library in your own project:
         process_frame(frame->address, frame->control.value,
                       frame->information, frame->information_len);
     }
+
+    // On State Change: Called when the connection state changes
+    void my_on_state(atc_hdlc_protocol_state_t state, void *user_data) {
+        switch(state) {
+            case ATC_HDLC_PROTOCOL_STATE_CONNECTED:
+                printf("Connected!\n");
+                break;
+            case ATC_HDLC_PROTOCOL_STATE_DISCONNECTED:
+                printf("Disconnected!\n");
+                break;
+             // ...
+        }
+    }
     ```
 
 4.  **Initialize the context**:
     ```c
+    // Initialize the context
     atc_hdlc_context_t ctx;
     uint8_t buffer[256];
-    atc_hdlc_stream_init(&ctx, buffer, sizeof(buffer), my_output_byte, my_on_frame, NULL);
+    atc_hdlc_init(&ctx, buffer, sizeof(buffer), my_output_byte, my_on_frame, my_on_state, NULL);
+    
+    // Configure Addresses (My Address, Peer Address)
+    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+
+    // Initiate Connection
+    atc_hdlc_connect(&ctx);
     ```
 
 5.  **Feed received bytes into the parser**:
 
-    > ⚠️ **ISR Safety**: `atc_hdlc_stream_input_byte` performs an **O(N) CRC verification loop** when the closing flag (`0x7E`) is received and also invokes the user `rx_cb` callback synchronously. **Do NOT call directly from a high-frequency ISR.** Use a Ring Buffer to decouple reception from processing.
+    > ⚠️ **ISR Safety**: `atc_hdlc_input_byte` performs an **O(N) CRC verification loop** when the closing flag (`0x7E`) is received and also invokes the user `rx_cb` callback synchronously. **Do NOT call directly from a high-frequency ISR.** Use a Ring Buffer to decouple reception from processing.
 
     ```c
     // ISR: Just push bytes into a ring buffer
@@ -152,17 +182,17 @@ To use this library in your own project:
     void main_loop(void) {
         uint8_t byte;
         while (ring_buffer_pop(&rx_buf, &byte)) {
-            atc_hdlc_stream_input_byte(&ctx, byte);
+            atc_hdlc_input_byte(&ctx, byte);
         }
     }
 
     // Or use bulk input for DMA / batch transfers
     void process_dma_buffer(uint8_t *buf, uint32_t len) {
-        atc_hdlc_stream_input_bytes(&ctx, buf, len);
+        atc_hdlc_input_bytes(&ctx, buf, len);
     }
     ```
 
-6.  **Streaming Mode (Buffered)**:
+6.  **Packet Mode (Buffered)**:
     Construct a frame structure and let the library handle transmission via the `output_cb`.
     ```c
     atc_hdlc_frame_t frame = {
@@ -171,22 +201,22 @@ To use this library in your own project:
         .information_len = 4
     };
     memcpy(frame.information, "TEST", 4);
-    atc_hdlc_stream_output_frame(&ctx, &frame);
+    atc_hdlc_output_frame(&ctx, &frame);
     ```
 
-7.  **Streaming Mode (Zero-Copy)**:
+7.  **Packet Mode (Zero-Copy)**:
     For memory-constrained devices where allocating a full frame buffer is not feasible:
     ```c
     // Start: sends Flag + Address + Control (with CRC init)
-    atc_hdlc_stream_output_packet_start(&ctx, 0x01, 0x03);
+    atc_hdlc_output_packet_start(&ctx, 0x01, 0x03);
 
     // Data: byte-by-byte or array (stuffing handled automatically)
-    atc_hdlc_stream_output_packet_information_byte(&ctx, 0xAA);
+    atc_hdlc_output_packet_information_byte(&ctx, 0xAA);
     uint8_t payload[] = {0x10, 0x20, 0x30};
-    atc_hdlc_stream_output_packet_information_bytes(&ctx, payload, 3);
+    atc_hdlc_output_packet_information_bytes(&ctx, payload, 3);
 
     // End: sends CRC + Flag
-    atc_hdlc_stream_output_packet_end(&ctx);
+    atc_hdlc_output_packet_end(&ctx);
     ```
 
 8.  **Stateless Mode (Pack)**:
@@ -223,22 +253,31 @@ Configuration is done in `inc/hdlc_config.h`:
 | Parameter | Default | Description |
 |---|---|---|
 | `ATC_HDLC_PREFIX` | `atc_` | Symbol prefix for all public API functions and types |
-| `HDLC_MAX_FRAME_LEN` | `256` | Maximum raw frame buffer size in bytes (including overhead) |
 
 ## 📖 API Reference
 
-### Streaming Mode
+### Packet Mode (Formatted & Zero-Copy)
 
 | Function | Description |
 |---|---|
-| `atc_hdlc_stream_init()` | Initialize context and bind callbacks |
-| `atc_hdlc_stream_input_byte()` | Feed a single received byte into the parser |
-| `atc_hdlc_stream_input_bytes()` | Feed a byte array into the parser (bulk) |
-| `atc_hdlc_stream_output_frame()` | Send a complete frame (buffered) |
-| `atc_hdlc_stream_output_packet_start()` | Begin streaming TX (Flag + Address + Control) |
-| `atc_hdlc_stream_output_packet_information_byte()` | Send a single data byte (with stuffing) |
-| `atc_hdlc_stream_output_packet_information_bytes()` | Send a data array (with stuffing) |
-| `atc_hdlc_stream_output_packet_end()` | Finalize streaming TX (CRC + Flag) |
+| `atc_hdlc_init()` | Initialize context and bind callbacks |
+| `atc_hdlc_input_byte()` | Feed a single received byte into the parser |
+| `atc_hdlc_input_bytes()` | Feed a byte array into the parser (bulk) |
+| `atc_hdlc_output_frame()` | Send a complete frame (buffered) |
+| `atc_hdlc_output_packet_start()` | Begin packet TX (Flag + Address + Control) |
+| `atc_hdlc_output_packet_information_byte()` | Send a single data byte (with stuffing) |
+| `atc_hdlc_output_packet_information_bytes()` | Send a data array (with stuffing) |
+| `atc_hdlc_output_packet_end()` | Finalize packet TX (CRC + Flag) |
+| `atc_hdlc_send_ui()` | Send unacknowledged data (UI Frame) |
+
+### Connection Management
+
+| Function | Description |
+|---|---|
+| `atc_hdlc_configure_addresses()` | Set source and destination addresses |
+| `atc_hdlc_connect()` | Initiate connection (sends SABM) |
+| `atc_hdlc_disconnect()` | Terminate connection (sends DISC) |
+| `atc_hdlc_is_connected()` | Check if currently connected |
 
 ### Stateless Mode
 
@@ -260,4 +299,5 @@ Configuration is done in `inc/hdlc_config.h`:
 ```c
 typedef void (*atc_hdlc_output_byte_cb_t)(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data);
 typedef void (*atc_hdlc_on_frame_cb_t)(const atc_hdlc_frame_t *frame, void *user_data);
+typedef void (*atc_hdlc_on_state_change_cb_t)(atc_hdlc_protocol_state_t state, void *user_data);
 ```

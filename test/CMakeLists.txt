@@ -1,7 +1,7 @@
-add_executable(hdlc_test hdlc_test.c)
+add_executable(test_hdlc test_hdlc.c test_common.c)
+target_link_libraries(test_hdlc PRIVATE hdlc)
+add_test(NAME HDLC_Unit_Tests COMMAND test_hdlc)
 
-target_link_libraries(hdlc_test PRIVATE hdlc)
-
-add_test(NAME HDLC_Unit_Tests COMMAND hdlc_test)
-
-
+add_executable(test_connection_management test_connection_management.c test_common.c)
+target_link_libraries(test_connection_management PRIVATE hdlc)
+add_test(NAME ConnectionManagementTest COMMAND test_connection_management)
