@@ -189,10 +189,10 @@ typedef struct {
  * Defines the connection state of the HDLC station.
  */
 typedef enum {
-    HDLC_STATE_DISCONNECTED, /**< No logical connection. Messages ignored except SABM. */
-    HDLC_STATE_CONNECTING,   /**< SABM sent, waiting for UA. */
-    HDLC_STATE_CONNECTED,    /**< Logical connection established. Ready for I-frames. */
-    HDLC_STATE_DISCONNECTING /**< DISC sent, waiting for UA. */
+    HDLC_PROTOCOL_STATE_DISCONNECTED, /**< No logical connection. Messages ignored except SABM. */
+    HDLC_PROTOCOL_STATE_CONNECTING,   /**< SABM sent, waiting for UA. */
+    HDLC_PROTOCOL_STATE_CONNECTED,    /**< Logical connection established. Ready for I-frames. */
+    HDLC_PROTOCOL_STATE_DISCONNECTING /**< DISC sent, waiting for UA. */
 } hdlc_protocol_state_t;
 
 /*

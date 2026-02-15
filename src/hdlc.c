@@ -49,7 +49,7 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *buffer, hdlc_u32 buffer_len,
 
   // Initialize State
   ctx->input_state = HDLC_INPUT_STATE_HUNT;
-  ctx->current_state = HDLC_STATE_DISCONNECTED;
+  ctx->current_state = HDLC_PROTOCOL_STATE_DISCONNECTED;
 }
 
 /*
@@ -413,11 +413,11 @@ static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
 }
 
 /**
- * @brief Helper to update the HDLC State and trigger the callback.
+ * @brief Helper to update the HDLC Protocol State and trigger the callback.
  * @param ctx       HDLC Context.
- * @param new_state New State to transition to.
+ * @param new_state New Protocol State to transition to.
  */
-static void hdlc_set_state(hdlc_context_t *ctx, hdlc_protocol_state_t new_state) {
+static void hdlc_set_protocol_state(hdlc_context_t *ctx, hdlc_protocol_state_t new_state) {
   if (ctx->current_state != new_state) {
     ctx->current_state = new_state;
     if (ctx->on_state_change_cb != NULL) {
@@ -477,7 +477,7 @@ static inline void hdlc_send_dm(hdlc_context_t *ctx, hdlc_u8 pf) {
 static void hdlc_process_sabm(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     // Accept connection
     // Reset variables (TODO: Phase 2 variables)
-    hdlc_set_state(ctx, HDLC_STATE_CONNECTED);
+    hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_CONNECTED);
 
     // Send UA (Response matches Command P bit with F bit)
     hdlc_send_ua(ctx, frame->control.u_frame.pf);
@@ -509,7 +509,7 @@ static void hdlc_process_sarm(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
  * @param frame The received DISC frame.
  */
 static void hdlc_process_disc(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
-    hdlc_set_state(ctx, HDLC_STATE_DISCONNECTED);
+    hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_DISCONNECTED);
 
     // Send UA
     hdlc_send_ua(ctx, frame->control.u_frame.pf);
@@ -522,10 +522,10 @@ static void hdlc_process_disc(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
  */
 static void hdlc_process_ua(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     (void)frame; // PF bit interaction with timer recovery (TODO)
-    if (ctx->current_state == HDLC_STATE_CONNECTING) {
-        hdlc_set_state(ctx, HDLC_STATE_CONNECTED);
-    } else if (ctx->current_state == HDLC_STATE_DISCONNECTING) {
-        hdlc_set_state(ctx, HDLC_STATE_DISCONNECTED);
+    if (ctx->current_state == HDLC_PROTOCOL_STATE_CONNECTING) {
+        hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_CONNECTED);
+    } else if (ctx->current_state == HDLC_PROTOCOL_STATE_DISCONNECTING) {
+        hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_DISCONNECTED);
     }
 }
 
@@ -537,7 +537,7 @@ static void hdlc_process_ua(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
 static void hdlc_process_dm(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     (void)frame;
     // Peer is disconnected. If we were trying to connect, we failed.
-    hdlc_set_state(ctx, HDLC_STATE_DISCONNECTED);
+    hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_DISCONNECTED);
 }
 
 /**
@@ -572,7 +572,7 @@ static void hdlc_process_frmr(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
    }
 
    // Treat as fatal error -> Disconnect.
-   hdlc_set_state(ctx, HDLC_STATE_DISCONNECTED);
+   hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_DISCONNECTED);
 }
 
 /**
@@ -997,7 +997,7 @@ bool hdlc_connect(hdlc_context_t *ctx) {
   hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
   hdlc_output_packet_end(ctx);
 
-  hdlc_set_state(ctx, HDLC_STATE_CONNECTING);
+  hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_CONNECTING);
   return true;
 }
 
@@ -1009,12 +1009,12 @@ bool hdlc_disconnect(hdlc_context_t *ctx) {
   hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
   hdlc_output_packet_end(ctx);
 
-  hdlc_set_state(ctx, HDLC_STATE_DISCONNECTING);
+  hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_DISCONNECTING);
   return true;
 }
 
 bool hdlc_is_connected(hdlc_context_t *ctx) {
-  return (ctx != NULL && ctx->current_state == HDLC_STATE_CONNECTED);
+  return (ctx != NULL && ctx->current_state == HDLC_PROTOCOL_STATE_CONNECTED);
 }
 
 bool hdlc_send_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {

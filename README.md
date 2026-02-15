@@ -142,10 +142,10 @@ To use this library in your own project:
     // On State Change: Called when the connection state changes
     void my_on_state(atc_hdlc_protocol_state_t state, void *user_data) {
         switch(state) {
-            case HDLC_STATE_CONNECTED:
+            case ATC_HDLC_PROTOCOL_STATE_CONNECTED:
                 printf("Connected!\n");
                 break;
-            case HDLC_STATE_DISCONNECTED:
+            case ATC_HDLC_PROTOCOL_STATE_DISCONNECTED:
                 printf("Disconnected!\n");
                 break;
              // ...

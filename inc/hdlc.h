@@ -59,7 +59,7 @@ void hdlc_configure_addresses(hdlc_context_t *ctx, hdlc_u8 my_addr, hdlc_u8 peer
  * @brief Initiate a Logical Connection (SABM).
  *
  * Sends a Set Asynchronous Balanced Mode (SABM) frame to the peer
- * and transitions to the HDLC_STATE_CONNECTING state.
+ * and transitions to the HDLC_PROTOCOL_STATE_CONNECTING state.
  *
  * @param ctx Pointer to the initialized HDLC context.
  * @return true if command sent successfully (does not mean connected yet).
@@ -70,7 +70,7 @@ bool hdlc_connect(hdlc_context_t *ctx);
  * @brief Terminate a Logical Connection (DISC).
  *
  * Sends a Disconnect (DISC) frame to the peer and transitions
- * to the HDLC_STATE_DISCONNECTING state.
+ * to the HDLC_PROTOCOL_STATE_DISCONNECTING state.
  *
  * @param ctx Pointer to the initialized HDLC context.
  * @return true if command sent successfully.
@@ -81,7 +81,7 @@ bool hdlc_disconnect(hdlc_context_t *ctx);
  * @brief Check if Connected.
  *
  * @param ctx Pointer to the initialized HDLC context.
- * @return true if state is HDLC_STATE_CONNECTED, false otherwise.
+ * @return true if state is HDLC_PROTOCOL_STATE_CONNECTED, false otherwise.
  */
 bool hdlc_is_connected(hdlc_context_t *ctx);
 

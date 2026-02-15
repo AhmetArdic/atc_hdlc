@@ -42,6 +42,23 @@ void on_state_change(atc_hdlc_protocol_state_t state, void *user_data) {
     last_state_change = state;
     state_change_call_count++;
     printf("   %s[STATE CHANGE] New State: %d%s\n", COL_YELLOW, state, COL_RESET);
+    switch(state) {
+        case ATC_HDLC_PROTOCOL_STATE_CONNECTED:
+            printf("   %sConnected!%s\n", COL_GREEN, COL_RESET);
+            break;
+        case ATC_HDLC_PROTOCOL_STATE_DISCONNECTED:
+            printf("   %sDisconnected!%s\n", COL_RED, COL_RESET);
+            break;
+        case ATC_HDLC_PROTOCOL_STATE_CONNECTING:
+            printf("   %sConnecting!%s\n", COL_YELLOW, COL_RESET);
+            break;
+        case ATC_HDLC_PROTOCOL_STATE_DISCONNECTING:
+            printf("   %sDisconnecting!%s\n", COL_YELLOW, COL_RESET);
+            break;
+        default:
+            printf("   %sUnknown State!%s\n", COL_YELLOW, COL_RESET);
+            break;
+    }
 }
 
 // Helper to reset test state
@@ -72,7 +89,7 @@ void test_init_state(void) {
     printf("========================================\n");
     setup_context();
     
-    if (ctx.current_state != HDLC_STATE_DISCONNECTED) 
+    if (ctx.current_state != HDLC_PROTOCOL_STATE_DISCONNECTED) 
         test_fail("Init State", "Initial state is not DISCONNECTED");
     
     if (atc_hdlc_is_connected(&ctx))
@@ -91,13 +108,13 @@ void test_connect_sends_sabm(void) {
     if (!res) test_fail("Connect Sends SABM", "Connect failed to start");
     
     // 1. Check State Transition
-    if (ctx.current_state != HDLC_STATE_CONNECTING)
+    if (ctx.current_state != HDLC_PROTOCOL_STATE_CONNECTING)
         test_fail("Connect Sends SABM", "State not CONNECTING");
         
     if (state_change_call_count != 1)
         test_fail("Connect Sends SABM", "State change callback count incorrect");
 
-    if (last_state_change != HDLC_STATE_CONNECTING)
+    if (last_state_change != HDLC_PROTOCOL_STATE_CONNECTING)
         test_fail("Connect Sends SABM", "Last state change not CONNECTING");
         
     // 2. Check Output Frame (SABM to Peer)
@@ -136,7 +153,7 @@ void test_connect_complete_on_ua(void) {
     atc_hdlc_input_bytes(&ctx, packed, packed_len);
 
     // Verify State Change
-    if (ctx.current_state != HDLC_STATE_CONNECTED)
+    if (ctx.current_state != HDLC_PROTOCOL_STATE_CONNECTED)
          test_fail("Connect Complete FA", "State not CONNECTED");
          
     if (state_change_call_count != 1)
@@ -154,7 +171,7 @@ void test_disconnect_flow(void) {
     printf("========================================\n");
     setup_context();
     // Force Connected
-    ctx.current_state = HDLC_STATE_CONNECTED;
+    ctx.current_state = HDLC_PROTOCOL_STATE_CONNECTED;
     state_change_call_count = 0;
 
     // Send Disconnect
@@ -162,7 +179,7 @@ void test_disconnect_flow(void) {
     if (!res) test_fail("Disconnect Flow", "Disconnect returned false");
 
     // 1. Check State
-    if (ctx.current_state != HDLC_STATE_DISCONNECTING)
+    if (ctx.current_state != HDLC_PROTOCOL_STATE_DISCONNECTING)
          test_fail("Disconnect Flow", "State not DISCONNECTING");
     
     // 2. Check Output Frame (DISC to Peer)
@@ -190,7 +207,7 @@ void test_disconnect_flow(void) {
     atc_hdlc_input_bytes(&ctx, packed, packed_len);
 
     // Check State
-    if (ctx.current_state != HDLC_STATE_DISCONNECTED)
+    if (ctx.current_state != HDLC_PROTOCOL_STATE_DISCONNECTED)
          test_fail("Disconnect Flow", "State NOT disconnected after UA");
 
     test_pass("Disconnect Flow");
@@ -218,7 +235,7 @@ void test_passive_open(void) {
     atc_hdlc_input_bytes(&ctx, packed, packed_len);
 
     // 1. Should be CONNECTED
-    if (ctx.current_state != HDLC_STATE_CONNECTED)
+    if (ctx.current_state != HDLC_PROTOCOL_STATE_CONNECTED)
          test_fail("Passive Open", "State not CONNECTED after SABM");
 
     // 2. Should have sent UA (Response from Me)
@@ -239,7 +256,7 @@ void test_frmr_reception(void) {
     setup_context();
     atc_hdlc_connect(&ctx); // Connect first
     // Force Connected state for testing
-    ctx.current_state = HDLC_STATE_CONNECTED;
+    ctx.current_state = HDLC_PROTOCOL_STATE_CONNECTED;
     state_change_call_count = 0; // Clear counters
 
     // Simulate Receiving FRMR from Peer
@@ -265,7 +282,7 @@ void test_frmr_reception(void) {
     atc_hdlc_input_bytes(&ctx, packed, packed_len);
 
     // Verify State Change -> DISCONNECTED
-    if (ctx.current_state != HDLC_STATE_DISCONNECTED)
+    if (ctx.current_state != HDLC_PROTOCOL_STATE_DISCONNECTED)
          test_fail("FRMR Reception", "State not DISCONNECTED");
 
     if (state_change_call_count != 1)
@@ -304,7 +321,7 @@ void test_mode_rejection(void) {
     print_hexdump("Captured TX", captured_tx_buffer, captured_tx_len);
 
     // 1. State should remain DISCONNECTED
-    if (ctx.current_state != HDLC_STATE_DISCONNECTED)
+    if (ctx.current_state != HDLC_PROTOCOL_STATE_DISCONNECTED)
          test_fail("Mode Rejection", "State changed on invalid mode!");
 
     // 2. Output should be DM

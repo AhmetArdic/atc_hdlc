@@ -841,7 +841,7 @@ void test_broadcast_behavior() {
     atc_hdlc_input_bytes(&ctx, packed_frame, packed_len);
 
     // Check: Should not change state (SABM is for point-to-point)
-    if (ctx.current_state == HDLC_STATE_DISCONNECTED) {
+    if (ctx.current_state == HDLC_PROTOCOL_STATE_DISCONNECTED) {
         printf("[PASS] Broadcast SABM ignored (State verification).\n");
     } else {
         test_fail("Broadcast SABM", "Broadcast SABM changed state!");
@@ -858,7 +858,7 @@ void test_broadcast_behavior() {
     printf("Testing Broadcast DISC rejection...\n");
     reset_test();
     // Ensure we are connected first to test if DISC disconnects us
-    ctx.current_state = HDLC_STATE_CONNECTED;
+    ctx.current_state = HDLC_PROTOCOL_STATE_CONNECTED;
     
     atc_hdlc_frame_t disc_frame = {
         .address = HDLC_BROADCAST_ADDRESS, .control.value = 0x53, // DISC(P=1) -> 0x53
@@ -872,7 +872,7 @@ void test_broadcast_behavior() {
     atc_hdlc_input_bytes(&ctx, packed_frame, packed_len);
 
     // Check: Should remain CONNECTED (Broadcast DISC ignored)
-    if (ctx.current_state == HDLC_STATE_CONNECTED) {
+    if (ctx.current_state == HDLC_PROTOCOL_STATE_CONNECTED) {
          printf("[PASS] Broadcast DISC ignored (State verification).\n");
     } else {
          test_fail("Broadcast DISC", "Broadcast DISC disconnected the station!");
