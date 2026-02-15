@@ -5,7 +5,7 @@
  * @brief Public API for the HDLC Library.
  * 
  * Provides function prototypes for initializing the library, packing/unpacking frames,
- * feeding received bytes into the parser, and handling streaming transmission.
+ * feeding received bytes into the parser, and handling packet transmission.
  */
 
 #ifndef HDLC_H
@@ -253,6 +253,14 @@ void hdlc_output_packet_information_byte(hdlc_context_t *ctx, hdlc_u8 informatio
  */
 void hdlc_output_packet_information_bytes(hdlc_context_t *ctx, const hdlc_u8* information_bytes, hdlc_u32 len);
 
+/**
+ * @brief Finalize Packet Output.
+ *
+ * Completes the current frame transmission by sending the computed
+ * CRC-16 (FCS) and the End Flag (`0x7E`). Increments the TX frame counter.
+ *
+ * @param ctx Pointer to the initialized HDLC context.
+ */
 void hdlc_output_packet_end(hdlc_context_t *ctx);
 
 #ifdef __cplusplus

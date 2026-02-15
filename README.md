@@ -85,36 +85,35 @@ ctest --verbose
 
 ### Example Output
 ```text
-STARTING COMPREHENSIVE HDLC TEST SUITE
-----------------------------------------
-
 ========================================
 TEST: Basic Frame (I-Frame)
 ========================================
-TX Buffer (10 bytes): 7E FF 00 54 45 53 54 80 55 7E
-   [RX EVENT] Frame Received!
+   [ON FRAME EVENT] Frame Received!
    Type: 0, Addr: FF, Ctrl: 00, Information Len: 4
    Information: 54 45 53 54
 [PASS] Basic Frame
 
 ========================================
-TEST: Heavy Byte Stuffing
+TEST: Byte Stuffing Heavy
 ========================================
-TX Buffer (Stuffed) (17 bytes): 7E 01 03 7D 5E 7D 5E 7D 5D 7D 5D 7D 5E 00 19 0C 7E
+   [ON FRAME EVENT] Frame Received!
+   Type: 0, Addr: 01, Ctrl: 03, Information Len: 5
 [PASS] Heavy Stuffing
 
 ...
 
 ========================================
-TEST: Control Field - I-Frame Loopback
+TEST: Broadcast Behavior
 ========================================
-Generated I-Frame Ctrl Value: 0x7A
-Received: Type=I, N(S)=5, N(R)=3, P/F=1
-[PASS] I-Frame Loopback
+Testing Broadcast UI reception...
+   [ON FRAME EVENT] Frame Received!
+   Type: 2, Addr: FF, Ctrl: 03, Information Len: 9
+[PASS] Broadcast UI received by application.
+[PASS] Broadcast UI generated NO response.
+...
+[PASS] Broadcast Behavior
 
 ALL TESTS PASSED SUCCESSFULLY!
-1/1 Test #1: HDLC_Unit_Tests ..................   Passed    0.00 sec
-100% tests passed, 0 tests failed out of 1
 ```
 
 ## 📦 Integration
@@ -143,10 +142,10 @@ To use this library in your own project:
     // On State Change: Called when the connection state changes
     void my_on_state(atc_hdlc_protocol_state_t state, void *user_data) {
         switch(state) {
-            case ATC_HDLC_STATE_CONNECTED:
+            case HDLC_STATE_CONNECTED:
                 printf("Connected!\n");
                 break;
-            case ATC_HDLC_STATE_DISCONNECTED:
+            case HDLC_STATE_DISCONNECTED:
                 printf("Disconnected!\n");
                 break;
              // ...

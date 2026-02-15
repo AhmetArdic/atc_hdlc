@@ -4,7 +4,7 @@
  * @date 02.02.2026
  * @brief Main Implementation of the HDLC Protocol Stack.
  *
- * Contains the logic for Frame Transmission (Buffered & Streaming),
+ * Contains the logic for Frame Transmission (Buffered & Zero-Copy),
  * Frame Reception (State Machine, Byte Stuffing removal), and
  * CRC Verification.
  */
@@ -12,7 +12,6 @@
 #include "../inc/hdlc.h"
 #include "hdlc_crc.h"
 #include "hdlc_private.h"
-#include <stdio.h>
 #include <string.h>
 
 /** @brief HDLC Flag Sequence (0x7E) used to delimit frames. */
@@ -71,15 +70,8 @@ static void hdlc_process_sarm(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_disc(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_ua(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_dm(hdlc_context_t *ctx, const hdlc_frame_t *frame);
-static void hdlc_process_dm(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_frmr(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_ui(hdlc_context_t *ctx, const hdlc_frame_t *frame);
-
-/*
- * --------------------------------------------------------------------------
- * STREAMING TRANSMIT ENGINE
- * --------------------------------------------------------------------------
- */
 
 /*
  * --------------------------------------------------------------------------
@@ -593,9 +585,9 @@ static void hdlc_process_ui(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     // They are passed to the user application if connected (or maybe even if not?).
     // Standard often allows UI in any state, but usually mostly in Connected.
     // Let's pass it through via the generic on_frame_cb mechanism which happens
-    // after this dispatcher in `stream_process_complete_frame`.
+    // after this dispatcher in `process_complete_frame`.
     
-    // However, `process_complete_frame` calls `handle_u_frame` (this function)
+    // However, `process_complete_frame` dispatches to `handle_u_frame`
     // AND then calls `ctx->on_frame_cb`. 
     // So we don't strictly need to do anything here unless we want to filter it
     // based on state. 
@@ -682,7 +674,6 @@ static void process_complete_frame(hdlc_context_t *ctx) {
   hdlc_u8 ctrl = ctx->input_frame_buffer.control.value;
 
   if ((ctrl & HDLC_FRAME_TYPE_MASK_I) == HDLC_FRAME_TYPE_VAL_I) {
-    ctx->input_frame_buffer.type = HDLC_FRAME_I;
     ctx->input_frame_buffer.type = HDLC_FRAME_I;
     handle_i_frame(ctx, &ctx->input_frame_buffer);
   } else if ((ctrl & HDLC_FRAME_TYPE_MASK_S) == HDLC_FRAME_TYPE_VAL_S) {
@@ -819,7 +810,7 @@ void hdlc_input_bytes(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
 
 /*
  * --------------------------------------------------------------------------
- * STREAMING TRANSMIT ENGINE
+ * ZERO-COPY TRANSMIT ENGINE
  * --------------------------------------------------------------------------
  */
 
