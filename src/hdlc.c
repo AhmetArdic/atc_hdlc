@@ -28,6 +28,7 @@
 void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *input_buffer, hdlc_u32 input_buffer_len,
                       hdlc_u8 *retransmit_buffer, hdlc_u32 retransmit_buffer_len,
                       hdlc_u32 retransmit_timeout_ms,
+                      hdlc_u8 window_size,
                       hdlc_output_byte_cb_t output_cb,
                       hdlc_on_frame_cb_t on_frame_cb,
                       hdlc_on_state_change_cb_t on_state_change_cb,
@@ -36,6 +37,10 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *input_buffer, hdlc_u32 input_buffer
     return;
   }
 
+  // Clamp window_size to valid range [1, 7]
+  if (window_size < 1) window_size = 1;
+  if (window_size > 7) window_size = 7;
+
   // Clear context
   memset(ctx, 0, sizeof(hdlc_context_t));
 
@@ -43,10 +48,13 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *input_buffer, hdlc_u32 input_buffer
   ctx->input_buffer = input_buffer;
   ctx->input_buffer_len = input_buffer_len;
   
-  // Initialize Retransmit Buffer
+  // Initialize Retransmit Buffer (slotted for Go-Back-N)
   ctx->retransmit_buffer = retransmit_buffer;
   ctx->retransmit_buffer_len = retransmit_buffer_len;
-  ctx->retransmit_len = 0;
+  ctx->window_size = window_size;
+  if (retransmit_buffer != NULL && retransmit_buffer_len > 0 && window_size > 0) {
+      ctx->retransmit_slot_size = retransmit_buffer_len / window_size;
+  }
 
   // Bind callbacks
   ctx->output_byte_cb = output_cb;
@@ -58,11 +66,11 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *input_buffer, hdlc_u32 input_buffer
   ctx->input_state = HDLC_INPUT_STATE_HUNT;
   ctx->current_state = HDLC_PROTOCOL_STATE_DISCONNECTED;
   
-  // Reliable State
+  // Reliable State (Go-Back-N)
   ctx->vs = 0;
   ctx->vr = 0;
+  ctx->va = 0;
   ctx->ack_pending = false;
-  ctx->waiting_for_ack = false;
   ctx->retransmit_timeout_ms = retransmit_timeout_ms;
 }
 
@@ -406,6 +414,41 @@ bool hdlc_frame_unpack(const hdlc_u8 *buffer, hdlc_u32 buffer_len,
  */
 
 /**
+ * @brief Check if a sequence number is within the outstanding window [va, vs).
+ *
+ * Uses modular arithmetic to handle wrap-around.
+ * Returns true if nr is in range (va, vs] mod 8, meaning it acknowledges
+ * at least one outstanding frame.
+ */
+static inline bool hdlc_nr_valid(hdlc_u8 va, hdlc_u8 nr, hdlc_u8 vs) {
+    // N(R) is valid if it acknowledges at least one frame: (va < nr <= vs) mod 8
+    // Special case: nr == va means "no new acks"
+    if (va == vs) return false; // Nothing outstanding
+    hdlc_u8 diff_nr = (nr - va + HDLC_SEQUENCE_MODULUS) % HDLC_SEQUENCE_MODULUS;
+    hdlc_u8 diff_vs = (vs - va + HDLC_SEQUENCE_MODULUS) % HDLC_SEQUENCE_MODULUS;
+    return (diff_nr > 0 && diff_nr <= diff_vs);
+}
+
+/**
+ * @brief Process N(R) from a received frame (cumulative ACK).
+ *
+ * Advances V(A) to N(R) if valid. Clears retransmit timer if all
+ * outstanding frames are acknowledged (V(A) == V(S)).
+ */
+static inline void hdlc_process_nr(hdlc_context_t *ctx, hdlc_u8 nr) {
+    if (hdlc_nr_valid(ctx->va, nr, ctx->vs)) {
+        ctx->va = nr;
+        if (ctx->va == ctx->vs) {
+            // All frames acknowledged
+            ctx->retransmit_timer_ms = 0;
+        } else {
+            // Some frames still outstanding — restart timer
+            ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
+        }
+    }
+}
+
+/**
  * @brief Internal handler for Information (I) Frames.
  * @param ctx   HDLC Context.
  * @param frame Received frame.
@@ -437,16 +480,8 @@ static void handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
       return; 
   }
 
-  // 2. Acknowledge Handling (Check Piggybacked N(R))
-  // If we are waiting for an ACK for frame V(S)-1
-  if (ctx->waiting_for_ack) {
-      // Expected N(R) for success is V(S) (Peer expects next)
-      if (msg_nr == ctx->vs) {
-          // ACK Received!
-          ctx->waiting_for_ack = false;
-          ctx->retransmit_timer_ms = 0;
-      }
-  }
+  // 2. Process Piggybacked N(R) — Cumulative ACK
+  hdlc_process_nr(ctx, msg_nr);
   
   // 3. Poll/Final Bit Handling
   if (msg_p) {
@@ -475,26 +510,41 @@ static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
 
   // 1. Process Receive Ready (RR) or Receive Not Ready (RNR)
   if (mode == HDLC_S_RR || mode == HDLC_S_RNR) {
-      // Check N(R) - Acknowledgment
-      if (ctx->waiting_for_ack) {
-          if (msg_nr == ctx->vs) {
-               ctx->waiting_for_ack = false;
-               ctx->retransmit_timer_ms = 0;
-          }
-      }
+      // Cumulative ACK via N(R)
+      hdlc_process_nr(ctx, msg_nr);
       // Note: RNR pause handling is not yet implemented.
   }
-  // 2. Process Reject (REJ)
+  // 2. Process Reject (REJ) — Go-Back-N Retransmission
   else if (mode == HDLC_S_REJ) {
-      // Peer is requesting retransmission starting from N(R).
-      // If N(R) matches our unacked frame, retransmit immediately.
-       if (ctx->waiting_for_ack) {
-          if (msg_nr == ((ctx->vs - 1 + HDLC_SEQUENCE_MODULUS) % HDLC_SEQUENCE_MODULUS)) {
-               // Force immediate retransmission via timer expiry.
-               ctx->retransmit_timer_ms = 1; 
-               hdlc_tick(ctx, 1);
+      // Peer is requesting retransmission from N(R) onward.
+      // Go-Back-N: retransmit ALL frames from N(R) to the current V(S)-1.
+      if (ctx->va != ctx->vs) {
+          // First, acknowledge everything up to N(R) if valid
+          hdlc_process_nr(ctx, msg_nr);
+
+          // Save original vs, then reset vs to nr to resend all
+          hdlc_u8 original_vs = ctx->vs;
+          ctx->vs = msg_nr;
+
+          // Retransmit all frames from msg_nr to original_vs - 1
+          hdlc_u8 seq = msg_nr;
+          while (seq != original_vs) {
+              hdlc_u8 slot = seq % ctx->window_size;
+              hdlc_control_t ctrl = hdlc_create_i_ctrl(seq, ctx->vr, 0);
+              hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
+              if (ctx->retransmit_lens[slot] > 0 && ctx->retransmit_buffer != NULL) {
+                  hdlc_output_packet_information_bytes(ctx,
+                      ctx->retransmit_buffer + (slot * ctx->retransmit_slot_size),
+                      ctx->retransmit_lens[slot]);
+              }
+              hdlc_output_packet_end(ctx);
+              seq = (seq + 1) % HDLC_SEQUENCE_MODULUS;
           }
-       }
+
+          // Restore vs to original value (we re-sent the same frames)
+          ctx->vs = original_vs;
+          ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
+      }
   }
 
   // 3. Poll/Final Handling
@@ -1251,20 +1301,22 @@ void hdlc_output_packet_i_start(hdlc_context_t *ctx) {
 bool hdlc_output_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
   if (ctx == NULL) return false;
 
-  // Window Check (Window Size = 1)
-  if (ctx->waiting_for_ack) {
-      return false; // Window closed
+  // Window Check (Go-Back-N)
+  hdlc_u8 outstanding = (ctx->vs - ctx->va + HDLC_SEQUENCE_MODULUS) % HDLC_SEQUENCE_MODULUS;
+  if (outstanding >= ctx->window_size) {
+      return false; // Window full
   }
   
-  // Buffer for Retransmission (if buffer is configured)
-  if (ctx->retransmit_buffer != NULL) {
+  // Buffer for Retransmission (store in slot vs % window_size)
+  if (ctx->retransmit_buffer != NULL && ctx->retransmit_slot_size > 0) {
+      hdlc_u8 slot = ctx->vs % ctx->window_size;
       if (len > 0 && data != NULL) {
-          if (len > ctx->retransmit_buffer_len) {
-              return false; // Data too large for retransmit buffer.
+          if (len > ctx->retransmit_slot_size) {
+              return false; // Data too large for retransmit slot.
           }
-          memcpy(ctx->retransmit_buffer, data, len);
+          memcpy(ctx->retransmit_buffer + (slot * ctx->retransmit_slot_size), data, len);
       }
-      ctx->retransmit_len = len;
+      ctx->retransmit_lens[slot] = len;
   }
 
   // Start Packet
@@ -1280,11 +1332,12 @@ bool hdlc_output_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
   
   // Update State
   ctx->vs = (ctx->vs + 1) % HDLC_SEQUENCE_MODULUS;
-  ctx->waiting_for_ack = true;
-  ctx->ack_pending = false; // Piggybacked ACK sent
+  ctx->ack_pending = false; // Piggybacked ACK sent via N(R) in I-frame
   
-  // Start Timer
-  ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
+  // Start Timer (only if this is the first outstanding frame)
+  if (outstanding == 0) {
+      ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
+  }
   
   return true;
 }
@@ -1296,8 +1349,8 @@ bool hdlc_output_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
 void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms) {
     if (ctx == NULL) return;
     
-    // Retransmission Timer
-    if (ctx->waiting_for_ack) {
+    // Retransmission Timer (only if frames are outstanding)
+    if (ctx->va != ctx->vs) {
         if (ctx->retransmit_timer_ms > 0) {
             if (ctx->retransmit_timer_ms > delta_ms) {
                 ctx->retransmit_timer_ms -= delta_ms;
@@ -1306,25 +1359,26 @@ void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms) {
             }
 
             if (ctx->retransmit_timer_ms == 0) {
-                // Timeout! Retransmit.
-                // Re-send the buffered frame.
-                
-                // Retransmit with the original N(S) = (V(S) - 1 + MOD) % MOD.
-                hdlc_u8 old_ns = (ctx->vs + HDLC_SEQUENCE_MODULUS - 1) % HDLC_SEQUENCE_MODULUS;
-                
-                // Send Frame
-                hdlc_control_t ctrl = hdlc_create_i_ctrl(old_ns, ctx->vr, 1); // P=1 (Poll)
-                hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
-                
-                if (ctx->retransmit_len > 0 && ctx->retransmit_buffer != NULL) {
-                    hdlc_output_packet_information_bytes(ctx, ctx->retransmit_buffer, ctx->retransmit_len);
+                // Timeout! Go-Back-N: Retransmit ALL frames from V(A) to V(S)-1.
+                hdlc_u8 seq = ctx->va;
+                while (seq != ctx->vs) {
+                    hdlc_u8 slot = seq % ctx->window_size;
+                    hdlc_u8 pf = (seq == ctx->va) ? 1 : 0; // P=1 on first frame
+                    hdlc_control_t ctrl = hdlc_create_i_ctrl(seq, ctx->vr, pf);
+                    hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
+                    
+                    if (ctx->retransmit_lens[slot] > 0 && ctx->retransmit_buffer != NULL) {
+                        hdlc_output_packet_information_bytes(ctx,
+                            ctx->retransmit_buffer + (slot * ctx->retransmit_slot_size),
+                            ctx->retransmit_lens[slot]);
+                    }
+                    
+                    hdlc_output_packet_end(ctx);
+                    seq = (seq + 1) % HDLC_SEQUENCE_MODULUS;
                 }
-                
-                hdlc_output_packet_end(ctx);
                 
                 // Restart Timer
                 ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
-                ctx->stats_output_frames++;
             }
         }
     }

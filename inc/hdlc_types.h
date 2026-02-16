@@ -257,16 +257,18 @@ typedef struct {
     hdlc_u8 my_address;                           /**< Local station address. */
     hdlc_u8 peer_address;                         /**< Remote station address. */
 
-    /* Reliable Transmission State (Window Size = 1) */
+    /* Reliable Transmission State (Go-Back-N) */
     hdlc_u8 vs;                 /**< Send State Variable V(S). Sequence number of next I-frame to send. */
     hdlc_u8 vr;                 /**< Receive State Variable V(R). Sequence number of next expected I-frame. */
+    hdlc_u8 va;                 /**< Acknowledge State Variable V(A). Oldest unacknowledged sequence number. */
+    hdlc_u8 window_size;        /**< Transmit window size (1..7). */
     hdlc_bool ack_pending;      /**< Flag indicating an acknowledgement is pending. */
     
-    /* Retransmission Buffer (Window Size = 1) */
-    hdlc_u8 *retransmit_buffer; /**< Buffer holding the last sent I-frame payload for retransmission. */
-    hdlc_u32 retransmit_buffer_len; /**< Maximum length of the retransmit buffer. */
-    hdlc_u32 retransmit_len;    /**< Length of the data in retransmit_buffer. */
-    hdlc_bool waiting_for_ack;  /**< True if we are waiting for an ACK for the buffered frame. */
+    /* Retransmission Buffer (Go-Back-N, slotted) */
+    hdlc_u8 *retransmit_buffer; /**< User-supplied buffer, divided into window_size equal slots. */
+    hdlc_u32 retransmit_buffer_len; /**< Total length of the retransmit buffer. */
+    hdlc_u32 retransmit_slot_size;  /**< Max payload per slot (retransmit_buffer_len / window_size). */
+    hdlc_u32 retransmit_lens[7];    /**< Payload length stored per slot (max 7 slots). */
     hdlc_u32 retransmit_timer_ms; /**< Timer for retransmission (counts down). */
     hdlc_u32 retransmit_timeout_ms; /**< Configurable retransmission timeout period in ms. */
 

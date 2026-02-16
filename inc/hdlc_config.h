@@ -122,6 +122,22 @@ extern "C" {
 #define HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS  1000
 #endif
 
+/*
+ * --------------------------------------------------------------------------
+ * WINDOW SIZE DEFAULTS
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Default transmit window size for Go-Back-N.
+ *
+ * Valid range: 1..7. Window=1 is equivalent to Stop-and-Wait.
+ * Can be overridden at compile time or at init time.
+ */
+#ifndef HDLC_DEFAULT_WINDOW_SIZE
+#define HDLC_DEFAULT_WINDOW_SIZE  1
+#endif
+
 #ifdef __cplusplus
 }
 #endif
