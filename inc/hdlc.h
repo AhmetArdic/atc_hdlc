@@ -123,10 +123,9 @@ bool hdlc_output_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
  * The frame is assigned the current V(S) sequence number and buffered
  * for retransmission until acknowledged by the peer.
  *
- * @note This function requires a retransmission buffer to be configured
- * (not yet implemented in init, assuming single buffer for now or user provided?).
- * Wait, for Window=1 we can just point to the user data if it's static, 
- * but usually we need to copy it because user might free it.
+ * @note Requires a retransmission buffer configured via hdlc_init().
+ * The data is copied into the retransmit buffer for automatic retransmission
+ * if the peer does not acknowledge within the timeout period (Window Size = 1).
  *
  * @param ctx  Pointer to the initialized HDLC context.
  * @param data Pointer to the data payload.

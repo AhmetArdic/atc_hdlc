@@ -264,6 +264,7 @@ typedef struct {
     
     /* Retransmission Buffer (Window Size = 1) */
     hdlc_u8 *retransmit_buffer; /**< Buffer holding the last sent I-frame payload for retransmission. */
+    hdlc_u32 retransmit_buffer_len; /**< Maximum length of the retransmit buffer. */
     hdlc_u32 retransmit_len;    /**< Length of the data in retransmit_buffer. */
     hdlc_bool waiting_for_ack;  /**< True if we are waiting for an ACK for the buffered frame. */
     hdlc_u32 retransmit_timer_ms; /**< Timer for retransmission (counts down). */

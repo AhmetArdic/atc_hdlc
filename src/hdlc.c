@@ -44,8 +44,7 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *input_buffer, hdlc_u32 input_buffer
   
   // Initialize Retransmit Buffer
   ctx->retransmit_buffer = retransmit_buffer;
-  // Store usage length? No, we might need to store max len if we want to check overflow
-  (void)retransmit_buffer_len; // Not stored in context currently
+  ctx->retransmit_buffer_len = retransmit_buffer_len;
   ctx->retransmit_len = 0;
 
   // Bind callbacks
@@ -445,8 +444,6 @@ static void handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
           ctx->waiting_for_ack = false;
           ctx->retransmit_timer_ms = 0;
       }
-      // If msg_nr != vs, it might be an old ACK or NACK (REJ handling is in S-frames usually)
-      // I-frames just carry N(R).
   }
   
   // 3. Poll/Final Bit Handling
@@ -456,10 +453,7 @@ static void handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
       hdlc_send_rr(ctx, 1);
       ctx->ack_pending = false; // Explicitly ACKed
   } 
-  // Optimization: If we have ack_pending but no data to send, when do we send RR?
-  // Usually somewhat immediate or delayed. For now, immediate ACK if no data outgoing?
-  // or rely on next I-frame?
-  // Let's implement aggressive ACKing for now to ensure throughput in Stop-and-wait.
+  // Immediate ACK: Send RR when no piggybacked I-frame is pending.
   else if (ctx->ack_pending) {
        hdlc_send_rr(ctx, 0);
        ctx->ack_pending = false;
@@ -486,8 +480,7 @@ static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
                ctx->retransmit_timer_ms = 0;
           }
       }
-      
-      // TODO: Handle RNR specifically (Pause TX) - For now treat as RR but maybe set flag?
+      // Note: RNR pause handling is not yet implemented.
   }
   // 2. Process Reject (REJ)
   else if (mode == 2) { // REJ=10
@@ -495,13 +488,9 @@ static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
       // If N(R) matches our unacked frame, retransmit immediately.
        if (ctx->waiting_for_ack) {
           if (msg_nr == ((ctx->vs - 1 + 8) % 8)) {
-               // Retransmit logic needed! 
-               // Reuse the logic from hdlc_tick or make a helper?
-               // Let's force timer to 1 to trigger retransmit in next tick?
-               // Or call tick explicitly? 
-               // Or just retransmit here.
+               // Force immediate retransmission via timer expiry.
                ctx->retransmit_timer_ms = 1; 
-               hdlc_tick(ctx, 1); // Process immediately (decrement 1ms)
+               hdlc_tick(ctx, 1);
           }
        }
   }
@@ -554,10 +543,7 @@ static inline void hdlc_send_u_frame(hdlc_context_t *ctx, hdlc_u8 address, hdlc_
  * @param pf    Final bit (matches Command's P bit).
  */
 static inline void hdlc_send_ua(hdlc_context_t *ctx, hdlc_u8 pf) {
-    // UA is always a response, so it carries our address (in ABM context, or correct response logic)
-    // Actually, usually responses use the address of the command they are acknowledging?
-    // In ABM: "Command: dest addr. Response: dest addr." 
-    // Wait, earlier logic used `ctx->my_address`.
+    // UA is a response, addressed from this station.
     hdlc_send_u_frame(ctx, ctx->my_address, HDLC_U_MODIFIER_LO_UA, HDLC_U_MODIFIER_HI_UA, pf);
 }
 
@@ -596,11 +582,7 @@ static inline void hdlc_send_s_frame(hdlc_context_t *ctx, hdlc_u8 address, hdlc_
  * @param pf  Poll/Final bit.
  */
 static inline void hdlc_send_rr(hdlc_context_t *ctx, hdlc_u8 pf) {
-    // RR: S=00
-    // Address: Destination (Peer) if Command, Source (Me) if Response?
-    // In balanced mode (SABM), usually we send to Peer Address?
-    // Actually, S-frames are usually responses to I-frames (ACKs).
-    // If we act as a responder to a command I-frame, we send Response to Peer.
+    // RR: S=00, addressed to peer.
     hdlc_send_s_frame(ctx, ctx->peer_address, 0, ctx->vr, pf);
 }
 
@@ -620,8 +602,7 @@ static inline void hdlc_send_rej(hdlc_context_t *ctx, hdlc_u8 pf) {
  * @param frame The received SABM frame.
  */
 static void hdlc_process_sabm(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
-    // Accept connection
-    // Reset variables (TODO: Phase 2 variables)
+    // Accept connection and transition to CONNECTED.
     hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_CONNECTED);
 
     // Send UA (Response matches Command P bit with F bit)
@@ -666,7 +647,7 @@ static void hdlc_process_disc(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
  * @param frame The received UA frame.
  */
 static void hdlc_process_ua(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
-    (void)frame; // PF bit interaction with timer recovery (TODO)
+    (void)frame;
     if (ctx->current_state == HDLC_PROTOCOL_STATE_CONNECTING) {
         hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_CONNECTED);
     } else if (ctx->current_state == HDLC_PROTOCOL_STATE_DISCONNECTING) {
@@ -726,18 +707,7 @@ static void hdlc_process_frmr(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
  * @param frame The received UI frame.
  */
 static void hdlc_process_ui(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
-    // UI frames are unnumbered and unacknowledged.
-    // They are passed to the user application if connected (or maybe even if not?).
-    // Standard often allows UI in any state, but usually mostly in Connected.
-    // Let's pass it through via the generic on_frame_cb mechanism which happens
-    // after this dispatcher in `process_complete_frame`.
-    
-    // However, `process_complete_frame` dispatches to `handle_u_frame`
-    // AND then calls `ctx->on_frame_cb`. 
-    // So we don't strictly need to do anything here unless we want to filter it
-    // based on state. 
-    
-    // For now, we just acknowledge receipt internally (no protocol ACK).
+    // UI frames are unacknowledged; delivered via on_frame_cb in process_complete_frame.
     (void)ctx;
     (void)frame;
 }
@@ -1287,18 +1257,12 @@ bool hdlc_output_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
   // Buffer for Retransmission (if buffer is configured)
   if (ctx->retransmit_buffer != NULL) {
       if (len > 0 && data != NULL) {
-          // Copy data (bounds check should be done if we stored max len, 
-          // but for now assume user provided enough buffer or we stored len)
-          // We did not store max len in initialization (TODO). 
-          // For now, memcpy.
+          if (len > ctx->retransmit_buffer_len) {
+              return false; // Data too large for retransmit buffer.
+          }
           memcpy(ctx->retransmit_buffer, data, len);
       }
       ctx->retransmit_len = len;
-  } else {
-      // If no buffer configured, reliable TX is risky/impossible for Retransmission.
-      // But we proceed to send relying on user providing persistence? 
-      // Plan said "Start with Window Size = 1".
-      // Assuming retransmit_buffer IS configured.
   }
 
   // Start Packet
@@ -1343,11 +1307,7 @@ void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms) {
                 // Timeout! Retransmit.
                 // Re-send the buffered frame.
                 
-                // We need to re-compose I-frame with same N(S)!
-                // But wait, vs has incremented.
-                // Retransmission uses the OLD sequence number.
-                // Current vs is Next Sequence.
-                // So Retransmit NS = (vs - 1 + 8) % 8.
+                // Retransmit with the original N(S) = (V(S) - 1 + 8) % 8.
                 hdlc_u8 old_ns = (ctx->vs + 7) % 8;
                 
                 // Send Frame
@@ -1362,7 +1322,7 @@ void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms) {
                 
                 // Restart Timer
                 ctx->retransmit_timer_ms = 1000;
-                ctx->stats_output_frames++; // Count retransmission?
+                ctx->stats_output_frames++;
             }
         }
     }
