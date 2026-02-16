@@ -414,11 +414,16 @@ bool hdlc_frame_unpack(const hdlc_u8 *buffer, hdlc_u32 buffer_len,
  */
 
 /**
- * @brief Check if a sequence number is within the outstanding window [va, vs).
+ * @brief Check if N(R) is within the valid acknowledgment range (V(A), V(S)].
  *
  * Uses modular arithmetic to handle wrap-around.
  * Returns true if nr is in range (va, vs] mod 8, meaning it acknowledges
  * at least one outstanding frame.
+ *
+ * @param va  Acknowledge State Variable V(A).
+ * @param nr  Received sequence number N(R).
+ * @param vs  Send State Variable V(S).
+ * @return true if N(R) acknowledges at least one frame.
  */
 static inline bool hdlc_nr_valid(hdlc_u8 va, hdlc_u8 nr, hdlc_u8 vs) {
     // N(R) is valid if it acknowledges at least one frame: (va < nr <= vs) mod 8
@@ -432,8 +437,12 @@ static inline bool hdlc_nr_valid(hdlc_u8 va, hdlc_u8 nr, hdlc_u8 vs) {
 /**
  * @brief Process N(R) from a received frame (cumulative ACK).
  *
- * Advances V(A) to N(R) if valid. Clears retransmit timer if all
- * outstanding frames are acknowledged (V(A) == V(S)).
+ * Advances V(A) to N(R) if valid. Clears the retransmission timer
+ * when all outstanding frames are acknowledged (V(A) == V(S)),
+ * or restarts it if frames remain outstanding.
+ *
+ * @param ctx HDLC Context.
+ * @param nr  Received sequence number N(R).
  */
 static inline void hdlc_process_nr(hdlc_context_t *ctx, hdlc_u8 nr) {
     if (hdlc_nr_valid(ctx->va, nr, ctx->vs)) {
@@ -460,23 +469,13 @@ static void handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
 
   // 1. Sequence Number Check (N(S) == V(R))
   if (msg_ns == ctx->vr) {
-      // Correct Sequence
+      // Correct sequence — advance V(R) and mark ACK pending.
+      // Payload delivery is handled by the dispatcher after this returns.
       ctx->vr = (ctx->vr + 1) % HDLC_SEQUENCE_MODULUS;
       ctx->ack_pending = true;
-      
-      // Deliver to User
-      // Note: We modify the frame type to I_FRAME so user knows. 
-      // It is already I_FRAME from dispatcher.
-      // Dispatcher will call on_frame_cb AFTER this returns.
-      // So we don't need to call it here.
   } else {
-      // Sequence Error
-      // Send REJ (Reject) immediately
-      // Discard this frame (do not increment V(R))
-      hdlc_send_rej(ctx, 0); // F=0 usually unless responding to P=1
-      
-      // If P=1, we must set F=1 in response.
-      // But if we send REJ, that serves as response?
+      // Sequence error — send REJ and discard this frame.
+      hdlc_send_rej(ctx, msg_p); // Mirror P bit in F bit
       return; 
   }
 
@@ -516,19 +515,15 @@ static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   }
   // 2. Process Reject (REJ) — Go-Back-N Retransmission
   else if (mode == HDLC_S_REJ) {
-      // Peer is requesting retransmission from N(R) onward.
-      // Go-Back-N: retransmit ALL frames from N(R) to the current V(S)-1.
+      // Peer requests retransmission from N(R) onward.
+      // Go-Back-N: retransmit ALL frames from N(R) to V(S)-1.
       if (ctx->va != ctx->vs) {
-          // First, acknowledge everything up to N(R) if valid
+          // Acknowledge everything up to N(R)
           hdlc_process_nr(ctx, msg_nr);
 
-          // Save original vs, then reset vs to nr to resend all
-          hdlc_u8 original_vs = ctx->vs;
-          ctx->vs = msg_nr;
-
-          // Retransmit all frames from msg_nr to original_vs - 1
+          // Retransmit all frames from msg_nr to V(S)-1
           hdlc_u8 seq = msg_nr;
-          while (seq != original_vs) {
+          while (seq != ctx->vs) {
               hdlc_u8 slot = seq % ctx->window_size;
               hdlc_control_t ctrl = hdlc_create_i_ctrl(seq, ctx->vr, 0);
               hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
@@ -541,8 +536,6 @@ static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
               seq = (seq + 1) % HDLC_SEQUENCE_MODULUS;
           }
 
-          // Restore vs to original value (we re-sent the same frames)
-          ctx->vs = original_vs;
           ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
       }
   }
