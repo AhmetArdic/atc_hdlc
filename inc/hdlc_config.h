@@ -106,6 +106,22 @@ extern "C" {
 #define HDLC_PROTOCOL_STATE_CONNECTED                                   ATC_HDLC_NAME_UPPERCASE(HDLC_PROTOCOL_STATE_CONNECTED)
 #define HDLC_PROTOCOL_STATE_DISCONNECTING                               ATC_HDLC_NAME_UPPERCASE(HDLC_PROTOCOL_STATE_DISCONNECTING)
 
+/*
+ * --------------------------------------------------------------------------
+ * TIMER DEFAULTS
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Default retransmission (T1) timeout in milliseconds.
+ *
+ * Used as the default value for the retransmit_timeout_ms parameter
+ * in hdlc_init(). Can be overridden at init time.
+ */
+#ifndef HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS
+#define HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS  1000
+#endif
+
 #ifdef __cplusplus
 }
 #endif

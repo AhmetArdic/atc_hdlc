@@ -268,6 +268,7 @@ typedef struct {
     hdlc_u32 retransmit_len;    /**< Length of the data in retransmit_buffer. */
     hdlc_bool waiting_for_ack;  /**< True if we are waiting for an ACK for the buffered frame. */
     hdlc_u32 retransmit_timer_ms; /**< Timer for retransmission (counts down). */
+    hdlc_u32 retransmit_timeout_ms; /**< Configurable retransmission timeout period in ms. */
 
     /* Receiver Engine State */
     hdlc_u8 input_state;        /**< Current internal parser state. */

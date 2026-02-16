@@ -27,6 +27,7 @@
  */
 void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *input_buffer, hdlc_u32 input_buffer_len,
                       hdlc_u8 *retransmit_buffer, hdlc_u32 retransmit_buffer_len,
+                      hdlc_u32 retransmit_timeout_ms,
                       hdlc_output_byte_cb_t output_cb,
                       hdlc_on_frame_cb_t on_frame_cb,
                       hdlc_on_state_change_cb_t on_state_change_cb,
@@ -62,6 +63,7 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *input_buffer, hdlc_u32 input_buffer
   ctx->vr = 0;
   ctx->ack_pending = false;
   ctx->waiting_for_ack = false;
+  ctx->retransmit_timeout_ms = retransmit_timeout_ms;
 }
 
 /*
@@ -416,7 +418,7 @@ static void handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   // 1. Sequence Number Check (N(S) == V(R))
   if (msg_ns == ctx->vr) {
       // Correct Sequence
-      ctx->vr = (ctx->vr + 1) % 8;
+      ctx->vr = (ctx->vr + 1) % HDLC_SEQUENCE_MODULUS;
       ctx->ack_pending = true;
       
       // Deliver to User
@@ -472,7 +474,7 @@ static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   bool is_command = (frame->address == ctx->my_address); // Addressed to me = Command
 
   // 1. Process Receive Ready (RR) or Receive Not Ready (RNR)
-  if (mode == 0 || mode == 1) { // RR=00, RNR=01
+  if (mode == HDLC_S_RR || mode == HDLC_S_RNR) {
       // Check N(R) - Acknowledgment
       if (ctx->waiting_for_ack) {
           if (msg_nr == ctx->vs) {
@@ -483,11 +485,11 @@ static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
       // Note: RNR pause handling is not yet implemented.
   }
   // 2. Process Reject (REJ)
-  else if (mode == 2) { // REJ=10
+  else if (mode == HDLC_S_REJ) {
       // Peer is requesting retransmission starting from N(R).
       // If N(R) matches our unacked frame, retransmit immediately.
        if (ctx->waiting_for_ack) {
-          if (msg_nr == ((ctx->vs - 1 + 8) % 8)) {
+          if (msg_nr == ((ctx->vs - 1 + HDLC_SEQUENCE_MODULUS) % HDLC_SEQUENCE_MODULUS)) {
                // Force immediate retransmission via timer expiry.
                ctx->retransmit_timer_ms = 1; 
                hdlc_tick(ctx, 1);
@@ -583,7 +585,7 @@ static inline void hdlc_send_s_frame(hdlc_context_t *ctx, hdlc_u8 address, hdlc_
  */
 static inline void hdlc_send_rr(hdlc_context_t *ctx, hdlc_u8 pf) {
     // RR: S=00, addressed to peer.
-    hdlc_send_s_frame(ctx, ctx->peer_address, 0, ctx->vr, pf);
+    hdlc_send_s_frame(ctx, ctx->peer_address, HDLC_S_RR, ctx->vr, pf);
 }
 
 /**
@@ -593,7 +595,7 @@ static inline void hdlc_send_rr(hdlc_context_t *ctx, hdlc_u8 pf) {
  */
 static inline void hdlc_send_rej(hdlc_context_t *ctx, hdlc_u8 pf) {
     // REJ: S=10 (2)
-    hdlc_send_s_frame(ctx, ctx->peer_address, 2, ctx->vr, pf);
+    hdlc_send_s_frame(ctx, ctx->peer_address, HDLC_S_REJ, ctx->vr, pf);
 }
 
 /**
@@ -1277,12 +1279,12 @@ bool hdlc_output_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
   hdlc_output_packet_end(ctx);
   
   // Update State
-  ctx->vs = (ctx->vs + 1) % 8; // Modulo 8
+  ctx->vs = (ctx->vs + 1) % HDLC_SEQUENCE_MODULUS;
   ctx->waiting_for_ack = true;
   ctx->ack_pending = false; // Piggybacked ACK sent
   
   // Start Timer
-  ctx->retransmit_timer_ms = 1000; // 1 second timeout (Hardcoded for now)
+  ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
   
   return true;
 }
@@ -1307,8 +1309,8 @@ void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms) {
                 // Timeout! Retransmit.
                 // Re-send the buffered frame.
                 
-                // Retransmit with the original N(S) = (V(S) - 1 + 8) % 8.
-                hdlc_u8 old_ns = (ctx->vs + 7) % 8;
+                // Retransmit with the original N(S) = (V(S) - 1 + MOD) % MOD.
+                hdlc_u8 old_ns = (ctx->vs + HDLC_SEQUENCE_MODULUS - 1) % HDLC_SEQUENCE_MODULUS;
                 
                 // Send Frame
                 hdlc_control_t ctrl = hdlc_create_i_ctrl(old_ns, ctx->vr, 1); // P=1 (Poll)
@@ -1321,7 +1323,7 @@ void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms) {
                 hdlc_output_packet_end(ctx);
                 
                 // Restart Timer
-                ctx->retransmit_timer_ms = 1000;
+                ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
                 ctx->stats_output_frames++;
             }
         }

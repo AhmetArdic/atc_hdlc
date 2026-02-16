@@ -55,7 +55,7 @@ void test_reliable_transmission(void) {
     printf("========================================\n");
     atc_hdlc_context_t ctx;
     atc_hdlc_u8 retx_buf[128];
-    atc_hdlc_init(&ctx, input_buffer, sizeof(input_buffer), retx_buf, sizeof(retx_buf), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_init(&ctx, input_buffer, sizeof(input_buffer), retx_buf, sizeof(retx_buf), HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     reset_test();
     
     // Connect
@@ -104,7 +104,7 @@ void test_reliable_retransmission(void) {
     printf("========================================\n");
     atc_hdlc_context_t ctx;
     atc_hdlc_u8 retx_buf[128];
-    atc_hdlc_init(&ctx, input_buffer, sizeof(input_buffer), retx_buf, sizeof(retx_buf), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_init(&ctx, input_buffer, sizeof(input_buffer), retx_buf, sizeof(retx_buf), HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     reset_test();
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
     ctx.current_state = 2; // CONNECTED
@@ -131,7 +131,7 @@ void test_sequence_rollover(void) {
     printf("========================================\n");
     atc_hdlc_context_t ctx;
     atc_hdlc_u8 retx_buf[128];
-    atc_hdlc_init(&ctx, input_buffer, sizeof(input_buffer), retx_buf, sizeof(retx_buf), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_init(&ctx, input_buffer, sizeof(input_buffer), retx_buf, sizeof(retx_buf), HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
     ctx.current_state = 2; // CONNECTED
     
@@ -176,7 +176,7 @@ void test_duplicate_ack_ignored(void) {
     printf("========================================\n");
     atc_hdlc_context_t ctx;
     atc_hdlc_u8 retx_buf[128];
-    atc_hdlc_init(&ctx, input_buffer, sizeof(input_buffer), retx_buf, sizeof(retx_buf), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_init(&ctx, input_buffer, sizeof(input_buffer), retx_buf, sizeof(retx_buf), HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
     ctx.current_state = 2; // CONNECTED
     
@@ -206,7 +206,7 @@ void test_rej_retransmit(void) {
     printf("========================================\n");
     atc_hdlc_context_t ctx;
     atc_hdlc_u8 retx_buf[128];
-    atc_hdlc_init(&ctx, input_buffer, sizeof(input_buffer), retx_buf, sizeof(retx_buf), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_init(&ctx, input_buffer, sizeof(input_buffer), retx_buf, sizeof(retx_buf), HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
     ctx.current_state = 2; // CONNECTED
     

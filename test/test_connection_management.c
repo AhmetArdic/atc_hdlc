@@ -63,7 +63,7 @@ void on_state_change(atc_hdlc_protocol_state_t state, void *user_data) {
 
 // Helper to reset test state
 void setup_context(void) {
-    atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), NULL, 0, on_tx_byte, on_rx_frame, on_state_change, NULL);
+    atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), NULL, 0, HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, on_tx_byte, on_rx_frame, on_state_change, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02); // Me=0x01, Peer=0x02
     captured_tx_len = 0;
     state_change_call_count = 0;

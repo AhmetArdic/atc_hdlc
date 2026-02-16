@@ -83,5 +83,22 @@ typedef enum {
 #define HDLC_FRMR_Y_BIT         0x04
 #define HDLC_FRMR_Z_BIT         0x08
 #define HDLC_FRMR_V_BIT         0x10
+/*
+ * --------------------------------------------------------------------------
+ * S-FRAME SUPERVISORY FUNCTION BITS
+ * --------------------------------------------------------------------------
+ * The S-bits (2 bits) in an S-Frame control field.
+ */
+#define HDLC_S_RR   0   /**< Receive Ready (RR). */
+#define HDLC_S_RNR  1   /**< Receive Not Ready (RNR). */
+#define HDLC_S_REJ  2   /**< Reject (REJ). */
+
+/*
+ * --------------------------------------------------------------------------
+ * SEQUENCE NUMBER CONSTANTS
+ * --------------------------------------------------------------------------
+ */
+/** @brief Modulus for sequence numbers (V(S), V(R), N(S), N(R)). 3 bits => mod 8. */
+#define HDLC_SEQUENCE_MODULUS   8
 
 #endif // HDLC_PRIVATE_H
