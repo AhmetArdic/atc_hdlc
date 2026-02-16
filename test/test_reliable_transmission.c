@@ -233,6 +233,107 @@ void test_rej_retransmit(void) {
     }
 }
 
+void test_piggyback_ack(void) {
+    printf("========================================\n");
+    printf("TEST: Piggyback ACK via I-Frame N(R)\n");
+    printf("========================================\n");
+    atc_hdlc_context_t ctx;
+    atc_hdlc_u8 retx_buf[128];
+    atc_hdlc_init(&ctx, input_buffer, sizeof(input_buffer), retx_buf, sizeof(retx_buf), HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    ctx.current_state = 2; // CONNECTED
+
+    // --- Phase 1: Outgoing Piggyback ---
+    // Receive an I-frame from peer: N(S)=0, N(R)=0 (peer expects our frame 0)
+    printf("\n--- Phase 1: Outgoing Piggyback (I-frame carries ACK for received frame) ---\n");
+    reset_test();
+
+    // Build peer's I-frame: Addr=0x01 (to me), Ctrl: I-frame N(S)=0, N(R)=0, P=0
+    atc_hdlc_frame_t peer_frame = {
+        .address = 0x01,
+        .control = atc_hdlc_create_i_ctrl(0, 0, 0),
+        .information = (atc_hdlc_u8 *)"HI",
+        .information_len = 2
+    };
+
+    // Encode and feed peer's frame
+    atc_hdlc_u8 encoded[64];
+    atc_hdlc_u32 encoded_len = 0;
+    atc_hdlc_frame_pack(&peer_frame, encoded, sizeof(encoded), &encoded_len);
+    atc_hdlc_input_bytes(&ctx, encoded, encoded_len);
+
+    // After receiving, V(R) should be 1, ack_pending should be true
+    // (library sent an immediate RR, so ack_pending is cleared)
+    // But if we now send our own I-frame, its N(R) should carry V(R)=1
+    printf("V(R) after receiving peer I-frame: %d\n", ctx.vr);
+    if (ctx.vr != 1) {
+        test_fail("Piggyback: V(R) incremented", "V(R) not 1");
+        return;
+    }
+    test_pass("Piggyback: V(R) incremented to 1");
+
+    // Send our own I-frame — this embeds N(R)=V(R)=1 as the piggyback ACK
+    reset_test();
+    atc_hdlc_u8 our_data[] = "OK";
+    bool sent = atc_hdlc_output_i(&ctx, our_data, sizeof(our_data) - 1);
+    if (!sent) {
+        test_fail("Piggyback: Outgoing I-frame sent", "output_i returned false");
+        return;
+    }
+    test_pass("Piggyback: Outgoing I-frame sent");
+
+    // Verify: Our VS should have incremented and ack_pending should be false (piggybacked)
+    if (ctx.ack_pending == false) {
+        test_pass("Piggyback: ack_pending cleared by outgoing I-frame");
+    } else {
+        test_fail("Piggyback: ack_pending cleared", "ack_pending still true");
+    }
+
+    // --- Phase 2: Incoming Piggyback ---
+    // Our I-frame is pending ACK (waiting_for_ack=true, vs=1).
+    // Peer responds with its own I-frame containing N(R)=1 (ACKing our frame).
+    printf("\n--- Phase 2: Incoming Piggyback (Peer I-frame ACKs our frame via N(R)) ---\n");
+
+    if (!ctx.waiting_for_ack) {
+        test_fail("Piggyback: Pre-check waiting_for_ack", "Expected waiting_for_ack=true");
+        return;
+    }
+    test_pass("Piggyback: Pre-check waiting_for_ack=true");
+
+    // Peer sends I-frame: N(S)=1 (next seq), N(R)=1 (ACKing our frame 0)
+    atc_hdlc_frame_t peer_frame2 = {
+        .address = 0x01,
+        .control = atc_hdlc_create_i_ctrl(1, 1, 0), // N(S)=1, N(R)=1=our VS
+        .information = (atc_hdlc_u8 *)"RE",
+        .information_len = 2
+    };
+
+    reset_test();
+    atc_hdlc_frame_pack(&peer_frame2, encoded, sizeof(encoded), &encoded_len);
+    atc_hdlc_input_bytes(&ctx, encoded, encoded_len);
+
+    // After processing, waiting_for_ack should be cleared (piggybacked ACK received)
+    if (ctx.waiting_for_ack == false) {
+        test_pass("Piggyback: Incoming I-frame N(R) cleared waiting_for_ack");
+    } else {
+        test_fail("Piggyback: Incoming ACK", "waiting_for_ack still true");
+    }
+
+    // V(R) should now be 2
+    if (ctx.vr == 2) {
+        test_pass("Piggyback: V(R) incremented to 2");
+    } else {
+        test_fail("Piggyback: V(R) check", "V(R) not 2");
+    }
+
+    // Retransmit timer should be cleared
+    if (ctx.retransmit_timer_ms == 0) {
+        test_pass("Piggyback: Retransmit timer cleared");
+    } else {
+        test_fail("Piggyback: Timer check", "retransmit_timer_ms not 0");
+    }
+}
+
 int main() {
   printf("\n%sSTARTING RELIABLE TRANSMISSION TEST SUITE%s\n", COL_YELLOW,
          COL_RESET);
@@ -243,6 +344,7 @@ int main() {
   test_sequence_rollover();
   test_duplicate_ack_ignored();
   test_rej_retransmit();
+  test_piggyback_ack();
 
   printf("\n%sALL RELIABLE TRANSMISSION TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
   return 0;
