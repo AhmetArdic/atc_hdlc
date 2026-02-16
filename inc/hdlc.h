@@ -30,15 +30,19 @@ extern "C" {
  * Sets up the HDLC instance, clears internal state, resets statistics,
  * and binds the user-provided callbacks.
  * 
- * @param ctx                Pointer to the @ref hdlc_context_t structure to initialize.
- * @param buffer             Pointer to the user-supplied Input buffer.
- * @param buffer_len         Length of the user-supplied Input buffer.
- * @param output_cb          Callback function for sending a byte to the hardware.
- * @param on_frame_cb        Callback function for receiving valid frames.
- * @param on_state_change_cb Callback function for connection state changes (Optional, can be NULL).
- * @param user_data          Optional user pointer to pass to the callbacks.
+ * @param ctx                   Pointer to the @ref hdlc_context_t structure to initialize.
+ * @param input_buffer          Pointer to the user-supplied Input buffer.
+ * @param input_buffer_len      Length of the user-supplied Input buffer.
+ * @param retransmit_buffer     Pointer to buffer for storing unacknowledged frames (for retransmission).
+ * @param retransmit_buffer_len Length of the retransmit buffer.
+ * @param output_cb             Callback function for sending a byte to the hardware.
+ * @param on_frame_cb           Callback function for receiving valid frames.
+ * @param on_state_change_cb    Callback function for connection state changes (Optional, can be NULL).
+ * @param user_data             Optional user pointer to pass to the callbacks.
  */
-void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *buffer, hdlc_u32 buffer_len,
+void hdlc_init(hdlc_context_t *ctx, 
+                      hdlc_u8 *input_buffer, hdlc_u32 input_buffer_len,
+                      hdlc_u8 *retransmit_buffer, hdlc_u32 retransmit_buffer_len,
                       hdlc_output_byte_cb_t output_cb,
                       hdlc_on_frame_cb_t on_frame_cb,
                       hdlc_on_state_change_cb_t on_state_change_cb,
@@ -111,6 +115,53 @@ bool hdlc_output_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
  * @return true if the frame was output successfully, false otherwise.
  */
 bool hdlc_output_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
+
+/**
+ * @brief Output an Information (I) frame (Reliable).
+ *
+ * Transmits an I-frame containing the provided data.
+ * The frame is assigned the current V(S) sequence number and buffered
+ * for retransmission until acknowledged by the peer.
+ *
+ * @note This function requires a retransmission buffer to be configured
+ * (not yet implemented in init, assuming single buffer for now or user provided?).
+ * Wait, for Window=1 we can just point to the user data if it's static, 
+ * but usually we need to copy it because user might free it.
+ *
+ * @param ctx  Pointer to the initialized HDLC context.
+ * @param data Pointer to the data payload.
+ * @param len  Length of the data payload.
+ * @return true if the frame was accepted (window open), false otherwise.
+ */
+bool hdlc_output_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
+
+/**
+ * @brief Start an Information (I) Packet Output (Streaming).
+ *
+ * Begins a new I-frame transmission.
+ *
+ * @warning **RETRANSMISSION CAVEAT**: When using this streaming API, the library
+ * CANNOT automatically buffer the full frame for retransmission because it
+ * never sees the full frame in one go.
+ * 
+ * Usage of this function implies that either:
+ * 1. The user application handles retransmission if an ACK is not received.
+ * 2. Or reliability is not strictly required for this stream (unlikely for I-frames).
+ * 
+ * @param ctx Pointer to the initialized HDLC context.
+ */
+void hdlc_output_packet_i_start(hdlc_context_t *ctx);
+
+/**
+ * @brief Periodic Tick for Timers.
+ *
+ * Must be called periodically (e.g., every 1ms or 10ms) to drive
+ * internal timers for retransmission and status polling.
+ *
+ * @param ctx Pointer to the initialized HDLC context.
+ * @param delta_ms Time elapsed since last call in milliseconds.
+ */
+void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms);
 
 /**
  * @brief Input a received byte into the HDLC Parser.

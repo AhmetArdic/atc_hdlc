@@ -5,3 +5,7 @@ add_test(NAME HDLC_Unit_Tests COMMAND test_hdlc)
 add_executable(test_connection_management test_connection_management.c test_common.c)
 target_link_libraries(test_connection_management PRIVATE hdlc)
 add_test(NAME ConnectionManagementTest COMMAND test_connection_management)
+
+add_executable(test_reliable_transmission test_reliable_transmission.c test_common.c)
+target_link_libraries(test_reliable_transmission PRIVATE hdlc)
+add_test(NAME ReliableTransmissionTest COMMAND test_reliable_transmission)

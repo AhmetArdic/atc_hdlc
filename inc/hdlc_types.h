@@ -257,6 +257,17 @@ typedef struct {
     hdlc_u8 my_address;                           /**< Local station address. */
     hdlc_u8 peer_address;                         /**< Remote station address. */
 
+    /* Reliable Transmission State (Window Size = 1) */
+    hdlc_u8 vs;                 /**< Send State Variable V(S). Sequence number of next I-frame to send. */
+    hdlc_u8 vr;                 /**< Receive State Variable V(R). Sequence number of next expected I-frame. */
+    hdlc_bool ack_pending;      /**< Flag indicating an acknowledgement is pending. */
+    
+    /* Retransmission Buffer (Window Size = 1) */
+    hdlc_u8 *retransmit_buffer; /**< Buffer holding the last sent I-frame payload for retransmission. */
+    hdlc_u32 retransmit_len;    /**< Length of the data in retransmit_buffer. */
+    hdlc_bool waiting_for_ack;  /**< True if we are waiting for an ACK for the buffered frame. */
+    hdlc_u32 retransmit_timer_ms; /**< Timer for retransmission (counts down). */
+
     /* Receiver Engine State */
     hdlc_u8 input_state;        /**< Current internal parser state. */
     hdlc_u8 *input_buffer;      /**< Pointer to the user-supplied RX buffer. */
