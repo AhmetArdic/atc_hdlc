@@ -382,6 +382,285 @@ void test_gobackn_retransmit(void) {
     }
 }
 
+/**
+ * @brief Test: Window Size 7 — Full window + REJ on middle frame.
+ *        Sends 7 I-frames (filling the window completely), then the peer
+ *        sends REJ for frame #3, triggering Go-Back-N retransmission of
+ *        frames 3, 4, 5, 6 (4 frames total).
+ */
+void test_window7_mid_rej(void) {
+    printf("\nTEST: Window Size 7 — Mid-Window REJ\n");
+    reset_test_state();
+
+    atc_hdlc_context_t ctx;
+    atc_hdlc_u8 retx_buf[512];
+    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer),
+                  retx_buf, sizeof(retx_buf),
+                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, 7,
+                  mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
+
+    // --- Phase 1: Send 7 I-frames (fill the entire window) ---
+    printf("   Phase 1: Sending 7 I-frames...\n");
+    char payload[8];
+    for (int i = 0; i < 7; i++) {
+        sprintf(payload, "PKT_%d", i);
+        bool ok = atc_hdlc_output_i(&ctx, (atc_hdlc_u8 *)payload, (atc_hdlc_u16)strlen(payload));
+        if (!ok) {
+            char msg[64];
+            sprintf(msg, "Failed to send frame %d", i);
+            test_fail("Window7 REJ", msg);
+            return;
+        }
+    }
+
+    // Verify: VS should be 7, VA should be 0 (nothing ACK'd yet)
+    if (ctx.vs != 7) {
+        printf("   Expected VS=7, got VS=%d\n", ctx.vs);
+        test_fail("Window7 REJ", "VS mismatch after sending 7 frames");
+        return;
+    }
+    if (ctx.va != 0) {
+        test_fail("Window7 REJ", "VA should be 0 (no ACKs received)");
+        return;
+    }
+    test_pass("Window7 REJ: All 7 frames sent successfully");
+
+    // --- Phase 2: Window should be full (8th frame must be blocked) ---
+    printf("   Phase 2: Verifying window is full...\n");
+    bool overflow = atc_hdlc_output_i(&ctx, (atc_hdlc_u8 *)"BLOCKED", 7);
+    if (overflow) {
+        test_fail("Window7 REJ", "Window overflow allowed — 8th frame should be blocked!");
+        return;
+    }
+    test_pass("Window7 REJ: Window full, 8th frame correctly blocked");
+
+    // --- Phase 3: Peer sends REJ N(R)=3 (requesting retransmission from frame 3) ---
+    printf("   Phase 3: Peer sends REJ N(R)=3...\n");
+    mock_output_len = 0; // Clear TX buffer to capture retransmissions
+    atc_hdlc_u32 frames_before = ctx.stats_output_frames;
+
+    atc_hdlc_frame_t rej_frame = {
+        .address = 0x01,
+        .control = atc_hdlc_create_s_ctrl(0x02, 3, 0), // REJ, N(R)=3, F=0
+        .information = NULL,
+        .information_len = 0,
+        .type = HDLC_FRAME_S
+    };
+
+    atc_hdlc_u32 rej_len = 0;
+    atc_hdlc_frame_pack(&rej_frame, temp_input_buffer, sizeof(temp_input_buffer), &rej_len);
+    atc_hdlc_input_bytes(&ctx, temp_input_buffer, rej_len);
+
+    // REJ N(R)=3 means:
+    //   - Frames 0, 1, 2 are ACK'd (VA advances to 3)
+    //   - Frames 3, 4, 5, 6 must be retransmitted (Go-Back-N)
+    atc_hdlc_u32 retransmitted = ctx.stats_output_frames - frames_before;
+
+    printf("   Retransmitted frame count: %u (expected 4)\n", retransmitted);
+
+    if (ctx.va != 3) {
+        printf("   Expected VA=3, got VA=%d\n", ctx.va);
+        test_fail("Window7 REJ", "VA not advanced to 3 after REJ");
+        return;
+    }
+    test_pass("Window7 REJ: VA advanced to 3 (frames 0-2 acknowledged)");
+
+    if (retransmitted != 4) {
+        printf("   Expected 4 retransmissions, got %u\n", retransmitted);
+        test_fail("Window7 REJ", "Wrong retransmit count");
+        return;
+    }
+    test_pass("Window7 REJ: Frames 3-6 retransmitted (4 frames)");
+
+    // VS should remain 7 (no new frames sent, just retransmissions)
+    if (ctx.vs != 7) {
+        test_fail("Window7 REJ", "VS changed after retransmission");
+        return;
+    }
+    test_pass("Window7 REJ: VS preserved at 7");
+
+    // --- Phase 4: ACK all remaining frames, verify window reopens ---
+    printf("   Phase 4: Peer ACKs all frames (RR N(R)=7)...\n");
+    atc_hdlc_frame_t rr_frame = {
+        .address = 0x01,
+        .control = atc_hdlc_create_s_ctrl(0x00, 7, 0), // RR, N(R)=7, F=0
+        .information = NULL,
+        .information_len = 0,
+        .type = HDLC_FRAME_S
+    };
+
+    atc_hdlc_u32 rr_len = 0;
+    atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &rr_len);
+    atc_hdlc_input_bytes(&ctx, temp_input_buffer, rr_len);
+
+    if (ctx.va != ctx.vs) {
+        test_fail("Window7 REJ", "VA != VS after full ACK");
+        return;
+    }
+    test_pass("Window7 REJ: All frames acknowledged (VA == VS == 7)");
+
+    // Window should be open again — sending a new frame should succeed
+    bool reopened = atc_hdlc_output_i(&ctx, (atc_hdlc_u8 *)"REOPEN", 6);
+    if (!reopened) {
+        test_fail("Window7 REJ", "Window did not reopen after full ACK");
+        return;
+    }
+    test_pass("Window7 REJ: Window reopened, new frame sent successfully");
+}
+
+/**
+ * @brief Throughput Benchmark: Window Size 1 vs 7.
+ *        Sends 50 I-frame chunks (64 bytes each) with simulated round-trip
+ *        ACKs. Compares the number of round-trips and total TX bytes needed
+ *        for each window size to demonstrate the efficiency gain of larger
+ *        sliding windows.
+ */
+
+#define BENCH_TOTAL_CHUNKS   50
+#define BENCH_CHUNK_SIZE     64
+
+typedef struct {
+    int window_size;
+    int round_trips;
+    int total_tx_bytes;
+    int frames_sent;
+} bench_result_t;
+
+static bench_result_t run_throughput_bench(int window_size) {
+    bench_result_t result = {0};
+    result.window_size = window_size;
+
+    reset_test_state();
+
+    atc_hdlc_context_t ctx;
+    atc_hdlc_u8 retx_buf[4096];
+    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer),
+                  retx_buf, sizeof(retx_buf),
+                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, (atc_hdlc_u8)window_size,
+                  mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
+
+    // Prepare chunk payload (repeating pattern)
+    atc_hdlc_u8 chunk[BENCH_CHUNK_SIZE];
+    for (int i = 0; i < BENCH_CHUNK_SIZE; i++) chunk[i] = (atc_hdlc_u8)(i & 0xFF);
+
+    int sent = 0;
+
+    while (sent < BENCH_TOTAL_CHUNKS) {
+        // Send as many frames as the window allows
+        int batch = 0;
+        while (sent < BENCH_TOTAL_CHUNKS) {
+            bool ok = atc_hdlc_output_i(&ctx, chunk, BENCH_CHUNK_SIZE);
+            if (!ok) break; // Window full
+            sent++;
+            batch++;
+        }
+
+        if (batch == 0) {
+            // Should not happen if we ACK properly - safety break
+            break;
+        }
+
+        // Simulate one round-trip: peer ACKs all outstanding frames
+        result.round_trips++;
+
+        atc_hdlc_frame_t rr_frame = {
+            .address = 0x01,
+            .control = atc_hdlc_create_s_ctrl(0x00, ctx.vs, 0), // RR, N(R)=VS
+            .information = NULL,
+            .information_len = 0,
+            .type = HDLC_FRAME_S
+        };
+
+        atc_hdlc_u32 rr_len = 0;
+        atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &rr_len);
+        atc_hdlc_input_bytes(&ctx, temp_input_buffer, rr_len);
+    }
+
+    result.total_tx_bytes = mock_output_len;
+    result.frames_sent = sent;
+    return result;
+}
+
+void test_throughput_benchmark(void) {
+    printf("\nTEST: Throughput Benchmark — All Window Sizes (1-7)\n");
+    printf("   Payload: %d chunks x %d bytes = %d bytes total\n\n",
+           BENCH_TOTAL_CHUNKS, BENCH_CHUNK_SIZE, BENCH_TOTAL_CHUNKS * BENCH_CHUNK_SIZE);
+
+    bench_result_t results[7];
+
+    // --- Run benchmark for each window size ---
+    for (int w = 1; w <= 7; w++) {
+        printf("   %s[Window Size = %d]%s Running... ", COL_CYAN, w, COL_RESET);
+        results[w - 1] = run_throughput_bench(w);
+        printf("Frames: %d | Round-trips: %d | TX Bytes: %d\n",
+               results[w - 1].frames_sent, results[w - 1].round_trips, results[w - 1].total_tx_bytes);
+    }
+    printf("\n");
+
+    // --- Comparison Table ---
+    printf("   %s┌────────────────────────────────────────────────────────────────────┐%s\n", COL_YELLOW, COL_RESET);
+    printf("   %s│              THROUGHPUT COMPARISON — ALL WINDOW SIZES              │%s\n", COL_YELLOW, COL_RESET);
+    printf("   %s├──────────┬──────────────┬──────────────┬───────────┬───────────────┤%s\n", COL_YELLOW, COL_RESET);
+    printf("   %s│  Window  │  Frames Sent │  Round-Trips │  TX Bytes │  Speedup      │%s\n", COL_YELLOW, COL_RESET);
+    printf("   %s├──────────┼──────────────┼──────────────┼───────────┼───────────────┤%s\n", COL_YELLOW, COL_RESET);
+
+    for (int w = 0; w < 7; w++) {
+        float speedup = (results[0].round_trips > 0)
+            ? (float)results[0].round_trips / (float)results[w].round_trips
+            : 0.0f;
+
+        if (w == 0) {
+            printf("   %s│    %d     │     %3d      │     %3d      │   %5d   │  (baseline)   │%s\n",
+                   COL_YELLOW, results[w].window_size, results[w].frames_sent,
+                   results[w].round_trips, results[w].total_tx_bytes, COL_RESET);
+        } else {
+            printf("   %s│    %d     │     %3d      │     %3d      │   %5d   │%s  %s%.1fx faster%s  %s│%s\n",
+                   COL_YELLOW, results[w].window_size, results[w].frames_sent,
+                   results[w].round_trips, results[w].total_tx_bytes, COL_RESET,
+                   COL_GREEN, speedup, COL_RESET,
+                   COL_YELLOW, COL_RESET);
+        }
+    }
+
+    printf("   %s└──────────┴──────────────┴──────────────┴───────────┴───────────────┘%s\n\n", COL_YELLOW, COL_RESET);
+
+    // --- Assertions ---
+    for (int w = 0; w < 7; w++) {
+        int ws = w + 1;
+        if (results[w].frames_sent != BENCH_TOTAL_CHUNKS) {
+            char msg[100];
+            sprintf(msg, "W=%d did not send all %d frames (got %d)", ws, BENCH_TOTAL_CHUNKS, results[w].frames_sent);
+            test_fail("Throughput Bench", msg);
+            return;
+        }
+
+        // Expected round-trips = ceil(50 / window_size)
+        int expected_rt = (BENCH_TOTAL_CHUNKS + ws - 1) / ws;
+        if (results[w].round_trips != expected_rt) {
+            char msg[100];
+            sprintf(msg, "W=%d expected %d round-trips, got %d", ws, expected_rt, results[w].round_trips);
+            test_fail("Throughput Bench", msg);
+            return;
+        }
+    }
+
+    // Larger windows must always use fewer or equal round-trips
+    for (int w = 1; w < 7; w++) {
+        if (results[w].round_trips > results[w - 1].round_trips) {
+            char msg[100];
+            sprintf(msg, "W=%d slower than W=%d!", w + 1, w);
+            test_fail("Throughput Bench", msg);
+            return;
+        }
+    }
+
+    test_pass("Throughput Benchmark: All window sizes validated (W=1..7)");
+}
+
 int main(void) {
   printf("\n%sSTARTING RELIABLE TRANSMISSION TEST SUITE%s\n", COL_YELLOW,
          COL_RESET);
@@ -395,6 +674,8 @@ int main(void) {
   test_piggyback_ack();
   test_window_size_2_basic();
   test_gobackn_retransmit();
+  test_window7_mid_rej();
+  test_throughput_benchmark();
 
   printf("\n%sALL RELIABLE TRANSMISSION TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
   return 0;
