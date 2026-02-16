@@ -286,8 +286,8 @@ Configuration is done in `inc/hdlc_config.h`:
 | `atc_hdlc_output_packet_information_byte()` | Send a single data byte (with stuffing) |
 | `atc_hdlc_output_packet_information_bytes()` | Send a data array (with stuffing) |
 | `atc_hdlc_output_packet_end()` | Finalize packet TX (CRC + Flag) |
-| `atc_hdlc_send_ui()` | Send unacknowledged data (UI Frame) |
-| `atc_hdlc_send_test()` | Send a TEST frame with optional data payload |
+| `atc_hdlc_output_ui()` | Send unacknowledged data (UI Frame) |
+| `atc_hdlc_output_test()` | Send a TEST frame with optional data payload |
 
 ### Reliable Transmission (Go-Back-N)
 
