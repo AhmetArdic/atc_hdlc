@@ -947,6 +947,37 @@ void hdlc_output_packet_information_bytes(
 }
 
 /**
+ * @brief Start a UI Packet Output.
+ * @see hdlc.h
+ */
+void hdlc_output_packet_ui_start(hdlc_context_t *ctx) {
+  if (ctx == NULL) {
+    return;
+  }
+  
+  // UI Frame Control: 11 00 P 000 (Val=0x03 if P=0, 0x13 if P=1)
+  // M_LO=0, M_HI=0
+  hdlc_control_t ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_UI, HDLC_U_MODIFIER_HI_UI, 0); // P=0 usually
+  
+  hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
+}
+
+/**
+ * @brief Start a TEST Packet Output.
+ * @see hdlc.h
+ */
+void hdlc_output_packet_test_start(hdlc_context_t *ctx) {
+  if (ctx == NULL) {
+    return;
+  }
+  
+  // TEST Frame: m_lo=0, m_hi=7, P=1
+  hdlc_control_t ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST, 1);
+  
+  hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
+}
+
+/**
  * @brief Finalize Packet Output.
  * @see hdlc.h
  */
@@ -1050,15 +1081,11 @@ bool hdlc_is_connected(hdlc_context_t *ctx) {
   return (ctx != NULL && ctx->current_state == HDLC_PROTOCOL_STATE_CONNECTED);
 }
 
-bool hdlc_send_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
+bool hdlc_output_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
   if (ctx == NULL) return false;
 
-  // UI Frame Control: 11 00 P 000 (Val=0x03 if P=0, 0x13 if P=1)
-  // M_LO=0, M_HI=0
-  hdlc_control_t ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_UI, HDLC_U_MODIFIER_HI_UI, 0); // P=0 usually
-
   // Start Packet
-  hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
+  hdlc_output_packet_ui_start(ctx);
   
   // Send Data
   if (data != NULL && len > 0) {
@@ -1070,18 +1097,18 @@ bool hdlc_send_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
   return true;
 }
 
-bool hdlc_send_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
+bool hdlc_output_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
   if (ctx == NULL) return false;
 
-  // TEST Frame: m_lo=0, m_hi=7, P=1
-  hdlc_control_t ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST, 1);
+  // Start Packet
+  hdlc_output_packet_test_start(ctx);
 
-  hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
-
+  // Send Data
   if (data != NULL && len > 0) {
       hdlc_output_packet_information_bytes(ctx, data, len);
   }
 
+  // End Packet
   hdlc_output_packet_end(ctx);
   return true;
 }

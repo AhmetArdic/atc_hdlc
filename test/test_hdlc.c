@@ -922,7 +922,7 @@ void test_ui_frame_transmission(void) {
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02); // My=0x01, Peer=0x02
 
     const char *payload = "HELLO";
-    bool res = atc_hdlc_send_ui(&ctx, (const atc_hdlc_u8*)payload, 5);
+    bool res = atc_hdlc_output_ui(&ctx, (const atc_hdlc_u8*)payload, 5);
     
     if (res && output_len >= 11) {
          // Check Control Field for UI (0x03 or 0x13)
@@ -985,7 +985,7 @@ void test_test_frame(void) {
     printf("Phase 1: Sending TEST command...\n");
     reset_test();
     atc_hdlc_u8 test_data[] = "LOOPBACK";
-    atc_hdlc_send_test(&ctx, test_data, 8);
+    atc_hdlc_output_test(&ctx, test_data, 8);
 
     if (output_len == 0) {
         test_fail("TEST Send", "No output produced");
@@ -1090,7 +1090,7 @@ void test_test_frame_null_loopback(void) {
     // --- Phase 1: Send TEST with NULL data ---
     printf("Phase 1: Sending TEST with NULL data...\n");
     reset_test();
-    atc_hdlc_send_test(&ctx, NULL, 0);
+    atc_hdlc_output_test(&ctx, NULL, 0);
 
     if (output_len == 0) {
         test_fail("TEST NULL Send", "No output produced");
@@ -1163,6 +1163,69 @@ void test_test_frame_null_loopback(void) {
     test_pass("TEST Frame NULL Loopback");
 }
 
+void test_streaming_ui_test(void) {
+    printf("========================================\n");
+    printf("TEST: Streaming UI & TEST Frames\n");
+    printf("========================================\n");
+
+    atc_hdlc_context_t ctx;
+    atc_hdlc_init(&ctx, input_buffer, sizeof(input_buffer), mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02); // Me=0x01, Peer=0x02
+    reset_test();
+
+    // 1. Stream a UI Frame
+    printf("Streaming UI Frame...\n");
+    atc_hdlc_output_packet_ui_start(&ctx);
+    atc_hdlc_output_packet_information_byte(&ctx, 0x01);
+    atc_hdlc_output_packet_information_byte(&ctx, 0x02);
+    atc_hdlc_output_packet_end(&ctx);
+
+    print_hexdump("UI Stream Output", output_buffer, output_len);
+
+    // Verify Output
+    // Addr=0x02 (Peer), Ctrl=UI (0x03), Info=01 02
+    atc_hdlc_frame_t decoded;
+    atc_hdlc_u8 flat[128];
+    if (atc_hdlc_frame_unpack(output_buffer, output_len, &decoded, flat, sizeof(flat))) {
+         if (decoded.address == 0x02 && decoded.type == HDLC_FRAME_U && 
+             // UI frame control check (logic might vary slightly depending on P bit, but here it's 0)
+             // HDLC_U_MODIFIER_LO_UI=0, HDLC_U_MODIFIER_HI_UI=0
+             decoded.control.u_frame.m_lo == 0 && decoded.control.u_frame.m_hi == 0 &&
+             decoded.information_len == 2 && decoded.information[0] == 0x01) {
+             printf("[PASS] UI Frame streamed correct.\n");
+         } else {
+             test_fail("Streaming UI", "Content mismatch");
+         }
+    } else {
+        test_fail("Streaming UI", "Failed to unpack streamed UI frame");
+    }
+
+    // 2. Stream a TEST Frame
+    reset_test();
+    printf("Streaming TEST Frame...\n");
+    atc_hdlc_output_packet_test_start(&ctx);
+    atc_hdlc_output_packet_information_byte(&ctx, 'A');
+    atc_hdlc_output_packet_information_byte(&ctx, 'B');
+    atc_hdlc_output_packet_end(&ctx);
+
+    print_hexdump("TEST Stream Output", output_buffer, output_len);
+
+    if (atc_hdlc_frame_unpack(output_buffer, output_len, &decoded, flat, sizeof(flat))) {
+         if (decoded.address == 0x02 && decoded.type == HDLC_FRAME_U && 
+             // TEST frame: m_lo=0, m_hi=7
+             decoded.control.u_frame.m_lo == 0 && decoded.control.u_frame.m_hi == 7 &&
+             decoded.information_len == 2 && decoded.information[0] == 'A') {
+             printf("[PASS] TEST Frame streamed correct.\n");
+         } else {
+             test_fail("Streaming TEST", "Content mismatch");
+         }
+    } else {
+        test_fail("Streaming TEST", "Failed to unpack streamed TEST frame");
+    }
+
+    test_pass("Streaming UI & TEST Frames");
+}
+
 int main() {
   printf("\n%sSTARTING COMPREHENSIVE HDLC TEST SUITE%s\n", COL_YELLOW,
          COL_RESET);
@@ -1181,6 +1244,7 @@ int main() {
   test_streaming_large_payload(4096); // 4KB
   test_streaming_large_payload(8192); // 8KB
   test_streaming_api();
+  test_streaming_ui_test();
   test_fragmented_delivery();
   test_control_field_i();
   test_control_field_s();

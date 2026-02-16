@@ -86,31 +86,31 @@ bool hdlc_disconnect(hdlc_context_t *ctx);
 bool hdlc_is_connected(hdlc_context_t *ctx);
 
 /**
- * @brief Send an Unnumbered Information (UI) frame.
+ * @brief Output an Unnumbered Information (UI) frame.
  * 
- * Sends a UI frame with the provided data payload. UI frames are
+ * Transmits a UI frame using the streaming interface. UI frames are
  * unacknowledged and unsequenced.
  * 
  * @param ctx  Pointer to the initialized HDLC context.
- * @param data Pointer to the data payload.
+ * @param data Pointer to the data payload (can be NULL).
  * @param len  Length of the data payload.
- * @return true if the frame was sent successfully, false otherwise.
+ * @return true if the frame was output successfully, false otherwise.
  */
-bool hdlc_send_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
+bool hdlc_output_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
 
 /**
- * @brief Send a TEST command frame.
+ * @brief Output a TEST command frame.
  *
- * Sends a TEST frame with optional data payload to the peer.
+ * Transmits a TEST frame using the streaming interface.
  * The remote station should echo this data back in a TEST response.
  * Used for link integrity verification.
  *
  * @param ctx  Pointer to the initialized HDLC context.
  * @param data Pointer to the test data payload (can be NULL).
  * @param len  Length of the test data payload.
- * @return true if the frame was sent successfully, false otherwise.
+ * @return true if the frame was output successfully, false otherwise.
  */
-bool hdlc_send_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
+bool hdlc_output_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
 
 /**
  * @brief Input a received byte into the HDLC Parser.
@@ -266,6 +266,26 @@ void hdlc_output_packet_information_byte(hdlc_context_t *ctx, hdlc_u8 informatio
  * @param len The length of payload bytes array to send.
  */
 void hdlc_output_packet_information_bytes(hdlc_context_t *ctx, const hdlc_u8* information_bytes, hdlc_u32 len);
+
+/**
+ * @brief Start a UI Packet Output.
+ *
+ * Begins a new UI frame transmission by sending the Start Flag (`0x7E`),
+ * Address, and UI Control Field.
+ *
+ * @param ctx Pointer to the initialized HDLC context.
+ */
+void hdlc_output_packet_ui_start(hdlc_context_t *ctx);
+
+/**
+ * @brief Start a TEST Packet Output.
+ *
+ * Begins a new TEST frame transmission by sending the Start Flag (`0x7E`),
+ * Address, and TEST Control Field.
+ *
+ * @param ctx Pointer to the initialized HDLC context.
+ */
+void hdlc_output_packet_test_start(hdlc_context_t *ctx);
 
 /**
  * @brief Finalize Packet Output.
