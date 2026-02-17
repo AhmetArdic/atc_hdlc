@@ -309,6 +309,85 @@ void test_mode_rejection(void) {
     test_pass("Mode Rejection (SNRM)");
 }
 
+void test_extended_mode_rejection(void) {
+    printf("TEST: Extended Mode Rejection (SABME, SNRME, SARME)\n");
+    setup_context();
+
+    // 1. SABME (0x7F if P=1)
+    {
+        atc_hdlc_frame_t frame_in;
+        frame_in.address = 0x01;
+        frame_in.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SABME, HDLC_U_MODIFIER_HI_SABME, 1);
+        frame_in.information = NULL;
+        frame_in.information_len = 0;
+        frame_in.type = HDLC_FRAME_U;
+
+        uint8_t packed[32];
+        uint32_t packed_len = 0;
+        atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
+
+        mock_output_len = 0;
+        atc_hdlc_input_bytes(&ctx, packed, packed_len);
+
+        atc_hdlc_frame_t frame_out;
+        uint8_t flat[32];
+        decode_last_tx(&frame_out, flat, sizeof(flat));
+
+        if (frame_out.control.value != 0x1F) // DM with F=1
+            test_fail("Ext Rejection SABME", "Did not send DM");
+    }
+
+    // 2. SNRME (0xDF if P=1)
+    {
+        atc_hdlc_frame_t frame_in;
+        frame_in.address = 0x01;
+        frame_in.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SNRME, HDLC_U_MODIFIER_HI_SNRME, 1);
+        frame_in.information = NULL;
+        frame_in.information_len = 0;
+        frame_in.type = HDLC_FRAME_U;
+
+        uint8_t packed[32];
+        uint32_t packed_len = 0;
+        atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
+
+        mock_output_len = 0;
+        atc_hdlc_input_bytes(&ctx, packed, packed_len);
+
+        atc_hdlc_frame_t frame_out;
+        uint8_t flat[32];
+        decode_last_tx(&frame_out, flat, sizeof(flat));
+
+        if (frame_out.control.value != 0x1F) // DM with F=1
+            test_fail("Ext Rejection SNRME", "Did not send DM");
+    }
+
+    // 3. SARME (0x5F if P=1)
+    {
+        atc_hdlc_frame_t frame_in;
+        frame_in.address = 0x01;
+        frame_in.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SARME, HDLC_U_MODIFIER_HI_SARME, 1);
+        frame_in.information = NULL;
+        frame_in.information_len = 0;
+        frame_in.type = HDLC_FRAME_U;
+
+        uint8_t packed[32];
+        uint32_t packed_len = 0;
+        atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
+
+        mock_output_len = 0;
+        atc_hdlc_input_bytes(&ctx, packed, packed_len);
+
+        atc_hdlc_frame_t frame_out;
+        uint8_t flat[32];
+        decode_last_tx(&frame_out, flat, sizeof(flat));
+
+        if (frame_out.control.value != 0x1F) // DM with F=1
+            test_fail("Ext Rejection SARME", "Did not send DM");
+    }
+
+    test_pass("Extended Mode Rejection");
+}
+
 int main(void) {
     printf("\n%sSTARTING CONNECTION MANAGEMENT TESTS%s\n", COL_YELLOW, COL_RESET);
     printf("----------------------------------------\n\n");
@@ -320,6 +399,7 @@ int main(void) {
     test_passive_open();
     test_frmr_reception();
     test_mode_rejection();
+    test_extended_mode_rejection();
     
     printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
     return 0;

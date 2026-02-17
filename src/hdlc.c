@@ -98,6 +98,11 @@ static void hdlc_process_disc(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_ua(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_dm(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_frmr(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+
+// Extended Mode Rejection Handlers
+static void hdlc_process_sabme(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+static void hdlc_process_snrme(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+static void hdlc_process_sarme(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_ui(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static void hdlc_process_test(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 
@@ -675,6 +680,36 @@ static void hdlc_process_sarm(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
 }
 
 /**
+ * @brief Process Received SABME Command (Not Supported).
+ * @param ctx   HDLC Context.
+ * @param frame The received SABME frame.
+ */
+static void hdlc_process_sabme(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+    // SABME Not Supported -> Send DM (Disconnected Mode)
+    hdlc_send_dm(ctx, frame->control.u_frame.pf);
+}
+
+/**
+ * @brief Process Received SNRME Command (Not Supported).
+ * @param ctx   HDLC Context.
+ * @param frame The received SNRME frame.
+ */
+static void hdlc_process_snrme(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+    // SNRME Not Supported -> Send DM (Disconnected Mode)
+    hdlc_send_dm(ctx, frame->control.u_frame.pf);
+}
+
+/**
+ * @brief Process Received SARME Command (Not Supported).
+ * @param ctx   HDLC Context.
+ * @param frame The received SARME frame.
+ */
+static void hdlc_process_sarme(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+    // SARME Not Supported -> Send DM (Disconnected Mode)
+    hdlc_send_dm(ctx, frame->control.u_frame.pf);
+}
+
+/**
  * @brief Process Received DISC Command.
  * @param ctx   HDLC Context.
  * @param frame The received DISC frame.
@@ -821,6 +856,19 @@ static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     // SARM (Set Asynchronous Response Mode)
     else if (m_lo == HDLC_U_MODIFIER_LO_SARM && m_hi == HDLC_U_MODIFIER_HI_SARM) {
         hdlc_process_sarm(ctx, frame);
+    }
+    // Extended Modes (Rejected)
+    // SABME
+    else if (m_lo == HDLC_U_MODIFIER_LO_SABME && m_hi == HDLC_U_MODIFIER_HI_SABME) {
+       hdlc_process_sabme(ctx, frame);
+    }
+    // SNRME
+    else if (m_lo == HDLC_U_MODIFIER_LO_SNRME && m_hi == HDLC_U_MODIFIER_HI_SNRME) {
+       hdlc_process_snrme(ctx, frame);
+    }
+    // SARME
+    else if (m_lo == HDLC_U_MODIFIER_LO_SARME && m_hi == HDLC_U_MODIFIER_HI_SARME) {
+       hdlc_process_sarme(ctx, frame);
     }
     // TEST (Link Test)
     else if (m_lo == HDLC_U_MODIFIER_LO_TEST && m_hi == HDLC_U_MODIFIER_HI_TEST) {

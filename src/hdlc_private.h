@@ -43,6 +43,18 @@ typedef enum {
 #define HDLC_U_MODIFIER_LO_SARM 3
 #define HDLC_U_MODIFIER_HI_SARM 0
 
+/* SABME: 011 11 -> m_hi=3, m_lo=3 */
+#define HDLC_U_MODIFIER_LO_SABME 3
+#define HDLC_U_MODIFIER_HI_SABME 3
+
+/* SNRME: 110 11 -> m_hi=6, m_lo=3 */
+#define HDLC_U_MODIFIER_LO_SNRME 3
+#define HDLC_U_MODIFIER_HI_SNRME 6
+
+/* SARME: 010 11 -> m_hi=2, m_lo=3 */
+#define HDLC_U_MODIFIER_LO_SARME 3
+#define HDLC_U_MODIFIER_HI_SARME 2
+
 /* DISC: 010 00 -> m_hi=2, m_lo=0 */
 #define HDLC_U_MODIFIER_LO_DISC 0
 #define HDLC_U_MODIFIER_HI_DISC 2
