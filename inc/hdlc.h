@@ -5,7 +5,7 @@
  * @brief Public API for the HDLC Library.
  * 
  * Provides function prototypes for initializing the library, packing/unpacking frames,
- * feeding received bytes into the parser, and handling packet transmission.
+ * feeding received bytes into the parser, and handling frame transmission.
  */
 
 #ifndef HDLC_H
@@ -105,7 +105,7 @@ bool hdlc_is_connected(hdlc_context_t *ctx);
  * @param len  Length of the data payload.
  * @return true if the frame was output successfully, false otherwise.
  */
-bool hdlc_output_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
+bool hdlc_output_frame_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
 
 /**
  * @brief Output a TEST command frame.
@@ -119,7 +119,7 @@ bool hdlc_output_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
  * @param len  Length of the test data payload.
  * @return true if the frame was output successfully, false otherwise.
  */
-bool hdlc_output_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
+bool hdlc_output_frame_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
 
 /**
  * @brief Output an Information (I) frame (Reliable).
@@ -137,10 +137,10 @@ bool hdlc_output_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
  * @param len  Length of the data payload.
  * @return true if the frame was accepted (window open), false otherwise.
  */
-bool hdlc_output_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
+bool hdlc_output_frame_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
 
 /**
- * @brief Start an Information (I) Packet Output (Streaming).
+ * @brief Start an Information (I) Frame Output (Streaming).
  *
  * Begins a new I-frame transmission.
  *
@@ -154,7 +154,7 @@ bool hdlc_output_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
  * 
  * @param ctx Pointer to the initialized HDLC context.
  */
-void hdlc_output_packet_i_start(hdlc_context_t *ctx);
+void hdlc_output_frame_start_i(hdlc_context_t *ctx);
 
 /**
  * @brief Periodic Tick for Timers.
@@ -283,7 +283,7 @@ hdlc_control_t hdlc_create_u_ctrl(hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf);
  */
 
 /**
- * @brief Start a Packet Output.
+ * @brief Start a Frame Output.
  *
  * Begins a new frame transmission by sending the Start Flag (`0x7E`)
  * and initializing the internal Output CRC engine.
@@ -295,7 +295,7 @@ hdlc_control_t hdlc_create_u_ctrl(hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf);
  * @param address The address byte to send.
  * @param control The control byte to send.
  */
-void hdlc_output_packet_start(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 control);
+void hdlc_output_frame_start(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 control);
 
 /**
  * @brief Output a Information Byte.
@@ -307,7 +307,7 @@ void hdlc_output_packet_start(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 cont
  * @param ctx Pointer to the initialized HDLC context.
  * @param information_byte The payload byte to send.
  */
-void hdlc_output_packet_information_byte(hdlc_context_t *ctx, hdlc_u8 information_byte);
+void hdlc_output_frame_information_byte(hdlc_context_t *ctx, hdlc_u8 information_byte);
 
 /**
  * @brief Output a Information Bytes Array.
@@ -320,37 +320,37 @@ void hdlc_output_packet_information_byte(hdlc_context_t *ctx, hdlc_u8 informatio
  * @param information_bytes The payload bytes array to send.
  * @param len The length of payload bytes array to send.
  */
-void hdlc_output_packet_information_bytes(hdlc_context_t *ctx, const hdlc_u8* information_bytes, hdlc_u32 len);
+void hdlc_output_frame_information_bytes(hdlc_context_t *ctx, const hdlc_u8* information_bytes, hdlc_u32 len);
 
 /**
- * @brief Start a UI Packet Output.
+ * @brief Start a UI Frame Output.
  *
  * Begins a new UI frame transmission by sending the Start Flag (`0x7E`),
  * Address, and UI Control Field.
  *
  * @param ctx Pointer to the initialized HDLC context.
  */
-void hdlc_output_packet_ui_start(hdlc_context_t *ctx);
+void hdlc_output_frame_start_ui(hdlc_context_t *ctx);
 
 /**
- * @brief Start a TEST Packet Output.
+ * @brief Start a TEST Frame Output.
  *
  * Begins a new TEST frame transmission by sending the Start Flag (`0x7E`),
  * Address, and TEST Control Field.
  *
  * @param ctx Pointer to the initialized HDLC context.
  */
-void hdlc_output_packet_test_start(hdlc_context_t *ctx);
+void hdlc_output_frame_start_test(hdlc_context_t *ctx);
 
 /**
- * @brief Finalize Packet Output.
+ * @brief Finalize Frame Output.
  *
  * Completes the current frame transmission by sending the computed
  * CRC-16 (FCS) and the End Flag (`0x7E`). Increments the TX frame counter.
  *
  * @param ctx Pointer to the initialized HDLC context.
  */
-void hdlc_output_packet_end(hdlc_context_t *ctx);
+void hdlc_output_frame_end(hdlc_context_t *ctx);
 
 #ifdef __cplusplus
 }

@@ -29,7 +29,7 @@ void test_reliable_transmission(void) {
     // Send I-Frame
     mock_output_len = 0;
     atc_hdlc_u8 data[] = {0xAA, 0xBB};
-    bool res = atc_hdlc_output_i(&ctx, data, sizeof(data));
+    bool res = atc_hdlc_output_frame_i(&ctx, data, sizeof(data));
     
     if (!res) test_fail("Reliable I-Frame", "Failed to send");
     
@@ -74,7 +74,7 @@ void test_reliable_retransmission(void) {
     
     // Send I-Frame
     atc_hdlc_u8 data[] = {0xCA, 0xFE};
-    atc_hdlc_output_i(&ctx, data, sizeof(data));
+    atc_hdlc_output_frame_i(&ctx, data, sizeof(data));
     mock_output_len = 0; // Clear output
     
     // Tick Timer (1001 ticks of 1ms)
@@ -104,7 +104,7 @@ void test_sequence_rollover(void) {
     
     for (int i = 0; i < 9; i++) {
         // 1. Send Frame i (VS = i % 8)
-        atc_hdlc_output_i(&ctx, data, 1);
+        atc_hdlc_output_frame_i(&ctx, data, 1);
         
         // Check V(S) incremented
         int expected_vs = (i + 1) % 8;
@@ -144,7 +144,7 @@ void test_duplicate_ack_ignored(void) {
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
     
     // Send I-Frame (VS becomes 1)
-    atc_hdlc_output_i(&ctx, (atc_hdlc_u8*)"A", 1);
+    atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8*)"A", 1);
     
     // Receive ACK (RR NR=1)
     atc_hdlc_frame_t rr_frame = { .address=0x01, .control=atc_hdlc_create_s_ctrl(0, 1, 0) };
@@ -173,7 +173,7 @@ void test_rej_retransmit(void) {
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
     
     // Send I-Frame [VS=0] -> VS becomes 1
-    atc_hdlc_output_i(&ctx, (atc_hdlc_u8*)"XY", 2);
+    atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8*)"XY", 2);
     mock_output_len = 0; // Clear output
     
     // Receive REJ [NR=0] (Peer asking for frame 0 again)
@@ -225,7 +225,7 @@ void test_piggyback_ack(void) {
     // Send our own I-frame — this embeds N(R)=V(R)=1 as the piggyback ACK
     mock_output_len = 0;
     atc_hdlc_u8 our_data[] = "OK";
-    bool sent = atc_hdlc_output_i(&ctx, our_data, sizeof(our_data) - 1);
+    bool sent = atc_hdlc_output_frame_i(&ctx, our_data, sizeof(our_data) - 1);
     if (!sent) {
         test_fail("Piggyback", "output_i returned false");
         return;
@@ -289,19 +289,19 @@ void test_window_size_2_basic(void) {
 
     // 1. Send first I-frame (N(S)=0)
     atc_hdlc_u8 data1[] = "FRAME1";
-    bool ok1 = atc_hdlc_output_i(&ctx, data1, sizeof(data1));
+    bool ok1 = atc_hdlc_output_frame_i(&ctx, data1, sizeof(data1));
     if (!ok1) { test_fail("Window2", "Send first failed"); return; }
     if (ctx.vs != 1) { test_fail("Window2", "VS mismatch 1"); return; }
 
     // 2. Send second I-frame (N(S)=1) — window still open
     atc_hdlc_u8 data2[] = "FRAME2";
-    bool ok2 = atc_hdlc_output_i(&ctx, data2, sizeof(data2));
+    bool ok2 = atc_hdlc_output_frame_i(&ctx, data2, sizeof(data2));
     if (!ok2) { test_fail("Window2", "Send second failed"); return; }
     if (ctx.vs != 2) { test_fail("Window2", "VS mismatch 2"); return; }
 
     // 3. Window should now be full (2 outstanding, window_size=2)
     atc_hdlc_u8 data3[] = "BLOCKED";
-    bool ok3 = atc_hdlc_output_i(&ctx, data3, sizeof(data3));
+    bool ok3 = atc_hdlc_output_frame_i(&ctx, data3, sizeof(data3));
     if (ok3) { test_fail("Window2", "Window overflow allowed!"); return; }
     test_pass("Window2: Window full blocked send");
 
@@ -319,7 +319,7 @@ void test_window_size_2_basic(void) {
     }
 
     // 5. Should be able to send again now
-    bool ok4 = atc_hdlc_output_i(&ctx, data3, sizeof(data3));
+    bool ok4 = atc_hdlc_output_frame_i(&ctx, data3, sizeof(data3));
     if (!ok4) { test_fail("Window2", "Send after ACK failed"); return; }
     test_pass("Window2: Window reopened");
 }
@@ -343,9 +343,9 @@ void test_gobackn_retransmit(void) {
     atc_hdlc_u8 d1[] = "AAA";
     atc_hdlc_u8 d2[] = "BBB";
     atc_hdlc_u8 d3[] = "CCC";
-    atc_hdlc_output_i(&ctx, d1, sizeof(d1));
-    atc_hdlc_output_i(&ctx, d2, sizeof(d2));
-    atc_hdlc_output_i(&ctx, d3, sizeof(d3));
+    atc_hdlc_output_frame_i(&ctx, d1, sizeof(d1));
+    atc_hdlc_output_frame_i(&ctx, d2, sizeof(d2));
+    atc_hdlc_output_frame_i(&ctx, d3, sizeof(d3));
 
     if (ctx.vs != 3 || ctx.va != 0) {
         test_fail("GBN Retransmit", "Setup failed");
@@ -406,7 +406,7 @@ void test_window7_mid_rej(void) {
     char payload[8];
     for (int i = 0; i < 7; i++) {
         sprintf(payload, "PKT_%d", i);
-        bool ok = atc_hdlc_output_i(&ctx, (atc_hdlc_u8 *)payload, (atc_hdlc_u16)strlen(payload));
+        bool ok = atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8 *)payload, (atc_hdlc_u16)strlen(payload));
         if (!ok) {
             char msg[64];
             sprintf(msg, "Failed to send frame %d", i);
@@ -429,7 +429,7 @@ void test_window7_mid_rej(void) {
 
     // --- Phase 2: Window should be full (8th frame must be blocked) ---
     printf("   Phase 2: Verifying window is full...\n");
-    bool overflow = atc_hdlc_output_i(&ctx, (atc_hdlc_u8 *)"BLOCKED", 7);
+    bool overflow = atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8 *)"BLOCKED", 7);
     if (overflow) {
         test_fail("Window7 REJ", "Window overflow allowed — 8th frame should be blocked!");
         return;
@@ -502,7 +502,7 @@ void test_window7_mid_rej(void) {
     test_pass("Window7 REJ: All frames acknowledged (VA == VS == 7)");
 
     // Window should be open again — sending a new frame should succeed
-    bool reopened = atc_hdlc_output_i(&ctx, (atc_hdlc_u8 *)"REOPEN", 6);
+    bool reopened = atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8 *)"REOPEN", 6);
     if (!reopened) {
         test_fail("Window7 REJ", "Window did not reopen after full ACK");
         return;
@@ -553,7 +553,7 @@ static bench_result_t run_throughput_bench(int window_size) {
         // Send as many frames as the window allows
         int batch = 0;
         while (sent < BENCH_TOTAL_CHUNKS) {
-            bool ok = atc_hdlc_output_i(&ctx, chunk, BENCH_CHUNK_SIZE);
+            bool ok = atc_hdlc_output_frame_i(&ctx, chunk, BENCH_CHUNK_SIZE);
             if (!ok) break; // Window full
             sent++;
             batch++;

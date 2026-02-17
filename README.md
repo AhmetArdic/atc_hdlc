@@ -224,15 +224,15 @@ To use this library in your own project:
     For memory-constrained devices where allocating a full frame buffer is not feasible:
     ```c
     // Start: sends Flag + Address + Control (with CRC init)
-    atc_hdlc_output_packet_start(&ctx, 0x01, 0x03);
+    atc_hdlc_output_frame_start(&ctx, 0x01, 0x03);
 
     // Data: byte-by-byte or array (stuffing handled automatically)
-    atc_hdlc_output_packet_information_byte(&ctx, 0xAA);
+    atc_hdlc_output_frame_information_byte(&ctx, 0xAA);
     uint8_t payload[] = {0x10, 0x20, 0x30};
-    atc_hdlc_output_packet_information_bytes(&ctx, payload, 3);
+    atc_hdlc_output_frame_information_bytes(&ctx, payload, 3);
 
     // End: sends CRC + Flag
-    atc_hdlc_output_packet_end(&ctx);
+    atc_hdlc_output_frame_end(&ctx);
     ```
 
 8.  **Stateless Mode (Pack)**:
@@ -282,18 +282,18 @@ Configuration is done in `inc/hdlc_config.h`:
 | `atc_hdlc_input_byte()` | Feed a single received byte into the parser |
 | `atc_hdlc_input_bytes()` | Feed a byte array into the parser (bulk) |
 | `atc_hdlc_output_frame()` | Send a complete frame (buffered) |
-| `atc_hdlc_output_packet_start()` | Begin packet TX (Flag + Address + Control) |
-| `atc_hdlc_output_packet_information_byte()` | Send a single data byte (with stuffing) |
-| `atc_hdlc_output_packet_information_bytes()` | Send a data array (with stuffing) |
-| `atc_hdlc_output_packet_end()` | Finalize packet TX (CRC + Flag) |
-| `atc_hdlc_output_ui()` | Send unacknowledged data (UI Frame) |
-| `atc_hdlc_output_test()` | Send a TEST frame with optional data payload |
+| `atc_hdlc_output_frame_start()` | Begin packet TX (Flag + Address + Control) |
+| `atc_hdlc_output_frame_information_byte()` | Send a single data byte (with stuffing) |
+| `atc_hdlc_output_frame_information_bytes()` | Send a data array (with stuffing) |
+| `atc_hdlc_output_frame_end()` | Finalize packet TX (CRC + Flag) |
+| `atc_hdlc_output_frame_ui()` | Send unacknowledged data (UI Frame) |
+| `atc_hdlc_output_frame_test()` | Send a TEST frame with optional data payload |
 
 ### Reliable Transmission (Go-Back-N)
 
 | Function | Description |
 |---|---|
-| `atc_hdlc_output_i()` | Send a reliable I-frame (queued in the send window) |
+| `atc_hdlc_output_frame_i()` | Send a reliable I-frame (queued in the send window) |
 | `atc_hdlc_tick()` | Periodic timer tick — handles retransmission timeouts |
 
 ### Connection Management

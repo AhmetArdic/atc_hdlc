@@ -526,13 +526,13 @@ static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
           while (seq != ctx->vs) {
               hdlc_u8 slot = seq % ctx->window_size;
               hdlc_control_t ctrl = hdlc_create_i_ctrl(seq, ctx->vr, 0);
-              hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
+              hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
               if (ctx->retransmit_lens[slot] > 0 && ctx->retransmit_buffer != NULL) {
-                  hdlc_output_packet_information_bytes(ctx,
+                  hdlc_output_frame_information_bytes(ctx,
                       ctx->retransmit_buffer + (slot * ctx->retransmit_slot_size),
                       ctx->retransmit_lens[slot]);
               }
-              hdlc_output_packet_end(ctx);
+              hdlc_output_frame_end(ctx);
               seq = (seq + 1) % HDLC_SEQUENCE_MODULUS;
           }
 
@@ -578,8 +578,8 @@ static void hdlc_set_protocol_state(hdlc_context_t *ctx, hdlc_protocol_state_t n
  */
 static inline void hdlc_send_u_frame(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf) {
     hdlc_control_t ctrl = hdlc_create_u_ctrl(m_lo, m_hi, pf);
-    hdlc_output_packet_start(ctx, address, ctrl.value);
-    hdlc_output_packet_end(ctx);
+    hdlc_output_frame_start(ctx, address, ctrl.value);
+    hdlc_output_frame_end(ctx);
 }
 
 /**
@@ -613,8 +613,8 @@ static inline void hdlc_send_dm(hdlc_context_t *ctx, hdlc_u8 pf) {
  */
 static inline void hdlc_send_s_frame(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 s_bits, hdlc_u8 nr, hdlc_u8 pf) {
     hdlc_control_t ctrl = hdlc_create_s_ctrl(s_bits, nr, pf);
-    hdlc_output_packet_start(ctx, address, ctrl.value);
-    hdlc_output_packet_end(ctx);
+    hdlc_output_frame_start(ctx, address, ctrl.value);
+    hdlc_output_frame_end(ctx);
 }
 
 /**
@@ -767,17 +767,17 @@ static void hdlc_process_ui(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
  */
 static void hdlc_process_test(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     // Build TEST response: same modifier bits, F bit mirrors P bit
-    hdlc_output_packet_start(ctx, ctx->my_address,
+    hdlc_output_frame_start(ctx, ctx->my_address,
         hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST,
                            frame->control.u_frame.pf).value);
 
     // Echo the information field
     if (frame->information != NULL && frame->information_len > 0) {
-        hdlc_output_packet_information_bytes(ctx, frame->information,
+        hdlc_output_frame_information_bytes(ctx, frame->information,
                                             frame->information_len);
     }
 
-    hdlc_output_packet_end(ctx);
+    hdlc_output_frame_end(ctx);
 }
 
 /**
@@ -1051,10 +1051,10 @@ static void output_escaped_crc_update(hdlc_context_t *ctx, hdlc_u8 byte,
 }
 
 /**
- * @brief Start a Packet Transmission.
+ * @brief Start a Frame Transmission.
  * @see hdlc.h
  */
-void hdlc_output_packet_start(hdlc_context_t *ctx, hdlc_u8 address,
+void hdlc_output_frame_start(hdlc_context_t *ctx, hdlc_u8 address,
                                      hdlc_u8 control) {
   if (ctx == NULL) {
     return;
@@ -1079,7 +1079,7 @@ void hdlc_output_packet_start(hdlc_context_t *ctx, hdlc_u8 address,
  * @brief Output a Information Byte.
  * @see hdlc.h
  */
-void hdlc_output_packet_information_byte(hdlc_context_t *ctx,
+void hdlc_output_frame_information_byte(hdlc_context_t *ctx,
                                                 hdlc_u8 information_byte) {
   if (ctx == NULL) {
     return;
@@ -1093,7 +1093,7 @@ void hdlc_output_packet_information_byte(hdlc_context_t *ctx,
  * @brief Output a Information Bytes Array.
  * @see hdlc.h
  */
-void hdlc_output_packet_information_bytes(
+void hdlc_output_frame_information_bytes(
     hdlc_context_t *ctx, const hdlc_u8 *information_bytes, hdlc_u32 len) {
   if (ctx == NULL) {
     return;
@@ -1106,10 +1106,10 @@ void hdlc_output_packet_information_bytes(
 }
 
 /**
- * @brief Start a UI Packet Output.
+ * @brief Start a UI Frame Output.
  * @see hdlc.h
  */
-void hdlc_output_packet_ui_start(hdlc_context_t *ctx) {
+void hdlc_output_frame_start_ui(hdlc_context_t *ctx) {
   if (ctx == NULL) {
     return;
   }
@@ -1118,14 +1118,14 @@ void hdlc_output_packet_ui_start(hdlc_context_t *ctx) {
   // M_LO=0, M_HI=0
   hdlc_control_t ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_UI, HDLC_U_MODIFIER_HI_UI, 0); // P=0 usually
   
-  hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
+  hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
 }
 
 /**
- * @brief Start a TEST Packet Output.
+ * @brief Start a TEST Frame Output.
  * @see hdlc.h
  */
-void hdlc_output_packet_test_start(hdlc_context_t *ctx) {
+void hdlc_output_frame_start_test(hdlc_context_t *ctx) {
   if (ctx == NULL) {
     return;
   }
@@ -1133,14 +1133,14 @@ void hdlc_output_packet_test_start(hdlc_context_t *ctx) {
   // TEST Frame: m_lo=0, m_hi=7, P=1
   hdlc_control_t ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST, 1);
   
-  hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
+  hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
 }
 
 /**
- * @brief Finalize Packet Output.
+ * @brief Finalize Frame Output.
  * @see hdlc.h
  */
-void hdlc_output_packet_end(hdlc_context_t *ctx) {
+void hdlc_output_frame_end(hdlc_context_t *ctx) {
   if (ctx == NULL) {
     return;
   }
@@ -1217,8 +1217,8 @@ bool hdlc_connect(hdlc_context_t *ctx) {
 
   // Send SABM
   hdlc_control_t ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1); // P=1
-  hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
-  hdlc_output_packet_end(ctx);
+  hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
+  hdlc_output_frame_end(ctx);
 
   hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_CONNECTING);
   return true;
@@ -1229,8 +1229,8 @@ bool hdlc_disconnect(hdlc_context_t *ctx) {
 
   // Send DISC
   hdlc_control_t ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_DISC, HDLC_U_MODIFIER_HI_DISC, 1); // P=1
-  hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
-  hdlc_output_packet_end(ctx);
+  hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
+  hdlc_output_frame_end(ctx);
 
   hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_DISCONNECTING);
   return true;
@@ -1240,43 +1240,43 @@ bool hdlc_is_connected(hdlc_context_t *ctx) {
   return (ctx != NULL && ctx->current_state == HDLC_PROTOCOL_STATE_CONNECTED);
 }
 
-bool hdlc_output_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
+bool hdlc_output_frame_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
   if (ctx == NULL) return false;
 
-  // Start Packet
-  hdlc_output_packet_ui_start(ctx);
+  // Start Frame
+  hdlc_output_frame_start_ui(ctx);
   
   // Send Data
   if (data != NULL && len > 0) {
-      hdlc_output_packet_information_bytes(ctx, data, len);
+      hdlc_output_frame_information_bytes(ctx, data, len);
   }
 
-  // End Packet
-  hdlc_output_packet_end(ctx);
+  // End Frame
+  hdlc_output_frame_end(ctx);
   return true;
 }
 
-bool hdlc_output_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
+bool hdlc_output_frame_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
   if (ctx == NULL) return false;
 
-  // Start Packet
-  hdlc_output_packet_test_start(ctx);
+  // Start Frame
+  hdlc_output_frame_start_test(ctx);
 
   // Send Data
   if (data != NULL && len > 0) {
-      hdlc_output_packet_information_bytes(ctx, data, len);
+      hdlc_output_frame_information_bytes(ctx, data, len);
   }
 
-  // End Packet
-  hdlc_output_packet_end(ctx);
+  // End Frame
+  hdlc_output_frame_end(ctx);
   return true;
 }
 
 /**
- * @brief Start an Information (I) Packet Output (Streaming).
+ * @brief Start an Information (I) Frame Output (Streaming).
  * @see hdlc.h
  */
-void hdlc_output_packet_i_start(hdlc_context_t *ctx) {
+void hdlc_output_frame_start_i(hdlc_context_t *ctx) {
   if (ctx == NULL) {
     return;
   }
@@ -1284,14 +1284,14 @@ void hdlc_output_packet_i_start(hdlc_context_t *ctx) {
   // I-Frame: N(S)=VS, N(R)=VR, P=0 (Default)
   hdlc_control_t ctrl = hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
   
-  hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
+  hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
 }
 
 /**
  * @brief Output an Information (I) frame (Reliable).
  * @see hdlc.h
  */
-bool hdlc_output_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
+bool hdlc_output_frame_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
   if (ctx == NULL) return false;
 
   // Window Check (Go-Back-N)
@@ -1312,16 +1312,16 @@ bool hdlc_output_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
       ctx->retransmit_lens[slot] = len;
   }
 
-  // Start Packet
-  hdlc_output_packet_i_start(ctx);
+  // Start Frame
+  hdlc_output_frame_start_i(ctx);
   
   // Send Data
   if (data != NULL && len > 0) {
-      hdlc_output_packet_information_bytes(ctx, data, len);
+      hdlc_output_frame_information_bytes(ctx, data, len);
   }
 
-  // End Packet
-  hdlc_output_packet_end(ctx);
+  // End Frame
+  hdlc_output_frame_end(ctx);
   
   // Update State
   ctx->vs = (ctx->vs + 1) % HDLC_SEQUENCE_MODULUS;
@@ -1358,15 +1358,15 @@ void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms) {
                     hdlc_u8 slot = seq % ctx->window_size;
                     hdlc_u8 pf = (seq == ctx->va) ? 1 : 0; // P=1 on first frame
                     hdlc_control_t ctrl = hdlc_create_i_ctrl(seq, ctx->vr, pf);
-                    hdlc_output_packet_start(ctx, ctx->peer_address, ctrl.value);
+                    hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
                     
                     if (ctx->retransmit_lens[slot] > 0 && ctx->retransmit_buffer != NULL) {
-                        hdlc_output_packet_information_bytes(ctx,
+                        hdlc_output_frame_information_bytes(ctx,
                             ctx->retransmit_buffer + (slot * ctx->retransmit_slot_size),
                             ctx->retransmit_lens[slot]);
                     }
                     
-                    hdlc_output_packet_end(ctx);
+                    hdlc_output_frame_end(ctx);
                     seq = (seq + 1) % HDLC_SEQUENCE_MODULUS;
                 }
                 
