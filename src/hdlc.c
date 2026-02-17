@@ -638,7 +638,7 @@ void hdlc_output_frame_information_byte(hdlc_context_t *ctx, hdlc_u8 information
  */
 void hdlc_output_frame_information_bytes(
     hdlc_context_t *ctx, const hdlc_u8 *information_bytes, hdlc_u32 len) {
-  if (ctx == NULL) {
+  if (ctx == NULL || (information_bytes == NULL && len > 0)) {
     return;
   }
 
