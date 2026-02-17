@@ -26,6 +26,18 @@ typedef enum {
 
 /*
  * --------------------------------------------------------------------------
+ * ESCAPE SEQUENCE CONSTANTS
+ * --------------------------------------------------------------------------
+ */
+/** @brief HDLC Flag Sequence (0x7E) used to delimit frames. */
+#define HDLC_FLAG 0x7E
+/** @brief HDLC Escape Octet (0x7D) used for transparency. */
+#define HDLC_ESCAPE 0x7D
+/** @brief Bit-mask (0x20) XORed with octets to be escaped. */
+#define HDLC_XOR_MASK 0x20
+
+/*
+ * --------------------------------------------------------------------------
  * U-FRAME MODIFIER VALUES
  * --------------------------------------------------------------------------
  * M-bits split into m_lo (2 bits) and m_hi (3 bits)

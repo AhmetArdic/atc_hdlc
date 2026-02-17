@@ -95,68 +95,6 @@ bool hdlc_disconnect(hdlc_context_t *ctx);
 bool hdlc_is_connected(hdlc_context_t *ctx);
 
 /**
- * @brief Output an Unnumbered Information (UI) frame.
- * 
- * Transmits a UI frame using the streaming interface. UI frames are
- * unacknowledged and unsequenced.
- * 
- * @param ctx  Pointer to the initialized HDLC context.
- * @param data Pointer to the data payload (can be NULL).
- * @param len  Length of the data payload.
- * @return true if the frame was output successfully, false otherwise.
- */
-bool hdlc_output_frame_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
-
-/**
- * @brief Output a TEST command frame.
- *
- * Transmits a TEST frame using the streaming interface.
- * The remote station should echo this data back in a TEST response.
- * Used for link integrity verification.
- *
- * @param ctx  Pointer to the initialized HDLC context.
- * @param data Pointer to the test data payload (can be NULL).
- * @param len  Length of the test data payload.
- * @return true if the frame was output successfully, false otherwise.
- */
-bool hdlc_output_frame_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
-
-/**
- * @brief Output an Information (I) frame (Reliable).
- *
- * Transmits an I-frame containing the provided data.
- * The frame is assigned the current V(S) sequence number and buffered
- * for retransmission until acknowledged by the peer.
- *
- * @note Requires a retransmission buffer configured via hdlc_init().
- * The data is copied into the retransmit buffer for automatic retransmission
- * if the peer does not acknowledge within the timeout period (Window Size = 1).
- *
- * @param ctx  Pointer to the initialized HDLC context.
- * @param data Pointer to the data payload.
- * @param len  Length of the data payload.
- * @return true if the frame was accepted (window open), false otherwise.
- */
-bool hdlc_output_frame_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
-
-/**
- * @brief Start an Information (I) Frame Output (Streaming).
- *
- * Begins a new I-frame transmission.
- *
- * @warning **RETRANSMISSION CAVEAT**: When using this streaming API, the library
- * CANNOT automatically buffer the full frame for retransmission because it
- * never sees the full frame in one go.
- * 
- * Usage of this function implies that either:
- * 1. The user application handles retransmission if an ACK is not received.
- * 2. Or reliability is not strictly required for this stream (unlikely for I-frames).
- * 
- * @param ctx Pointer to the initialized HDLC context.
- */
-void hdlc_output_frame_start_i(hdlc_context_t *ctx);
-
-/**
  * @brief Periodic Tick for Timers.
  *
  * Must be called periodically (e.g., every 1ms or 10ms) to drive
@@ -243,44 +181,50 @@ bool hdlc_frame_pack(const hdlc_frame_t *frame, hdlc_u8 *buffer, hdlc_u32 buffer
  */
 bool hdlc_frame_unpack(const hdlc_u8 *buffer, hdlc_u32 buffer_len, hdlc_frame_t *frame, hdlc_u8 *flat_buffer, hdlc_u32 flat_buffer_len);
 
-/* 
- * --------------------------------------------------------------------------
- * CONTROL FIELD HELPERS
- * --------------------------------------------------------------------------
+/**
+ * @brief Output an Unnumbered Information (UI) frame.
+ * 
+ * Transmits a UI frame using the streaming interface. UI frames are
+ * unacknowledged and unsequenced.
+ * 
+ * @param ctx  Pointer to the initialized HDLC context.
+ * @param data Pointer to the data payload (can be NULL).
+ * @param len  Length of the data payload.
+ * @return true if the frame was output successfully, false otherwise.
  */
+bool hdlc_output_frame_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
 
 /**
- * @brief Create an I-Frame Control Field.
- * @param ns Send Sequence Number N(S) (3 bits).
- * @param nr Receive Sequence Number N(R) (3 bits).
- * @param pf Poll/Final Bit.
- * @return Constructed control field.
+ * @brief Output a TEST command frame.
+ *
+ * Transmits a TEST frame using the streaming interface.
+ * The remote station should echo this data back in a TEST response.
+ * Used for link integrity verification.
+ *
+ * @param ctx  Pointer to the initialized HDLC context.
+ * @param data Pointer to the test data payload (can be NULL).
+ * @param len  Length of the test data payload.
+ * @return true if the frame was output successfully, false otherwise.
  */
-hdlc_control_t hdlc_create_i_ctrl(hdlc_u8 ns, hdlc_u8 nr, hdlc_u8 pf);
+bool hdlc_output_frame_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
 
 /**
- * @brief Create an S-Frame Control Field.
- * @param s_bits Supervisory function bits (2 bits: RR=00, RNR=01, REJ=10).
- * @param nr     Receive Sequence Number N(R) (3 bits).
- * @param pf     Poll/Final Bit.
- * @return Constructed control field.
+ * @brief Output an Information (I) frame (Reliable).
+ *
+ * Transmits an I-frame containing the provided data.
+ * The frame is assigned the current V(S) sequence number and buffered
+ * for retransmission until acknowledged by the peer.
+ *
+ * @note Requires a retransmission buffer configured via hdlc_init().
+ * The data is copied into the retransmit buffer for automatic retransmission
+ * if the peer does not acknowledge within the timeout period (Window Size = 1).
+ *
+ * @param ctx  Pointer to the initialized HDLC context.
+ * @param data Pointer to the data payload.
+ * @param len  Length of the data payload.
+ * @return true if the frame was accepted (window open), false otherwise.
  */
-hdlc_control_t hdlc_create_s_ctrl(hdlc_u8 s_bits, hdlc_u8 nr, hdlc_u8 pf);
-
-/**
- * @brief Create a U-Frame Control Field.
- * @param m_lo Modifier function bits (low 2 bits).
- * @param m_hi Modifier function bits (high 3 bits).
- * @param pf   Poll/Final Bit.
- * @return Constructed control field.
- */
-hdlc_control_t hdlc_create_u_ctrl(hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf);
-
-/* 
- * --------------------------------------------------------------------------
- * ZERO-COPY STREAMING API
- * --------------------------------------------------------------------------
- */
+bool hdlc_output_frame_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len);
 
 /**
  * @brief Start a Frame Output.
@@ -323,6 +267,16 @@ void hdlc_output_frame_information_byte(hdlc_context_t *ctx, hdlc_u8 information
 void hdlc_output_frame_information_bytes(hdlc_context_t *ctx, const hdlc_u8* information_bytes, hdlc_u32 len);
 
 /**
+ * @brief Finalize Frame Output.
+ *
+ * Completes the current frame transmission by sending the computed
+ * CRC-16 (FCS) and the End Flag (`0x7E`). Increments the TX frame counter.
+ *
+ * @param ctx Pointer to the initialized HDLC context.
+ */
+void hdlc_output_frame_end(hdlc_context_t *ctx);
+
+/**
  * @brief Start a UI Frame Output.
  *
  * Begins a new UI frame transmission by sending the Start Flag (`0x7E`),
@@ -343,14 +297,48 @@ void hdlc_output_frame_start_ui(hdlc_context_t *ctx);
 void hdlc_output_frame_start_test(hdlc_context_t *ctx);
 
 /**
- * @brief Finalize Frame Output.
+ * @brief Start an Information (I) Frame Output (Streaming).
  *
- * Completes the current frame transmission by sending the computed
- * CRC-16 (FCS) and the End Flag (`0x7E`). Increments the TX frame counter.
+ * Begins a new I-frame transmission.
  *
+ * @warning **RETRANSMISSION CAVEAT**: When using this streaming API, the library
+ * CANNOT automatically buffer the full frame for retransmission because it
+ * never sees the full frame in one go.
+ * 
+ * Usage of this function implies that either:
+ * 1. The user application handles retransmission if an ACK is not received.
+ * 2. Or reliability is not strictly required for this stream (unlikely for I-frames).
+ * 
  * @param ctx Pointer to the initialized HDLC context.
  */
-void hdlc_output_frame_end(hdlc_context_t *ctx);
+void hdlc_output_frame_start_i(hdlc_context_t *ctx);
+
+/**
+ * @brief Create an I-Frame Control Field.
+ * @param ns Send Sequence Number N(S) (3 bits).
+ * @param nr Receive Sequence Number N(R) (3 bits).
+ * @param pf Poll/Final Bit.
+ * @return Constructed control field.
+ */
+hdlc_control_t hdlc_create_i_ctrl(hdlc_u8 ns, hdlc_u8 nr, hdlc_u8 pf);
+
+/**
+ * @brief Create an S-Frame Control Field.
+ * @param s_bits Supervisory function bits (2 bits: RR=00, RNR=01, REJ=10).
+ * @param nr     Receive Sequence Number N(R) (3 bits).
+ * @param pf     Poll/Final Bit.
+ * @return Constructed control field.
+ */
+hdlc_control_t hdlc_create_s_ctrl(hdlc_u8 s_bits, hdlc_u8 nr, hdlc_u8 pf);
+
+/**
+ * @brief Create a U-Frame Control Field.
+ * @param m_lo Modifier function bits (low 2 bits).
+ * @param m_hi Modifier function bits (high 3 bits).
+ * @param pf   Poll/Final Bit.
+ * @return Constructed control field.
+ */
+hdlc_control_t hdlc_create_u_ctrl(hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf);
 
 #ifdef __cplusplus
 }
