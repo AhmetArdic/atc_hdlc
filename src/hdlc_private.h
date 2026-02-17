@@ -4,8 +4,8 @@
  * @date 02.02.2026
  * @brief Internal Definitions and State Constants.
  *
- * Contains private constants and macros used by the HDLC implementation
- * but not required for the public API contract.
+ * Contains private constants, macros, types, and function prototypes
+ * shared across HDLC implementation modules but not part of the public API.
  */
 
 #ifndef HDLC_PRIVATE_H
@@ -124,5 +124,44 @@ typedef enum {
  */
 /** @brief Modulus for sequence numbers (V(S), V(R), N(S), N(R)). 3 bits => mod 8. */
 #define HDLC_SEQUENCE_MODULUS   8
+
+/*
+ * --------------------------------------------------------------------------
+ * INTERNAL TYPES (Shared across modules)
+ * --------------------------------------------------------------------------
+ */
+
+/** @brief Encoding context used by frame serialization. */
+typedef struct {
+  hdlc_context_t *ctx;  /**< For callback-based TX. */
+  hdlc_u8 *buffer;      /**< For buffer-based TX. */
+  hdlc_u32 buffer_len;  /**< Max buffer length. */
+  hdlc_u32 current_len; /**< Current bytes written to buffer. */
+  hdlc_bool success;    /**< Used for buffer overflow check. */
+} hdlc_encode_ctx_t;
+
+/** @brief Function pointer for writing a byte during encoding. */
+typedef void (*hdlc_put_byte_fn)(hdlc_encode_ctx_t *enc_ctx, hdlc_u8 byte, hdlc_bool flush);
+
+/*
+ * --------------------------------------------------------------------------
+ * INTERNAL FUNCTION PROTOTYPES (Cross-module)
+ * --------------------------------------------------------------------------
+ */
+
+/* hdlc.c — State management */
+void hdlc_set_protocol_state(hdlc_context_t *ctx, hdlc_protocol_state_t new_state);
+
+/* hdlc_output.c — Output helpers used by multiple modules */
+void hdlc_output_frame_start(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 control);
+void hdlc_output_frame_information_bytes(hdlc_context_t *ctx, const hdlc_u8 *information_bytes, hdlc_u32 len);
+void hdlc_output_frame_end(hdlc_context_t *ctx);
+
+/* hdlc_frame.c — Encoding helpers used by hdlc_output.c */
+void output_byte_to_callback(hdlc_encode_ctx_t *enc_ctx, hdlc_u8 byte, hdlc_bool flush);
+hdlc_bool frame_pack_core(const hdlc_frame_t *frame, hdlc_put_byte_fn put_fn, hdlc_encode_ctx_t *enc_ctx);
+
+/* hdlc_input.c — Process complete frame (called from input parser) */
+void process_complete_frame(hdlc_context_t *ctx);
 
 #endif // HDLC_PRIVATE_H
