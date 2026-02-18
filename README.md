@@ -47,20 +47,26 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
 ```
 .
 ├── inc/
-│   ├── hdlc.h          # Public API (init, send, receive, packet processing)
-│   ├── hdlc_types.h    # Public types (frame, context, callbacks, control field)
-│   └── hdlc_config.h   # Configuration (prefix, max frame length)
+│   ├── hdlc.h                # Public API (init, send, receive, packet processing)
+│   ├── hdlc_types.h          # Public types (frame, context, callbacks, control field)
+│   └── hdlc_config.h         # Configuration (prefix, timer defaults, window size)
 ├── src/
-│   ├── hdlc.c          # Core implementation (TX/RX engines, control helpers)
-│   ├── hdlc_crc.c      # CRC-16-CCITT LUT and update function
-│   ├── hdlc_crc.h      # Internal CRC API
-│   └── hdlc_private.h  # Internal RX state machine definitions
+│   ├── CMakeLists.txt        # Library build configuration
+│   ├── hdlc.c                # Core state management (init, tick, addresses)
+│   ├── hdlc_crc.c            # CRC-16-CCITT LUT and update function
+│   ├── hdlc_crc.h            # Internal CRC API
+│   ├── hdlc_frame.c          # Frame serialization (pack/unpack, encoding core)
+│   ├── hdlc_frame_handlers.c # Frame type dispatch (I/S/U-frame processing)
+│   ├── hdlc_input.c          # RX engine (byte parser, state machine)
+│   ├── hdlc_output.c         # TX engine (streaming, buffered, zero-copy output)
+│   └── hdlc_private.h        # Internal state machine definitions & constants
 ├── test/
-│   ├── test_hdlc.c                  # Core protocol unit tests
-│   ├── test_reliable_transmission.c # Reliable TX, Go-Back-N, retransmission tests
-│   ├── test_connection_management.c # State machine & connection tests
-│   ├── test_common.c                # Shared test utilities (colors, assertions)
-│   └── test_common.h                # Shared test header
+│   ├── CMakeLists.txt                # Test build configuration
+│   ├── test_hdlc.c                   # Core protocol unit tests
+│   ├── test_reliable_transmission.c  # Reliable TX, Go-Back-N, retransmission tests
+│   ├── test_connection_management.c  # State machine & connection tests
+│   ├── test_common.c                 # Shared test utilities (colors, assertions)
+│   └── test_common.h                 # Shared test header
 ├── CMakeLists.txt      # Root CMake configuration
 └── README.md           # This file
 ```
@@ -130,7 +136,7 @@ ALL TESTS PASSED SUCCESSFULLY!
 
 To use this library in your own project:
 
-1.  Add `src/hdlc.c` and `src/hdlc_crc.c` to your build.
+1.  Add all `src/*.c` files to your build (`hdlc.c`, `hdlc_input.c`, `hdlc_output.c`, `hdlc_frame.c`, `hdlc_frame_handlers.c`, `hdlc_crc.c`).
 2.  Add `inc/` to your include path.
 3.  **Define Callbacks**:
     ```c
@@ -268,7 +274,8 @@ Configuration is done in `inc/hdlc_config.h`:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `ATC_HDLC_PREFIX` | `atc_` | Symbol prefix for all public API functions and types |
+| `ATC_HDLC_PREFIX_LOWERCASE` | `atc_` | Lowercase prefix for public API functions and types |
+| `ATC_HDLC_PREFIX_UPPERCASE` | `ATC_` | Uppercase prefix for enums and constants |
 | `HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS` | `1000` | Default retransmission (T1) timeout in milliseconds |
 | `HDLC_DEFAULT_WINDOW_SIZE` | `1` | Default transmit window size for Go-Back-N (1..7) |
 
@@ -288,13 +295,16 @@ Configuration is done in `inc/hdlc_config.h`:
 | `atc_hdlc_output_frame_end()` | Finalize packet TX (CRC + Flag) |
 | `atc_hdlc_output_frame_ui()` | Send unacknowledged data (UI Frame) |
 | `atc_hdlc_output_frame_test()` | Send a TEST frame with optional data payload |
+| `atc_hdlc_output_frame_start_ui()` | Begin UI frame TX (streaming) |
+| `atc_hdlc_output_frame_start_test()` | Begin TEST frame TX (streaming) |
+| `atc_hdlc_output_frame_start_i()` | Begin I-frame TX (streaming, user-managed retransmission) |
 
 ### Reliable Transmission (Go-Back-N)
 
 | Function | Description |
 |---|---|
 | `atc_hdlc_output_frame_i()` | Send a reliable I-frame (queued in the send window) |
-| `atc_hdlc_tick()` | Periodic timer tick — handles retransmission timeouts |
+| `atc_hdlc_tick(ctx, delta_ms)` | Periodic timer tick — drives retransmission and connection timeouts |
 
 ### Connection Management
 
@@ -327,3 +337,7 @@ typedef void (*atc_hdlc_output_byte_cb_t)(atc_hdlc_u8 byte, atc_hdlc_bool flush,
 typedef void (*atc_hdlc_on_frame_cb_t)(const atc_hdlc_frame_t *frame, void *user_data);
 typedef void (*atc_hdlc_on_state_change_cb_t)(atc_hdlc_protocol_state_t state, void *user_data);
 ```
+
+## 📄 License
+
+This project is licensed under the **GNU General Public License v3.0 (GPLv3)**. See the [LICENSE](LICENSE) file for details.
