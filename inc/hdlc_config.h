@@ -56,26 +56,29 @@ extern "C" {
 
 /* Functions */
 #define hdlc_init                                                       ATC_HDLC_NAME_LOWERCASE(hdlc_init)
+#define hdlc_configure_addresses                                        ATC_HDLC_NAME_LOWERCASE(hdlc_configure_addresses)
+#define hdlc_connect                                                    ATC_HDLC_NAME_LOWERCASE(hdlc_connect)
+#define hdlc_disconnect                                                 ATC_HDLC_NAME_LOWERCASE(hdlc_disconnect)
+#define hdlc_is_connected                                               ATC_HDLC_NAME_LOWERCASE(hdlc_is_connected)
+#define hdlc_tick                                                       ATC_HDLC_NAME_LOWERCASE(hdlc_tick)
 #define hdlc_input_byte                                                 ATC_HDLC_NAME_LOWERCASE(hdlc_input_byte)
 #define hdlc_input_bytes                                                ATC_HDLC_NAME_LOWERCASE(hdlc_input_bytes)
 #define hdlc_output_frame                                               ATC_HDLC_NAME_LOWERCASE(hdlc_output_frame)
 #define hdlc_frame_pack                                                 ATC_HDLC_NAME_LOWERCASE(hdlc_frame_pack)
 #define hdlc_frame_unpack                                               ATC_HDLC_NAME_LOWERCASE(hdlc_frame_unpack)
+#define hdlc_output_frame_ui                                            ATC_HDLC_NAME_LOWERCASE(hdlc_output_frame_ui)
+#define hdlc_output_frame_test                                          ATC_HDLC_NAME_LOWERCASE(hdlc_output_frame_test)
+#define hdlc_output_frame_i                                             ATC_HDLC_NAME_LOWERCASE(hdlc_output_frame_i)
+#define hdlc_output_frame_start                                         ATC_HDLC_NAME_LOWERCASE(hdlc_output_frame_start)
+#define hdlc_output_frame_information_byte                              ATC_HDLC_NAME_LOWERCASE(hdlc_output_frame_information_byte)
+#define hdlc_output_frame_information_bytes                             ATC_HDLC_NAME_LOWERCASE(hdlc_output_frame_information_bytes)
+#define hdlc_output_frame_end                                           ATC_HDLC_NAME_LOWERCASE(hdlc_output_frame_end)
+#define hdlc_output_frame_start_ui                                      ATC_HDLC_NAME_LOWERCASE(hdlc_output_frame_start_ui)
+#define hdlc_output_frame_start_test                                    ATC_HDLC_NAME_LOWERCASE(hdlc_output_frame_start_test)
+#define hdlc_output_frame_start_i                                       ATC_HDLC_NAME_LOWERCASE(hdlc_output_frame_start_i)
 #define hdlc_create_i_ctrl                                              ATC_HDLC_NAME_LOWERCASE(hdlc_create_i_ctrl)
 #define hdlc_create_s_ctrl                                              ATC_HDLC_NAME_LOWERCASE(hdlc_create_s_ctrl)
 #define hdlc_create_u_ctrl                                              ATC_HDLC_NAME_LOWERCASE(hdlc_create_u_ctrl)
-#define hdlc_output_packet_start                                        ATC_HDLC_NAME_LOWERCASE(hdlc_output_packet_start)
-#define hdlc_output_packet_information_byte                             ATC_HDLC_NAME_LOWERCASE(hdlc_output_packet_information_byte)
-#define hdlc_output_packet_information_bytes                            ATC_HDLC_NAME_LOWERCASE(hdlc_output_packet_information_bytes)
-#define hdlc_output_packet_end                                          ATC_HDLC_NAME_LOWERCASE(hdlc_output_packet_end)
-#define hdlc_output_packet_ui_start                                     ATC_HDLC_NAME_LOWERCASE(hdlc_output_packet_ui_start)
-#define hdlc_output_packet_test_start                                   ATC_HDLC_NAME_LOWERCASE(hdlc_output_packet_test_start)
-#define hdlc_output_ui                                                  ATC_HDLC_NAME_LOWERCASE(hdlc_output_ui)
-#define hdlc_output_test                                                ATC_HDLC_NAME_LOWERCASE(hdlc_output_test)
-#define hdlc_configure_addresses                                        ATC_HDLC_NAME_LOWERCASE(hdlc_configure_addresses)
-#define hdlc_connect                                                    ATC_HDLC_NAME_LOWERCASE(hdlc_connect)
-#define hdlc_disconnect                                                 ATC_HDLC_NAME_LOWERCASE(hdlc_disconnect)
-#define hdlc_is_connected                                               ATC_HDLC_NAME_LOWERCASE(hdlc_is_connected)
 
 /* Types */
 #define hdlc_u8                                                         ATC_HDLC_NAME_LOWERCASE(hdlc_u8)
@@ -102,6 +105,38 @@ extern "C" {
 #define HDLC_PROTOCOL_STATE_CONNECTING                                  ATC_HDLC_NAME_UPPERCASE(HDLC_PROTOCOL_STATE_CONNECTING)
 #define HDLC_PROTOCOL_STATE_CONNECTED                                   ATC_HDLC_NAME_UPPERCASE(HDLC_PROTOCOL_STATE_CONNECTED)
 #define HDLC_PROTOCOL_STATE_DISCONNECTING                               ATC_HDLC_NAME_UPPERCASE(HDLC_PROTOCOL_STATE_DISCONNECTING)
+
+/*
+ * --------------------------------------------------------------------------
+ * TIMER DEFAULTS
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Default retransmission (T1) timeout in milliseconds.
+ *
+ * Used as the default value for the retransmit_timeout_ms parameter
+ * in hdlc_init(). Can be overridden at init time.
+ */
+#ifndef HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS
+#define HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS  1000
+#endif
+
+/*
+ * --------------------------------------------------------------------------
+ * WINDOW SIZE DEFAULTS
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Default transmit window size for Go-Back-N.
+ *
+ * Valid range: 1..7. Window=1 is equivalent to Stop-and-Wait.
+ * Can be overridden at compile time or at init time.
+ */
+#ifndef HDLC_DEFAULT_WINDOW_SIZE
+#define HDLC_DEFAULT_WINDOW_SIZE  1
+#endif
 
 #ifdef __cplusplus
 }

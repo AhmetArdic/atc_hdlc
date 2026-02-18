@@ -13,29 +13,9 @@
 // Mocks & Helpers
 // -----------------------------------------------------------------------------
 static atc_hdlc_context_t ctx;
-static uint8_t rx_buffer[1024];
-static uint8_t captured_tx_buffer[256];
-static uint32_t captured_tx_len = 0;
+
 static atc_hdlc_protocol_state_t last_state_change = (atc_hdlc_protocol_state_t)-1;
 static int state_change_call_count = 0;
-
-void on_tx_byte(uint8_t byte, bool flush, void *user_data) {
-    (void)user_data;
-    (void)flush;
-    if (captured_tx_len < sizeof(captured_tx_buffer)) {
-        captured_tx_buffer[captured_tx_len++] = byte;
-    }
-}
-
-void on_rx_frame(const atc_hdlc_frame_t *frame, void *user_data) {
-    (void)user_data;
-    // Log frame using standard format
-    printf("   %s[ON FRAME EVENT] Frame Received!%s\n", COL_GREEN, COL_RESET);
-    printf("   Type: %d, Addr: %02X, Ctrl: %02X, Information Len: %d\n",
-           frame->type, frame->address, frame->control.value,
-           frame->information_len);
-}
-
 
 void on_state_change(atc_hdlc_protocol_state_t state, void *user_data) {
     (void)user_data;
@@ -61,19 +41,24 @@ void on_state_change(atc_hdlc_protocol_state_t state, void *user_data) {
     }
 }
 
-// Helper to reset test state
+// Helper to reset test state (Custom for this file to include state change)
 void setup_context(void) {
-    atc_hdlc_init(&ctx, rx_buffer, sizeof(rx_buffer), on_tx_byte, on_rx_frame, on_state_change, NULL);
+    // We call init manually to inject on_state_change, but use shared buffers/callbacks for the rest
+    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), NULL, 0, HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, HDLC_DEFAULT_WINDOW_SIZE, mock_output_byte_cb, mock_on_frame_cb, on_state_change, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02); // Me=0x01, Peer=0x02
-    captured_tx_len = 0;
+    
+    // Reset shared state
+    reset_test_state();
+    
+    // Reset local state
     state_change_call_count = 0;
     last_state_change = (atc_hdlc_protocol_state_t)-1;
 }
 
 // Helper to inspect the last transmitted frame (assumes it's a valid frame)
-// Returns pointer to the frame starting at captured_tx_buffer
+// Use mock_output_buffer
 void decode_last_tx(atc_hdlc_frame_t *decoded_frame, uint8_t *flat_buf, uint32_t flat_len) {
-    bool res = atc_hdlc_frame_unpack(captured_tx_buffer, captured_tx_len, decoded_frame, flat_buf, flat_len);
+    bool res = atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len, decoded_frame, flat_buf, flat_len);
     if (!res) {
         test_fail("Frame Decode", "Failed to unpack transmitted frame");
     }
@@ -84,12 +69,10 @@ void decode_last_tx(atc_hdlc_frame_t *decoded_frame, uint8_t *flat_buf, uint32_t
 // -----------------------------------------------------------------------------
 
 void test_init_state(void) {
-    printf("========================================\n");
     printf("TEST: Init State\n");
-    printf("========================================\n");
     setup_context();
     
-    if (ctx.current_state != HDLC_PROTOCOL_STATE_DISCONNECTED) 
+    if (ctx.current_state != ATC_HDLC_PROTOCOL_STATE_DISCONNECTED) 
         test_fail("Init State", "Initial state is not DISCONNECTED");
     
     if (atc_hdlc_is_connected(&ctx))
@@ -99,22 +82,21 @@ void test_init_state(void) {
 }
 
 void test_connect_sends_sabm(void) {
-    printf("========================================\n");
     printf("TEST: Connect Sends SABM\n");
-    printf("========================================\n");
     setup_context();
     
+    // 1. Trigger Connect
     bool res = atc_hdlc_connect(&ctx);
-    if (!res) test_fail("Connect Sends SABM", "Connect failed to start");
+    if (!res) test_fail("Connect Sends SABM", "Connect returned false");
     
-    // 1. Check State Transition
-    if (ctx.current_state != HDLC_PROTOCOL_STATE_CONNECTING)
+    // State Check
+    if (ctx.current_state != ATC_HDLC_PROTOCOL_STATE_CONNECTING)
         test_fail("Connect Sends SABM", "State not CONNECTING");
         
     if (state_change_call_count != 1)
         test_fail("Connect Sends SABM", "State change callback count incorrect");
 
-    if (last_state_change != HDLC_PROTOCOL_STATE_CONNECTING)
+    if (last_state_change != ATC_HDLC_PROTOCOL_STATE_CONNECTING)
         test_fail("Connect Sends SABM", "Last state change not CONNECTING");
         
     // 2. Check Output Frame (SABM to Peer)
@@ -129,12 +111,10 @@ void test_connect_sends_sabm(void) {
 }
 
 void test_connect_complete_on_ua(void) {
-    printf("========================================\n");
     printf("TEST: Connect Complete on UA\n");
-    printf("========================================\n");
     setup_context();
     atc_hdlc_connect(&ctx); // Go to CONNECTING
-    captured_tx_len = 0; // Clear TX buffer
+    mock_output_len = 0; // Clear TX buffer
     state_change_call_count = 0; // Clear counters
 
     // Simulate Receiving UA from Peer
@@ -153,8 +133,8 @@ void test_connect_complete_on_ua(void) {
     atc_hdlc_input_bytes(&ctx, packed, packed_len);
 
     // Verify State Change
-    if (ctx.current_state != HDLC_PROTOCOL_STATE_CONNECTED)
-         test_fail("Connect Complete FA", "State not CONNECTED");
+    if (ctx.current_state != ATC_HDLC_PROTOCOL_STATE_CONNECTED)
+         test_fail("Connect Complete UA", "State not CONNECTED");
          
     if (state_change_call_count != 1)
          test_fail("Connect Complete UA", "Callback count mismatch");
@@ -166,12 +146,10 @@ void test_connect_complete_on_ua(void) {
 }
 
 void test_disconnect_flow(void) {
-    printf("========================================\n");
     printf("TEST: Disconnect Flow\n");
-    printf("========================================\n");
     setup_context();
     // Force Connected
-    ctx.current_state = HDLC_PROTOCOL_STATE_CONNECTED;
+    ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
     state_change_call_count = 0;
 
     // Send Disconnect
@@ -179,7 +157,7 @@ void test_disconnect_flow(void) {
     if (!res) test_fail("Disconnect Flow", "Disconnect returned false");
 
     // 1. Check State
-    if (ctx.current_state != HDLC_PROTOCOL_STATE_DISCONNECTING)
+    if (ctx.current_state != ATC_HDLC_PROTOCOL_STATE_DISCONNECTING)
          test_fail("Disconnect Flow", "State not DISCONNECTING");
     
     // 2. Check Output Frame (DISC to Peer)
@@ -193,7 +171,7 @@ void test_disconnect_flow(void) {
 
     // 3. Receive UA
     // Clear buffer
-    captured_tx_len = 0;
+    mock_output_len = 0;
     
     atc_hdlc_frame_t ua_frame;
     ua_frame.address = 0x02;
@@ -207,16 +185,14 @@ void test_disconnect_flow(void) {
     atc_hdlc_input_bytes(&ctx, packed, packed_len);
 
     // Check State
-    if (ctx.current_state != HDLC_PROTOCOL_STATE_DISCONNECTED)
+    if (ctx.current_state != ATC_HDLC_PROTOCOL_STATE_DISCONNECTED)
          test_fail("Disconnect Flow", "State NOT disconnected after UA");
 
     test_pass("Disconnect Flow");
 }
 
 void test_passive_open(void) {
-    printf("========================================\n");
     printf("TEST: Passive Open (Accept SABM)\n");
-    printf("========================================\n");
     setup_context();
     
     // Simulate Receiving SABM from Peer (Command)
@@ -235,7 +211,7 @@ void test_passive_open(void) {
     atc_hdlc_input_bytes(&ctx, packed, packed_len);
 
     // 1. Should be CONNECTED
-    if (ctx.current_state != HDLC_PROTOCOL_STATE_CONNECTED)
+    if (ctx.current_state != ATC_HDLC_PROTOCOL_STATE_CONNECTED)
          test_fail("Passive Open", "State not CONNECTED after SABM");
 
     // 2. Should have sent UA (Response from Me)
@@ -250,13 +226,11 @@ void test_passive_open(void) {
 }
 
 void test_frmr_reception(void) {
-    printf("========================================\n");
     printf("TEST: FRMR Reception\n");
-    printf("========================================\n");
     setup_context();
     atc_hdlc_connect(&ctx); // Connect first
     // Force Connected state for testing
-    ctx.current_state = HDLC_PROTOCOL_STATE_CONNECTED;
+    ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
     state_change_call_count = 0; // Clear counters
 
     // Simulate Receiving FRMR from Peer
@@ -282,7 +256,7 @@ void test_frmr_reception(void) {
     atc_hdlc_input_bytes(&ctx, packed, packed_len);
 
     // Verify State Change -> DISCONNECTED
-    if (ctx.current_state != HDLC_PROTOCOL_STATE_DISCONNECTED)
+    if (ctx.current_state != ATC_HDLC_PROTOCOL_STATE_DISCONNECTED)
          test_fail("FRMR Reception", "State not DISCONNECTED");
 
     if (state_change_call_count != 1)
@@ -292,9 +266,7 @@ void test_frmr_reception(void) {
 }
 
 void test_mode_rejection(void) {
-    printf("========================================\n");
     printf("TEST: Mode Rejection (SNRM)\n");
-    printf("========================================\n");
     setup_context();
     // Use SNRM (Set Normal Response Mode) - Not Supported
     // M=100 00 -> Hi=4, Lo=0. P=1.
@@ -312,16 +284,16 @@ void test_mode_rejection(void) {
     atc_hdlc_frame_pack(&params_frame, packed, sizeof(packed), &packed_len);
     
     // Clear TX capture
-    captured_tx_len = 0;
+    mock_output_len = 0;
 
     // Feed bytes
     atc_hdlc_input_bytes(&ctx, packed, packed_len);
     
     // Inspect captured bytes dump using helper
-    print_hexdump("Captured TX", captured_tx_buffer, captured_tx_len);
+    print_hexdump("Captured TX", mock_output_buffer, mock_output_len);
 
     // 1. State should remain DISCONNECTED
-    if (ctx.current_state != HDLC_PROTOCOL_STATE_DISCONNECTED)
+    if (ctx.current_state != ATC_HDLC_PROTOCOL_STATE_DISCONNECTED)
          test_fail("Mode Rejection", "State changed on invalid mode!");
 
     // 2. Output should be DM
@@ -337,6 +309,85 @@ void test_mode_rejection(void) {
     test_pass("Mode Rejection (SNRM)");
 }
 
+void test_extended_mode_rejection(void) {
+    printf("TEST: Extended Mode Rejection (SABME, SNRME, SARME)\n");
+    setup_context();
+
+    // 1. SABME (0x7F if P=1)
+    {
+        atc_hdlc_frame_t frame_in;
+        frame_in.address = 0x01;
+        frame_in.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SABME, HDLC_U_MODIFIER_HI_SABME, 1);
+        frame_in.information = NULL;
+        frame_in.information_len = 0;
+        frame_in.type = HDLC_FRAME_U;
+
+        uint8_t packed[32];
+        uint32_t packed_len = 0;
+        atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
+
+        mock_output_len = 0;
+        atc_hdlc_input_bytes(&ctx, packed, packed_len);
+
+        atc_hdlc_frame_t frame_out;
+        uint8_t flat[32];
+        decode_last_tx(&frame_out, flat, sizeof(flat));
+
+        if (frame_out.control.value != 0x1F) // DM with F=1
+            test_fail("Ext Rejection SABME", "Did not send DM");
+    }
+
+    // 2. SNRME (0xDF if P=1)
+    {
+        atc_hdlc_frame_t frame_in;
+        frame_in.address = 0x01;
+        frame_in.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SNRME, HDLC_U_MODIFIER_HI_SNRME, 1);
+        frame_in.information = NULL;
+        frame_in.information_len = 0;
+        frame_in.type = HDLC_FRAME_U;
+
+        uint8_t packed[32];
+        uint32_t packed_len = 0;
+        atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
+
+        mock_output_len = 0;
+        atc_hdlc_input_bytes(&ctx, packed, packed_len);
+
+        atc_hdlc_frame_t frame_out;
+        uint8_t flat[32];
+        decode_last_tx(&frame_out, flat, sizeof(flat));
+
+        if (frame_out.control.value != 0x1F) // DM with F=1
+            test_fail("Ext Rejection SNRME", "Did not send DM");
+    }
+
+    // 3. SARME (0x5F if P=1)
+    {
+        atc_hdlc_frame_t frame_in;
+        frame_in.address = 0x01;
+        frame_in.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SARME, HDLC_U_MODIFIER_HI_SARME, 1);
+        frame_in.information = NULL;
+        frame_in.information_len = 0;
+        frame_in.type = HDLC_FRAME_U;
+
+        uint8_t packed[32];
+        uint32_t packed_len = 0;
+        atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
+
+        mock_output_len = 0;
+        atc_hdlc_input_bytes(&ctx, packed, packed_len);
+
+        atc_hdlc_frame_t frame_out;
+        uint8_t flat[32];
+        decode_last_tx(&frame_out, flat, sizeof(flat));
+
+        if (frame_out.control.value != 0x1F) // DM with F=1
+            test_fail("Ext Rejection SARME", "Did not send DM");
+    }
+
+    test_pass("Extended Mode Rejection");
+}
+
 int main(void) {
     printf("\n%sSTARTING CONNECTION MANAGEMENT TESTS%s\n", COL_YELLOW, COL_RESET);
     printf("----------------------------------------\n\n");
@@ -348,6 +399,7 @@ int main(void) {
     test_passive_open();
     test_frmr_reception();
     test_mode_rejection();
+    test_extended_mode_rejection();
     
     printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
     return 0;
