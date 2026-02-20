@@ -1,5 +1,6 @@
 #include "../inc/hdlc.h"
 #include "test_common.h"
+#include <stdint.h>
 #include <ctype.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -660,6 +661,97 @@ void test_throughput_benchmark(void) {
 
     test_pass("Throughput Benchmark: All window sizes validated (W=1..7)");
 }
+typedef enum {
+    TX_IDLE,
+    TX_SENDING,
+    TX_DONE
+} TxState_t;
+
+TxState_t process_tx_task(atc_hdlc_context_t *ctx, const uint8_t* data, size_t total_size, size_t max_chunk_size) {
+    static size_t bytes_sent = 0; // Durumu korumak için static değişken
+
+    if (total_size == 0) return TX_IDLE;
+
+    // Tüm veri gönderildiyse sıfırla ve bitir
+    if (bytes_sent >= total_size) {
+        bytes_sent = 0; 
+        return TX_DONE;
+    }
+
+    size_t chunk_size = total_size - bytes_sent;
+    if (chunk_size > max_chunk_size) {
+        chunk_size = max_chunk_size;
+    }
+
+    // Gönderim başarılı olursa veriyi ilerlet
+    if (atc_hdlc_output_frame_i(ctx, (atc_hdlc_u8*)&data[bytes_sent], (atc_hdlc_u16)chunk_size)) {
+        bytes_sent += chunk_size;
+        
+        // Bu paketten sonra veri bittiyse anında DONE dönebiliriz
+        if (bytes_sent >= total_size) {
+            bytes_sent = 0;
+            return TX_DONE;
+        }
+    }
+
+    // Gönderim başarısızsa (ACK bekleniyorsa) işlemciyi meşgul etmeden
+    // fonksiyondan çıkar. Bir sonraki ana döngüde aynı paketi tekrar dener.
+    return TX_SENDING;
+}
+
+void test_process_tx_task_simulation(void) {
+    printf("\nTEST: Process TX Task Simulation\n");
+    reset_test_state();
+    
+    atc_hdlc_context_t ctx;
+    atc_hdlc_u8 retx_buf[256];
+    // We use window size 2 so the task hits a "Window Full" state and returns TX_SENDING
+    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), 
+                  retx_buf, sizeof(retx_buf), 
+                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, 2, 
+                  mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
+
+    // We have 100 bytes. Chunk size is 32. It should take 4 chunks (32, 32, 32, 4)
+    uint8_t test_data[100];
+    for (int i = 0; i < 100; i++) test_data[i] = (uint8_t)(i & 0xFF);
+
+    TxState_t state = TX_IDLE;
+    int loop_count = 0;
+    while (state != TX_DONE && loop_count < 1000) {
+        state = process_tx_task(&ctx, test_data, sizeof(test_data), 32);
+        
+        // Simüle edilmiş peer: Window dolduğunda ve TX_SENDING döndüğünde (veya her döngüde)
+        // Eğer ctx'te bekleyen ACK varsa, bir ACK frame üretip kontekste verelim.
+        if (ctx.vs != ctx.va) {
+            atc_hdlc_frame_t rr_frame = {
+                .address = 0x01,
+                .control = atc_hdlc_create_s_ctrl(0x00, ctx.vs, 0), // RR, N(R)=VS 
+                .information = NULL,
+                .information_len = 0,
+                .type = HDLC_FRAME_S
+            };
+            atc_hdlc_u32 rr_len = 0;
+            atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &rr_len);
+            atc_hdlc_input_bytes(&ctx, temp_input_buffer, rr_len);
+        }
+        loop_count++;
+    }
+
+    if (state == TX_DONE) {
+        test_pass("Process TX Task Simulation - Transmission");
+    } else {
+        test_fail("Process TX Task Simulation - Transmission", "Task did not complete within loop limit");
+    }
+
+    // Verify reset to idle
+    if (process_tx_task(&ctx, test_data, 0, 32) == TX_IDLE) {
+        test_pass("Process TX Task Simulation - Reset check");
+    } else {
+        test_fail("Process TX Task Simulation - Reset check", "Did not return TX_IDLE for 0 size");
+    }
+}
 
 int main(void) {
   printf("\n%sSTARTING RELIABLE TRANSMISSION TEST SUITE%s\n", COL_YELLOW,
@@ -676,6 +768,7 @@ int main(void) {
   test_gobackn_retransmit();
   test_window7_mid_rej();
   test_throughput_benchmark();
+  test_process_tx_task_simulation();
 
   printf("\n%sALL RELIABLE TRANSMISSION TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
   return 0;
