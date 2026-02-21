@@ -79,6 +79,8 @@ extern "C" {
 #define hdlc_create_i_ctrl                                              ATC_HDLC_NAME_LOWERCASE(hdlc_create_i_ctrl)
 #define hdlc_create_s_ctrl                                              ATC_HDLC_NAME_LOWERCASE(hdlc_create_s_ctrl)
 #define hdlc_create_u_ctrl                                              ATC_HDLC_NAME_LOWERCASE(hdlc_create_u_ctrl)
+#define hdlc_get_s_frame_sub_type                                       ATC_HDLC_NAME_LOWERCASE(hdlc_get_s_frame_sub_type)
+#define hdlc_get_u_frame_sub_type                                       ATC_HDLC_NAME_LOWERCASE(hdlc_get_u_frame_sub_type)
 
 /* Types */
 #define hdlc_u8                                                         ATC_HDLC_NAME_LOWERCASE(hdlc_u8)
@@ -86,6 +88,8 @@ extern "C" {
 #define hdlc_u32                                                        ATC_HDLC_NAME_LOWERCASE(hdlc_u32)
 #define hdlc_bool                                                       ATC_HDLC_NAME_LOWERCASE(hdlc_bool)
 #define hdlc_frame_type_t                                               ATC_HDLC_NAME_LOWERCASE(hdlc_frame_type_t)
+#define hdlc_s_frame_sub_type_t                                         ATC_HDLC_NAME_LOWERCASE(hdlc_s_frame_sub_type_t)
+#define hdlc_u_frame_sub_type_t                                         ATC_HDLC_NAME_LOWERCASE(hdlc_u_frame_sub_type_t)
 #define hdlc_protocol_state_t                                           ATC_HDLC_NAME_LOWERCASE(hdlc_protocol_state_t)
 #define hdlc_control_t                                                  ATC_HDLC_NAME_LOWERCASE(hdlc_control_t)
 #define hdlc_frame_t                                                    ATC_HDLC_NAME_LOWERCASE(hdlc_frame_t)
@@ -99,6 +103,27 @@ extern "C" {
 #define HDLC_FRAME_S                                                    ATC_HDLC_NAME_UPPERCASE(HDLC_FRAME_S)
 #define HDLC_FRAME_U                                                    ATC_HDLC_NAME_UPPERCASE(HDLC_FRAME_U)
 #define HDLC_FRAME_INVALID                                              ATC_HDLC_NAME_UPPERCASE(HDLC_FRAME_INVALID)
+
+/* S-Frame Sub-Types */
+#define HDLC_S_FRAME_TYPE_RR                                            ATC_HDLC_NAME_UPPERCASE(HDLC_S_FRAME_TYPE_RR)
+#define HDLC_S_FRAME_TYPE_RNR                                           ATC_HDLC_NAME_UPPERCASE(HDLC_S_FRAME_TYPE_RNR)
+#define HDLC_S_FRAME_TYPE_REJ                                           ATC_HDLC_NAME_UPPERCASE(HDLC_S_FRAME_TYPE_REJ)
+#define HDLC_S_FRAME_TYPE_UNKNOWN                                       ATC_HDLC_NAME_UPPERCASE(HDLC_S_FRAME_TYPE_UNKNOWN)
+
+/* U-Frame Sub-Types */
+#define HDLC_U_FRAME_TYPE_SABM                                          ATC_HDLC_NAME_UPPERCASE(HDLC_U_FRAME_TYPE_SABM)
+#define HDLC_U_FRAME_TYPE_SNRM                                          ATC_HDLC_NAME_UPPERCASE(HDLC_U_FRAME_TYPE_SNRM)
+#define HDLC_U_FRAME_TYPE_SARM                                          ATC_HDLC_NAME_UPPERCASE(HDLC_U_FRAME_TYPE_SARM)
+#define HDLC_U_FRAME_TYPE_SABME                                         ATC_HDLC_NAME_UPPERCASE(HDLC_U_FRAME_TYPE_SABME)
+#define HDLC_U_FRAME_TYPE_SNRME                                         ATC_HDLC_NAME_UPPERCASE(HDLC_U_FRAME_TYPE_SNRME)
+#define HDLC_U_FRAME_TYPE_SARME                                         ATC_HDLC_NAME_UPPERCASE(HDLC_U_FRAME_TYPE_SARME)
+#define HDLC_U_FRAME_TYPE_DISC                                          ATC_HDLC_NAME_UPPERCASE(HDLC_U_FRAME_TYPE_DISC)
+#define HDLC_U_FRAME_TYPE_UA                                            ATC_HDLC_NAME_UPPERCASE(HDLC_U_FRAME_TYPE_UA)
+#define HDLC_U_FRAME_TYPE_DM                                            ATC_HDLC_NAME_UPPERCASE(HDLC_U_FRAME_TYPE_DM)
+#define HDLC_U_FRAME_TYPE_FRMR                                          ATC_HDLC_NAME_UPPERCASE(HDLC_U_FRAME_TYPE_FRMR)
+#define HDLC_U_FRAME_TYPE_UI                                            ATC_HDLC_NAME_UPPERCASE(HDLC_U_FRAME_TYPE_UI)
+#define HDLC_U_FRAME_TYPE_TEST                                          ATC_HDLC_NAME_UPPERCASE(HDLC_U_FRAME_TYPE_TEST)
+#define HDLC_U_FRAME_TYPE_UNKNOWN                                       ATC_HDLC_NAME_UPPERCASE(HDLC_U_FRAME_TYPE_UNKNOWN)
 
 /* Protocol States */
 #define HDLC_PROTOCOL_STATE_DISCONNECTED                                ATC_HDLC_NAME_UPPERCASE(HDLC_PROTOCOL_STATE_DISCONNECTED)

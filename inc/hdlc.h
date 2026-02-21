@@ -340,6 +340,20 @@ hdlc_control_t hdlc_create_s_ctrl(hdlc_u8 s_bits, hdlc_u8 nr, hdlc_u8 pf);
  */
 hdlc_control_t hdlc_create_u_ctrl(hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf);
 
+/**
+ * @brief Get the S-Frame sub-type from a control field.
+ * @param control Pointer to the control field to evaluate.
+ * @return S-Frame sub-type (e.g., RR, RNR) or UNKNOWN if invalid.
+ */
+hdlc_s_frame_sub_type_t hdlc_get_s_frame_sub_type(const hdlc_control_t *control);
+
+/**
+ * @brief Get the U-Frame sub-type from a control field.
+ * @param control Pointer to the control field to evaluate.
+ * @return U-Frame sub-type (e.g., SABM, UA) or UNKNOWN if invalid.
+ */
+hdlc_u_frame_sub_type_t hdlc_get_u_frame_sub_type(const hdlc_control_t *control);
+
 #ifdef __cplusplus
 }
 #endif

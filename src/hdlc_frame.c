@@ -168,3 +168,89 @@ bool hdlc_frame_unpack(const hdlc_u8 *buffer, hdlc_u32 buffer_len, hdlc_frame_t 
 
   return true;
 }
+
+/**
+ * @brief Create an I-Frame Control Field.
+ * @see hdlc.h
+ */
+hdlc_control_t hdlc_create_i_ctrl(hdlc_u8 ns, hdlc_u8 nr, hdlc_u8 pf) {
+  hdlc_control_t ctrl = {0};
+  ctrl.i_frame.frame_type_0 = 0;
+  ctrl.i_frame.ns = ns;
+  ctrl.i_frame.pf = pf;
+  ctrl.i_frame.nr = nr;
+  return ctrl;
+}
+
+/**
+ * @brief Create an S-Frame Control Field.
+ * @see hdlc.h
+ */
+hdlc_control_t hdlc_create_s_ctrl(hdlc_u8 s_bits, hdlc_u8 nr, hdlc_u8 pf) {
+  hdlc_control_t ctrl = {0};
+  ctrl.s_frame.frame_type_0 = 1;
+  ctrl.s_frame.frame_type_1 = 0;
+  ctrl.s_frame.s = s_bits;
+  ctrl.s_frame.pf = pf;
+  ctrl.s_frame.nr = nr;
+  return ctrl;
+}
+
+/**
+ * @brief Create a U-Frame Control Field.
+ * @see hdlc.h
+ */
+hdlc_control_t hdlc_create_u_ctrl(hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf) {
+  hdlc_control_t ctrl = {0};
+  ctrl.u_frame.frame_type_0 = 1;
+  ctrl.u_frame.frame_type_1 = 1;
+  ctrl.u_frame.m_lo = m_lo;
+  ctrl.u_frame.pf = pf;
+  ctrl.u_frame.m_hi = m_hi;
+  return ctrl;
+}
+
+/**
+ * @brief Get the S-Frame sub-type from a control field.
+ */
+hdlc_s_frame_sub_type_t hdlc_get_s_frame_sub_type(const hdlc_control_t *control) {
+    if (!control) return HDLC_S_FRAME_TYPE_UNKNOWN;
+
+    if (control->s_frame.frame_type_0 == 1 && control->s_frame.frame_type_1 == 0) {
+        switch (control->s_frame.s) {
+            case HDLC_S_RR:  return HDLC_S_FRAME_TYPE_RR;
+            case HDLC_S_RNR: return HDLC_S_FRAME_TYPE_RNR;
+            case HDLC_S_REJ: return HDLC_S_FRAME_TYPE_REJ;
+            default:         return HDLC_S_FRAME_TYPE_UNKNOWN;
+        }
+    }
+    return HDLC_S_FRAME_TYPE_UNKNOWN;
+}
+
+/**
+ * @brief Get the U-Frame sub-type from a control field.
+ */
+hdlc_u_frame_sub_type_t hdlc_get_u_frame_sub_type(const hdlc_control_t *control) {
+    if (!control) return HDLC_U_FRAME_TYPE_UNKNOWN;
+
+    if (control->u_frame.frame_type_0 == 1 && control->u_frame.frame_type_1 == 1) {
+        hdlc_u8 m_hi = control->u_frame.m_hi;
+        hdlc_u8 m_lo = control->u_frame.m_lo;
+
+        if (m_hi == HDLC_U_MODIFIER_HI_SABM && m_lo == HDLC_U_MODIFIER_LO_SABM) return HDLC_U_FRAME_TYPE_SABM;
+        if (m_hi == HDLC_U_MODIFIER_HI_SNRM && m_lo == HDLC_U_MODIFIER_LO_SNRM) return HDLC_U_FRAME_TYPE_SNRM;
+        if (m_hi == HDLC_U_MODIFIER_HI_SABME && m_lo == HDLC_U_MODIFIER_LO_SABME) return HDLC_U_FRAME_TYPE_SABME;
+        if (m_hi == HDLC_U_MODIFIER_HI_SNRME && m_lo == HDLC_U_MODIFIER_LO_SNRME) return HDLC_U_FRAME_TYPE_SNRME;
+        if (m_hi == HDLC_U_MODIFIER_HI_SARME && m_lo == HDLC_U_MODIFIER_LO_SARME) return HDLC_U_FRAME_TYPE_SARME;
+        if (m_hi == HDLC_U_MODIFIER_HI_DISC && m_lo == HDLC_U_MODIFIER_LO_DISC) return HDLC_U_FRAME_TYPE_DISC;
+        if (m_hi == HDLC_U_MODIFIER_HI_UA && m_lo == HDLC_U_MODIFIER_LO_UA) return HDLC_U_FRAME_TYPE_UA;
+        if (m_hi == HDLC_U_MODIFIER_HI_FRMR && m_lo == HDLC_U_MODIFIER_LO_FRMR) return HDLC_U_FRAME_TYPE_FRMR;
+        if (m_hi == HDLC_U_MODIFIER_HI_UI && m_lo == HDLC_U_MODIFIER_LO_UI) return HDLC_U_FRAME_TYPE_UI;
+        if (m_hi == HDLC_U_MODIFIER_HI_TEST && m_lo == HDLC_U_MODIFIER_LO_TEST) return HDLC_U_FRAME_TYPE_TEST;
+
+        if (m_hi == HDLC_U_MODIFIER_HI_DM && m_lo == HDLC_U_MODIFIER_LO_DM) {
+            return HDLC_U_FRAME_TYPE_DM; // Also SARM, but DM is standard response
+        }
+    }
+    return HDLC_U_FRAME_TYPE_UNKNOWN;
+}

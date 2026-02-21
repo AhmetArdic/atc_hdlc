@@ -441,7 +441,8 @@ void test_control_field_s(void) {
     if (last_received_frame.type == HDLC_FRAME_S &&
         last_received_frame.control.s_frame.s == 0x02 && // REJ
         last_received_frame.control.s_frame.nr == 7 &&
-        last_received_frame.control.s_frame.pf == 0) {
+        last_received_frame.control.s_frame.pf == 0 &&
+        atc_hdlc_get_s_frame_sub_type(&last_received_frame.control) == HDLC_S_FRAME_TYPE_REJ) {
       test_pass("Control Field S");
     } else {
       test_fail("Control Field S", "Parsed S-frame mismatch");
@@ -499,7 +500,8 @@ void test_ui_frame_reception(void) {
         last_received_frame.address == 0x01 &&
         (last_received_frame.control.value & 0xEF) == 0x03 &&
         last_received_frame.information_len == 5 &&
-        memcmp(last_received_frame.information, "WORLD", 5) == 0) {
+        memcmp(last_received_frame.information, "WORLD", 5) == 0 &&
+        atc_hdlc_get_u_frame_sub_type(&last_received_frame.control) == HDLC_U_FRAME_TYPE_UI) {
         test_pass("UI Frame Reception");
     } else {
         test_fail("UI Frame Reception", "Frame mismatch or not received");

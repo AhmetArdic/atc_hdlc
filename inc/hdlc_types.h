@@ -87,6 +87,35 @@ typedef enum {
     HDLC_FRAME_INVALID /**< Invalid or Unknown Frame format */
 } hdlc_frame_type_t;
 
+/**
+ * @brief HDLC Supervisory (S) Frame Sub-Types.
+ */
+typedef enum {
+    HDLC_S_FRAME_TYPE_RR,      /**< Receive Ready */
+    HDLC_S_FRAME_TYPE_RNR,     /**< Receive Not Ready */
+    HDLC_S_FRAME_TYPE_REJ,     /**< Reject */
+    HDLC_S_FRAME_TYPE_UNKNOWN  /**< Unknown or Invalid S-Frame */
+} hdlc_s_frame_sub_type_t;
+
+/**
+ * @brief HDLC Unnumbered (U) Frame Sub-Types.
+ */
+typedef enum {
+    HDLC_U_FRAME_TYPE_SABM,    /**< Set Asynchronous Balanced Mode */
+    HDLC_U_FRAME_TYPE_SNRM,    /**< Set Normal Response Mode */
+    HDLC_U_FRAME_TYPE_SARM,    /**< Set Asynchronous Response Mode (DM command) */
+    HDLC_U_FRAME_TYPE_SABME,   /**< Set Asynchronous Balanced Mode Extended */
+    HDLC_U_FRAME_TYPE_SNRME,   /**< Set Normal Response Mode Extended */
+    HDLC_U_FRAME_TYPE_SARME,   /**< Set Asynchronous Response Mode Extended */
+    HDLC_U_FRAME_TYPE_DISC,    /**< Disconnect */
+    HDLC_U_FRAME_TYPE_UA,      /**< Unnumbered Acknowledgment */
+    HDLC_U_FRAME_TYPE_DM,      /**< Disconnect Mode */
+    HDLC_U_FRAME_TYPE_FRMR,    /**< Frame Reject */
+    HDLC_U_FRAME_TYPE_UI,      /**< Unnumbered Information */
+    HDLC_U_FRAME_TYPE_TEST,    /**< Test */
+    HDLC_U_FRAME_TYPE_UNKNOWN  /**< Unknown or Invalid U-Frame */
+} hdlc_u_frame_sub_type_t;
+
 /*
  * --------------------------------------------------------------------------
  * CONTROL FIELD STRUCTURES
