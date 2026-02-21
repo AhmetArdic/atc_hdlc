@@ -157,7 +157,7 @@ void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms) {
                     hdlc_control_t ctrl = hdlc_create_i_ctrl(seq, ctx->vr, pf);
                     hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
                     
-                    if (ctx->retransmit_lens[slot] > 0 && ctx->retransmit_buffer != NULL) {
+                    if (ctx->retransmit_buffer != NULL && ctx->retransmit_lens[slot] > 0) {
                         hdlc_output_frame_information_bytes(ctx,
                             ctx->retransmit_buffer + (slot * ctx->retransmit_slot_size),
                             ctx->retransmit_lens[slot]);

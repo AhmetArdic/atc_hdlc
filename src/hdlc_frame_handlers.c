@@ -13,9 +13,9 @@
 #include <string.h>
 
 /* Forward declarations for static helpers */
-static void handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame);
-static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame);
-static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+static bool handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+static bool handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame);
+static bool handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static inline void hdlc_process_nr(hdlc_context_t *ctx, hdlc_u8 nr);
 static inline void hdlc_send_u_frame(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf);
 static inline void hdlc_send_ua(hdlc_context_t *ctx, hdlc_u8 pf);
@@ -32,21 +32,22 @@ static inline void hdlc_send_rej(hdlc_context_t *ctx, hdlc_u8 pf);
 
 void process_complete_frame(hdlc_context_t *ctx) {
   hdlc_u8 ctrl = ctx->input_frame_buffer.control.value;
+  bool pass_to_user = false;
 
   if ((ctrl & HDLC_FRAME_TYPE_MASK_I) == HDLC_FRAME_TYPE_VAL_I) {
     ctx->input_frame_buffer.type = HDLC_FRAME_I;
-    handle_i_frame(ctx, &ctx->input_frame_buffer);
+    pass_to_user = handle_i_frame(ctx, &ctx->input_frame_buffer);
   } else if ((ctrl & HDLC_FRAME_TYPE_MASK_S) == HDLC_FRAME_TYPE_VAL_S) {
     ctx->input_frame_buffer.type = HDLC_FRAME_S;
-    handle_s_frame(ctx, &ctx->input_frame_buffer);
+    pass_to_user = handle_s_frame(ctx, &ctx->input_frame_buffer);
   } else if ((ctrl & HDLC_FRAME_TYPE_MASK_U) == HDLC_FRAME_TYPE_VAL_U) {
     ctx->input_frame_buffer.type = HDLC_FRAME_U;
-    handle_u_frame(ctx, &ctx->input_frame_buffer);
+    pass_to_user = handle_u_frame(ctx, &ctx->input_frame_buffer);
   } else {
     ctx->input_frame_buffer.type = HDLC_FRAME_INVALID;
   }
 
-  if (ctx->on_frame_cb != NULL) {
+  if (pass_to_user && ctx->on_frame_cb != NULL) {
     ctx->on_frame_cb(&ctx->input_frame_buffer, ctx->user_data);
   }
 
@@ -59,7 +60,7 @@ void process_complete_frame(hdlc_context_t *ctx) {
  * --------------------------------------------------------------------------
  */
 
-static void handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+static bool handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   hdlc_u8 msg_ns = (frame->control.i_frame.ns);
   hdlc_u8 msg_nr = (frame->control.i_frame.nr);
   hdlc_u8 msg_p  = (frame->control.i_frame.pf);
@@ -72,7 +73,7 @@ static void handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   } else {
       HDLC_LOG_WARN("rx: Out of sequence I-Frame (Exp %u, got %u). Sending REJ.", ctx->vr, msg_ns);
       hdlc_send_rej(ctx, msg_p);
-      return; 
+      return false; // DROP the frame, do not pass to user!
   }
 
   hdlc_process_nr(ctx, msg_nr);
@@ -85,6 +86,8 @@ static void handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
        hdlc_send_rr(ctx, 0);
        ctx->ack_pending = false;
   }
+  
+  return true; // Frame accepted and in-sequence
 }
 
 /*
@@ -93,7 +96,7 @@ static void handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
  * --------------------------------------------------------------------------
  */
 
-static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+static bool handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   hdlc_u8 mode = (frame->control.s_frame.s);
   hdlc_u8 msg_nr = (frame->control.s_frame.nr);
   hdlc_u8 msg_pf = (frame->control.s_frame.pf);
@@ -129,6 +132,8 @@ static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   if (is_command && msg_pf) {
       hdlc_send_rr(ctx, 1);
   }
+  
+  return false; // S-Frames never contain user payload
 }
 
 /*
@@ -229,7 +234,7 @@ static void hdlc_process_test(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     hdlc_output_frame_end(ctx);
 }
 
-static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+static bool handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   hdlc_u8 m_lo = frame->control.u_frame.m_lo;
   hdlc_u8 m_hi = frame->control.u_frame.m_hi;
 
@@ -240,14 +245,15 @@ static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     
     if (m_lo == HDLC_U_MODIFIER_LO_UI && m_hi == HDLC_U_MODIFIER_HI_UI) {
          hdlc_process_ui(ctx, frame);
-         return;
+         return true; // UI frames contain user payload
     }
 
-    if (frame->address == HDLC_BROADCAST_ADDRESS) return;
+    if (frame->address == HDLC_BROADCAST_ADDRESS) return false;
 
     if (m_lo == HDLC_U_MODIFIER_LO_SABM && m_hi == HDLC_U_MODIFIER_HI_SABM) {
         hdlc_process_sabm(ctx, frame);
     }
+    // ... all other commands ...
     else if (m_lo == HDLC_U_MODIFIER_LO_DISC && m_hi == HDLC_U_MODIFIER_HI_DISC) {
         hdlc_process_disc(ctx, frame);
     }
@@ -268,6 +274,7 @@ static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     }
     else if (m_lo == HDLC_U_MODIFIER_LO_TEST && m_hi == HDLC_U_MODIFIER_HI_TEST) {
         hdlc_process_test(ctx, frame);
+        return true; // TEST frames may contain test payload
     } else {
         HDLC_LOG_WARN("rx: Unhandled U-Frame Command (M_LO=%u, M_HI=%u)", m_lo, m_hi);
     }
@@ -287,10 +294,13 @@ static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     }
     else if (m_lo == HDLC_U_MODIFIER_LO_TEST && m_hi == HDLC_U_MODIFIER_HI_TEST) {
         /* TEST response — passed to on_frame_cb by dispatcher */
+        return true;
     } else {
         HDLC_LOG_WARN("rx: Unhandled U-Frame Response (M_LO=%u, M_HI=%u)", m_lo, m_hi);
     }
   }
+  
+  return false; // Connection management frames do not go to user
 }
 
 /*

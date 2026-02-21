@@ -97,10 +97,18 @@ void test_byte_stuffing_heavy() {
   atc_hdlc_context_t ctx;
   setup_test_context(&ctx);
 
+  /*
+   * NOTE: For static tests verifying basic decoding (byte stuffing, CRC, etc.),
+   * we use Broadcast UI (Unnumbered Information) frames (Control = 0x03) instead of I-frames.
+   * This is because the HDLC dispatcher strictly filters out duplicate/out-of-sequence
+   * I-frames for Go-Back-N reliability. Repeatedly feeding identical mock I-frames 
+   * (e.g., N(S)=0) would cause the dispatcher to rightfully drop them.
+   */
+
   // Payload with special characters
   atc_hdlc_u8 special[] = {0x7E, 0x7D, 0x7E, 0x7D, 0x00, 0xFF, 0x7E};
   atc_hdlc_frame_t frame_out = {
-      .address = 0x02, .control.value = 0x03, .information = special, .information_len = sizeof(special)};
+      .address = 0xFF, .control.value = 0x03, .information = special, .information_len = sizeof(special)};
 
   atc_hdlc_output_frame(&ctx, &frame_out);
   // Verify escaping happened (size should be > raw size)
@@ -147,7 +155,7 @@ void test_garbage_noise() {
 
   // Generate valid frame first
   atc_hdlc_frame_t valid_frame = {
-      .address = 0x03, .control.value = 0x03, .information = (atc_hdlc_u8*)"DATA", .information_len = 4};
+      .address = 0xFF, .control.value = 0x03, .information = (atc_hdlc_u8*)"DATA", .information_len = 4};
   
   mock_output_len = 0;
   atc_hdlc_output_frame(&ctx, &valid_frame);
@@ -186,7 +194,7 @@ void test_consecutive_flags() {
   setup_test_context(&ctx);
 
   mock_output_len = 0;
-  atc_hdlc_frame_t f = {.address=0x04, .control.value=0x00, .information=NULL, .information_len=0};
+  atc_hdlc_frame_t f = {.address=0xFF, .control.value=0x03, .information=NULL, .information_len=0};
   atc_hdlc_output_frame(&ctx, &f);
   
   int frame_len = mock_output_len;
@@ -349,7 +357,7 @@ void test_streaming_large_payload(void) {
         int size = sizes[s];
         printf("   Testing payload size: %d bytes... ", size);
         
-        atc_hdlc_output_frame_start(&ctx, 0x01, 0x00);
+        atc_hdlc_output_frame_start(&ctx, 0xFF, 0x03);
         for (int i = 0; i < size; i++) {
             atc_hdlc_output_frame_information_byte(&ctx, (atc_hdlc_u8)(i & 0xFF));
         }
@@ -393,30 +401,32 @@ void test_control_field_i(void) {
   atc_hdlc_context_t ctx;
   setup_test_context(&ctx);
 
+  /*
+   * NOTE: We previously used loopbacks and the application callback for this test.
+   * However, because the rigorous S-frame and sequence dispatcher drops unexpected 
+   * or duplicate Sequence frames to protect the app, we bypass the context dispatcher 
+   * here and test `atc_hdlc_frame_unpack` directly on the output buffer.
+   */
+
   // Construct I-Frame: N(S)=3, N(R)=5, P=1.
   atc_hdlc_frame_t f = {.address=0x01, .control=atc_hdlc_create_i_ctrl(3, 5, 1), .information=NULL, .information_len=0};
   
   mock_output_len = 0;
   atc_hdlc_output_frame(&ctx, &f);
   
-  // Loopback
-  int loop_len = mock_output_len;
-  for (int i = 0; i < loop_len; i++) {
-    atc_hdlc_input_byte(&ctx, mock_output_buffer[i]);
-  }
-  
-  if (on_frame_call_count == 1) {
-      // Access union fields to verify
-      if (last_received_frame.type == HDLC_FRAME_I &&
-          last_received_frame.control.i_frame.ns == 3 &&
-          last_received_frame.control.i_frame.pf == 1 &&
-          last_received_frame.control.i_frame.nr == 5) {
+  atc_hdlc_frame_t parsed_frame;
+  atc_hdlc_u8 info_buf[256];
+  if (atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len, &parsed_frame, info_buf, sizeof(info_buf))) {
+      if (parsed_frame.type == HDLC_FRAME_I &&
+          parsed_frame.control.i_frame.ns == 3 &&
+          parsed_frame.control.i_frame.pf == 1 &&
+          parsed_frame.control.i_frame.nr == 5) {
           test_pass("Control Field I");
       } else {
           test_fail("Control Field I", "Parsed fields mismatch");
       }
   } else {
-      test_fail("Control Field I", "Frame not received");
+      test_fail("Control Field I", "Frame unpack failed");
   }
 }
 
@@ -432,23 +442,20 @@ void test_control_field_s(void) {
   
   atc_hdlc_output_frame(&ctx, &f);
   
-  int loop_len = mock_output_len;
-  for (int i = 0; i < loop_len; i++) {
-    atc_hdlc_input_byte(&ctx, mock_output_buffer[i]);
-  }
-
-  if (on_frame_call_count == 1) {
-    if (last_received_frame.type == HDLC_FRAME_S &&
-        last_received_frame.control.s_frame.s == 0x02 && // REJ
-        last_received_frame.control.s_frame.nr == 7 &&
-        last_received_frame.control.s_frame.pf == 0 &&
-        atc_hdlc_get_s_frame_sub_type(&last_received_frame.control) == HDLC_S_FRAME_TYPE_REJ) {
+  atc_hdlc_frame_t parsed_frame;
+  atc_hdlc_u8 info_buf[256];
+  if (atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len, &parsed_frame, info_buf, sizeof(info_buf))) {
+    if (parsed_frame.type == HDLC_FRAME_S &&
+        parsed_frame.control.s_frame.s == 0x02 && // REJ
+        parsed_frame.control.s_frame.nr == 7 &&
+        parsed_frame.control.s_frame.pf == 0 &&
+        atc_hdlc_get_s_frame_sub_type(&parsed_frame.control) == HDLC_S_FRAME_TYPE_REJ) {
       test_pass("Control Field S");
     } else {
       test_fail("Control Field S", "Parsed S-frame mismatch");
     }
   } else {
-      test_fail("Control Field S", "Frame not received");
+      test_fail("Control Field S", "Frame unpack failed");
   }
 }
 
