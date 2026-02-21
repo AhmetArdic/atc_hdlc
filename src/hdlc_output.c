@@ -96,8 +96,10 @@ void hdlc_output_frame_start(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 contr
     return;
   }
 
-  // Initialize CRC
+  // Initializing CRC
   ctx->output_crc = HDLC_FCS_INIT_VALUE;
+  
+  HDLC_LOG_DEBUG("tx: Frame start (Addr: 0x%02X, Ctrl: 0x%02X)", address, control);
 
   // Send Start Flag
   output_byte_raw(ctx, HDLC_FLAG, false);
@@ -283,6 +285,7 @@ bool hdlc_output_frame_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len)
   }
 
   // Start Frame
+  HDLC_LOG_DEBUG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
   hdlc_output_frame_start_i(ctx);
   
   // Send Data

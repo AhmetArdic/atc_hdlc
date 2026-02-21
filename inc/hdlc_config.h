@@ -163,6 +163,32 @@ extern "C" {
 #define HDLC_DEFAULT_WINDOW_SIZE  1
 #endif
 
+/*
+ * --------------------------------------------------------------------------
+ * DEBUG LOGGING
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Enable debug logging macros
+ * 
+ * Set to 1 to enable HDLC debug printouts. Requires <stdio.h>.
+ */
+#ifndef HDLC_ENABLE_DEBUG_LOGS
+#define HDLC_ENABLE_DEBUG_LOGS 0
+#endif
+
+#if HDLC_ENABLE_DEBUG_LOGS
+#include <stdio.h>
+#define HDLC_LOG_DEBUG(fmt, ...) printf("[HDLC DEBUG] " fmt "\n", ##__VA_ARGS__)
+#define HDLC_LOG_WARN(fmt, ...)  printf("[HDLC WARN]  " fmt "\n", ##__VA_ARGS__)
+#define HDLC_LOG_ERROR(fmt, ...) printf("[HDLC ERROR] " fmt "\n", ##__VA_ARGS__)
+#else
+#define HDLC_LOG_DEBUG(fmt, ...)
+#define HDLC_LOG_WARN(fmt, ...)
+#define HDLC_LOG_ERROR(fmt, ...)
+#endif
+
 #ifdef __cplusplus
 }
 #endif

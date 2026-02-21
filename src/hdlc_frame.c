@@ -169,6 +169,8 @@ bool hdlc_frame_unpack(const hdlc_u8 *buffer, hdlc_u32 buffer_len, hdlc_frame_t 
   return true;
 }
 
+/* --- Control Field Constructors --- */
+
 /**
  * @brief Create an I-Frame Control Field.
  * @see hdlc.h
@@ -209,6 +211,8 @@ hdlc_control_t hdlc_create_u_ctrl(hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf) {
   ctrl.u_frame.m_hi = m_hi;
   return ctrl;
 }
+
+/* --- Control Field Analyzers --- */
 
 /**
  * @brief Get the S-Frame sub-type from a control field.

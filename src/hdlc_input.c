@@ -48,6 +48,8 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
 
         if (calced_crc == rx_fcs) {
           // Valid Frame!
+          HDLC_LOG_DEBUG("rx: Valid frame (Addr: 0x%02X, Ctrl: 0x%02X, Len: %lu)",
+                         ctx->input_buffer[0], ctx->input_buffer[1], data_len);
 
           /* Construct the temporary frame descriptor (Zero-Copy) */
           ctx->input_frame_buffer.address = ctx->input_buffer[0];
@@ -67,6 +69,7 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
           process_complete_frame(ctx);
         } else {
           // CRC Error: Frame discarded silently (or logged)
+          HDLC_LOG_WARN("rx: CRC Error! Calc: 0x%04X, RX: 0x%04X", calced_crc, rx_fcs);
           ctx->stats_crc_errors++;
         }
       }
@@ -99,6 +102,7 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
 
   if (ctx->input_index >= ctx->input_buffer_len) {
     // Overflow protection: Drop invalid large frame and hunt for next flag
+    HDLC_LOG_WARN("rx: Buffer overflow! Max %lu bytes. Discarding.", (unsigned long)ctx->input_buffer_len);
     ctx->input_state = HDLC_INPUT_STATE_HUNT;
     return;
   }

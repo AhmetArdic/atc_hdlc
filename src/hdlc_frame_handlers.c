@@ -64,10 +64,13 @@ static void handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   hdlc_u8 msg_nr = (frame->control.i_frame.nr);
   hdlc_u8 msg_p  = (frame->control.i_frame.pf);
 
+  HDLC_LOG_DEBUG("rx: I-Frame N(S)=%u, N(R)=%u, P/F=%u", msg_ns, msg_nr, msg_p);
+
   if (msg_ns == ctx->vr) {
       ctx->vr = (ctx->vr + 1) % HDLC_SEQUENCE_MODULUS;
       ctx->ack_pending = true;
   } else {
+      HDLC_LOG_WARN("rx: Out of sequence I-Frame (Exp %u, got %u). Sending REJ.", ctx->vr, msg_ns);
       hdlc_send_rej(ctx, msg_p);
       return; 
   }
@@ -95,6 +98,8 @@ static void handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   hdlc_u8 msg_nr = (frame->control.s_frame.nr);
   hdlc_u8 msg_pf = (frame->control.s_frame.pf);
   bool is_command = (frame->address == ctx->my_address);
+
+  HDLC_LOG_DEBUG("rx: S-Frame S=%u, N(R)=%u, P/F=%u", mode, msg_nr, msg_pf);
 
   if (mode == HDLC_S_RR || mode == HDLC_S_RNR) {
       hdlc_process_nr(ctx, msg_nr);
@@ -197,8 +202,13 @@ static void hdlc_process_frmr(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
        frmr_data.errors.v = (byte2 & HDLC_FRMR_V_BIT);
        
        (void)frmr_data;
+       HDLC_LOG_ERROR("rx: FRMR Received! Peer rejected frame. (Ctrl: 0x%02X, V(S)=%u, V(R)=%u)", 
+                      frmr_data.rejected_control, frmr_data.v_s, frmr_data.v_r);
+   } else {
+       HDLC_LOG_ERROR("rx: FRMR Received but information field too short.");
    }
 
+   HDLC_LOG_DEBUG("state: FRMR caused disconnect");
    hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_DISCONNECTED);
 }
 
@@ -219,10 +229,11 @@ static void hdlc_process_test(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     hdlc_output_frame_end(ctx);
 }
 
-/* Main U-Frame dispatcher */
 static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   hdlc_u8 m_lo = frame->control.u_frame.m_lo;
   hdlc_u8 m_hi = frame->control.u_frame.m_hi;
+
+  HDLC_LOG_DEBUG("rx: U-Frame M_LO=%u, M_HI=%u", m_lo, m_hi);
 
   /* 1. COMMANDS -> Addressed to ME or BROADCAST */
   if (frame->address == ctx->my_address || frame->address == HDLC_BROADCAST_ADDRESS) {
@@ -257,6 +268,8 @@ static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     }
     else if (m_lo == HDLC_U_MODIFIER_LO_TEST && m_hi == HDLC_U_MODIFIER_HI_TEST) {
         hdlc_process_test(ctx, frame);
+    } else {
+        HDLC_LOG_WARN("rx: Unhandled U-Frame Command (M_LO=%u, M_HI=%u)", m_lo, m_hi);
     }
   }
 
@@ -274,6 +287,8 @@ static void handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     }
     else if (m_lo == HDLC_U_MODIFIER_LO_TEST && m_hi == HDLC_U_MODIFIER_HI_TEST) {
         /* TEST response — passed to on_frame_cb by dispatcher */
+    } else {
+        HDLC_LOG_WARN("rx: Unhandled U-Frame Response (M_LO=%u, M_HI=%u)", m_lo, m_hi);
     }
   }
 }
@@ -293,12 +308,15 @@ static inline bool hdlc_nr_valid(hdlc_u8 va, hdlc_u8 nr, hdlc_u8 vs) {
 
 static inline void hdlc_process_nr(hdlc_context_t *ctx, hdlc_u8 nr) {
     if (hdlc_nr_valid(ctx->va, nr, ctx->vs)) {
+        HDLC_LOG_DEBUG("rx: Peer acknowledged up to V(A)=%u", nr);
         ctx->va = nr;
         if (ctx->va == ctx->vs) {
             ctx->retransmit_timer_ms = 0;
         } else {
             ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
         }
+    } else {
+        HDLC_LOG_WARN("rx: Ignored invalid N(R)=%u (V(A)=%u, V(S)=%u)", nr, ctx->va, ctx->vs);
     }
 }
 
