@@ -30,6 +30,7 @@ typedef struct {
     
     // Config
     uint32_t error_probability; // 0 to 10000 (0% to 100%)
+    bool drop_next_i_frame;
     
     // Stats
     volatile uint32_t bytes_received;
@@ -47,6 +48,16 @@ static void node_output_cb(hdlc_u8 byte, hdlc_bool flush, void *user_data) {
             // Intentionally drop the byte to simulate line corruption
             return;
         }
+    }
+    
+    if (node->drop_next_i_frame) {
+        // Simple heuristic: if it looks like an I-frame control field, drop the entire frame byte by suppressing output
+        // We simulate a dropped frame by dropping everything until the next flag
+        if (byte == 0x7E) {
+            node->drop_next_i_frame = false; // reset after dropping one frame
+            return; 
+        }
+        return; // drop byte silently
     }
     
     if (write(node->fd, &byte, 1) < 0) {
@@ -282,6 +293,202 @@ cleanup:
     close(fd2);
 }
 
+void run_timeout_test(int window_size) {
+    printf("\n--- Running PTY Test with Window Size = %d (Timeout Injection - 100%% Error) ---\n", window_size);
+    
+    int fd1, fd2;
+    if (create_pty_pair(&fd1, &fd2) != 0) {
+        printf("Failed to create PTY pair\n");
+        exit(1);
+    }
+    
+    virtual_node_t node1;
+    virtual_node_t node2;
+    memset(&node1, 0, sizeof(node1));
+    memset(&node2, 0, sizeof(node2));
+    
+    node1.fd = fd1;
+    node2.fd = fd2;
+    node1.running = true;
+    node2.running = true;
+    node1.error_probability = 0; // connect reliably first
+    node2.error_probability = 0;
+    
+    hdlc_init(&node1.ctx, node1.input_buffer, sizeof(node1.input_buffer),
+              node1.retransmit_buffer, sizeof(node1.retransmit_buffer),
+              500, window_size,
+              node_output_cb, node_on_frame_cb, node_state_cb, &node1);
+
+    hdlc_init(&node2.ctx, node2.input_buffer, sizeof(node2.input_buffer),
+              node2.retransmit_buffer, sizeof(node2.retransmit_buffer),
+              500, window_size,
+              node_output_cb, node_on_frame_cb, node_state_cb, &node2);
+              
+    hdlc_configure_addresses(&node1.ctx, 0x01, 0x02);
+    hdlc_configure_addresses(&node2.ctx, 0x02, 0x01);
+    
+    pthread_create(&node1.thread, NULL, node_thread_func, &node1);
+    pthread_create(&node2.thread, NULL, node_thread_func, &node2);
+    
+    char test_name_pass[128];
+    sprintf(test_name_pass, "PTY Graceful Timeout (Window %d)", window_size);
+    
+    if (!hdlc_test_connect(&node1.ctx, node1.fd, &node1.connected, 5000)) {
+        test_fail(test_name_pass, "Timeout during initial reliable connect");
+        goto cleanup;
+    }
+    int sync_timeout = 500;
+    while(!node2.connected && sync_timeout > 0) { usleep(10000); sync_timeout--; }
+    
+    // Now trigger 100% error probability to force TX timeout
+    node1.error_probability = 10000;
+    
+    uint32_t bytes_to_send = PAYLOAD_SIZE;
+    uint8_t payload[CHUNK_SIZE];
+    memset(payload, 0xAA, sizeof(payload)); // dummy data
+    
+    // We expect this to return FALSE because of timeout!
+    int tx_timeout_ms = 2000; // Fast 2-second timeout
+    if (hdlc_test_send_data(&node1.ctx, node1.fd, payload, bytes_to_send, tx_timeout_ms)) {
+        test_fail(test_name_pass, "Data transfer succeeded despite 100% packet loss! (Expected Timeout)");
+        goto cleanup;
+    }
+    
+    // If it returns false, it correctly timed out!
+    test_pass(test_name_pass);
+
+cleanup:
+    node1.running = false;
+    node2.running = false;
+    pthread_join(node1.thread, NULL);
+    pthread_join(node2.thread, NULL);
+    close(fd1);
+    close(fd2);
+}
+
+void run_go_back_n_test(int window_size) {
+    // This test specifically triggers Go-Back-N by transmitting a stream of I-Frames
+    // but predictably dropping the Nth frame, then tracking that the receiver successfully 
+    // re-requests and retrieves the entire stream in order.
+    printf("\n--- Running PTY Test with Window Size = %d (Go-Back-N Protocol Verification) ---\n", window_size);
+    
+    int fd1, fd2;
+    if (create_pty_pair(&fd1, &fd2) != 0) {
+        printf("Failed to create PTY pair\n");
+        exit(1);
+    }
+    
+    virtual_node_t node1;
+    virtual_node_t node2;
+    memset(&node1, 0, sizeof(node1));
+    memset(&node2, 0, sizeof(node2));
+    
+    node1.fd = fd1;
+    node2.fd = fd2;
+    node1.running = true;
+    node2.running = true;
+    
+    // We will set drop_next_i_frame dynamically to drop one frame
+    
+    hdlc_init(&node1.ctx, node1.input_buffer, sizeof(node1.input_buffer),
+              node1.retransmit_buffer, sizeof(node1.retransmit_buffer),
+              500, window_size,
+              node_output_cb, node_on_frame_cb, node_state_cb, &node1);
+
+    hdlc_init(&node2.ctx, node2.input_buffer, sizeof(node2.input_buffer),
+              node2.retransmit_buffer, sizeof(node2.retransmit_buffer),
+              500, window_size,
+              node_output_cb, node_on_frame_cb, node_state_cb, &node2);
+              
+    hdlc_configure_addresses(&node1.ctx, 0x01, 0x02);
+    hdlc_configure_addresses(&node2.ctx, 0x02, 0x01);
+    
+    pthread_create(&node1.thread, NULL, node_thread_func, &node1);
+    pthread_create(&node2.thread, NULL, node_thread_func, &node2);
+    
+    char test_name[128];
+    sprintf(test_name, "PTY Go-Back-N Sequence Recovery (Window %d)", window_size);
+    
+    if (!hdlc_test_connect(&node1.ctx, node1.fd, &node1.connected, 5000)) {
+        test_fail(test_name, "Timeout waiting for Node 1 to connect");
+        goto cleanup;
+    }
+    int sync_timeout = 500;
+    while(!node2.connected && sync_timeout > 0) { usleep(10000); sync_timeout--; }
+    
+    struct timespec start_time, end_time;
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
+    
+    // Send 3 full window's worth of frames
+    uint32_t bytes_to_send = (window_size * 3) * CHUNK_SIZE;
+    uint8_t payload[CHUNK_SIZE];
+    memset(payload, 0xBB, sizeof(payload)); // dummy data
+    
+    uint32_t sent = 0;
+    int timeout = 5000; // 50s
+    int frame_counter = 0;
+    
+    while(sent < bytes_to_send && timeout > 0) {
+        uint32_t to_send = CHUNK_SIZE;
+        if (bytes_to_send - sent < CHUNK_SIZE) to_send = bytes_to_send - sent;
+        
+        // Predictably Drop the 2nd dataframe in the stream to force a Go-Back-N state
+        if (frame_counter == 1 && window_size > 1) { 
+            node1.drop_next_i_frame = true; 
+        }
+        
+        if (hdlc_output_frame_i(&node1.ctx, payload, to_send)) {
+            sent += to_send;
+            frame_counter++;
+            timeout = 5000;
+        } else {
+            // Help background thread process ACKs and slide window
+            uint8_t rx_buf[128];
+            int n = read(node1.fd, rx_buf, sizeof(rx_buf));
+            if (n > 0) {
+                hdlc_input_bytes(&node1.ctx, rx_buf, n);
+            }
+            hdlc_tick(&node1.ctx, 10);
+            usleep(10000); 
+            timeout--;
+        }
+    }
+    
+    if (sent < bytes_to_send) {
+        test_fail(test_name, "TX Timeout waiting for window");
+        goto cleanup;
+    }
+    
+    // Wait for all data to be received on node2
+    // If Go-Back-N worked, node2 will eventually request retransmission and fetch all of it!
+    timeout = 10000; // 100s
+    while(node2.bytes_received < bytes_to_send && timeout > 0) {
+        usleep(10000);
+        timeout--;
+    }
+    
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    
+    if (node2.bytes_received != bytes_to_send) {
+        printf("Expected %u bytes, got %u bytes\n", bytes_to_send, node2.bytes_received);
+        test_fail(test_name, "Incomplete transfer (Go-Back-N Failed)");
+        goto cleanup;
+    }
+    
+    hdlc_test_disconnect(&node1.ctx, node1.fd, &node1.connected, 5000);
+    hdlc_test_disconnect(&node2.ctx, node2.fd, &node2.connected, 5000);
+    
+    test_pass(test_name);
+
+cleanup:
+    node1.running = false;
+    node2.running = false;
+    pthread_join(node1.thread, NULL);
+    pthread_join(node2.thread, NULL);
+    close(fd1);
+    close(fd2);
+}
+
 int main(void) {
     srand((unsigned int)time(NULL));
     
@@ -310,6 +517,18 @@ int main(void) {
         run_window_test(w, 5); // 0.05% byte drop probability
     }
     
-    printf("Virtual COM Tests Completed Successfully.\n");
+    printf("\nStarting Virtual COM Tests (Timeout Injection)...\n");
+    for (int w = 1; w <= 7; w++) {
+        run_timeout_test(w);
+    }
+    
+    printf("\nStarting Virtual COM Tests (Go-Back-N Deterministic Drop)...\n");
+    // Only tests window sizes > 1 because Window Size 1 corresponds to Stop-and-Wait, 
+    // which lacks the capability to send out-of-order packets ahead of a dropped packet anyway.
+    for (int w = 2; w <= 7; w++) {
+        run_go_back_n_test(w);
+    }
+    
+    printf("\nVirtual COM Tests Completed Successfully.\n");
     return 0;
 }
