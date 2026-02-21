@@ -114,6 +114,64 @@ void* node_thread_func(void* arg) {
     return NULL;
 }
 
+static bool hdlc_test_connect(hdlc_context_t *ctx, int fd, volatile bool *is_connected, int timeout_ms) {
+    // 1. Connect (With retries for SABM drops)
+    int retries = timeout_ms / 10;
+    hdlc_connect(ctx);
+    while((!(*is_connected)) && retries > 0) {
+        // Retry SABM every 1 sec
+        if (retries % 100 == 0) {
+            hdlc_connect(ctx);
+        }
+        
+        usleep(10000); // 10ms
+        retries--;
+    }
+    return *is_connected;
+}
+
+static bool hdlc_test_send_data(hdlc_context_t *ctx, int fd, const uint8_t *payload, uint32_t payload_len, int timeout_ms) {
+    // 2. Send Data
+    uint32_t sent = 0;
+    int timeout = timeout_ms / 10;
+    
+    while(sent < payload_len && timeout > 0) {
+        uint32_t to_send = (payload_len - sent) > CHUNK_SIZE ? CHUNK_SIZE : (payload_len - sent);
+        
+        if (hdlc_output_frame_i(ctx, payload + sent, to_send)) {
+            sent += to_send;
+            timeout = timeout_ms / 10; // reset timeout on successful send
+        } else {
+            usleep(10000); 
+            timeout--;
+        }
+    }
+    return sent == payload_len;
+}
+
+static bool hdlc_test_wait_rx(volatile uint32_t *bytes_received, uint32_t expected_bytes, int timeout_ms) {
+    int timeout = timeout_ms / 10;
+    while(*bytes_received < expected_bytes && timeout > 0) {
+        usleep(10000);
+        timeout--;
+    }
+    return *bytes_received == expected_bytes;
+}
+
+static void hdlc_test_disconnect(hdlc_context_t *ctx, int fd, volatile bool *is_connected, int timeout_ms) {
+    // 3. Disconnect (With retries for DISC drops)
+    int retries = timeout_ms / 10;
+    hdlc_disconnect(ctx);
+    while((*is_connected) && retries > 0) {
+        if (retries % 100 == 0) {
+            hdlc_disconnect(ctx);
+        }
+        
+        usleep(10000); // 10ms
+        retries--;
+    }
+}
+
 void run_window_test(int window_size, uint32_t error_prob) {
     if (error_prob > 0) {
         printf("\n--- Running PTY Test with Window Size = %d (Error Prob: %.2f%%) ---\n", window_size, error_prob / 100.0);
@@ -155,36 +213,25 @@ void run_window_test(int window_size, uint32_t error_prob) {
     pthread_create(&node1.thread, NULL, node_thread_func, &node1);
     pthread_create(&node2.thread, NULL, node_thread_func, &node2);
     
-    // 1. Connect (With retries for SABM drops during error injection)
-    int retries = 500; // Max 5 seconds (500 * 10ms)
-    hdlc_connect(&node1.ctx);
-    while((!node1.connected || !node2.connected) && retries > 0) {
-        if (!node1.connected) {
-            if (retries % 100 == 0) {
-                hdlc_connect(&node1.ctx); // Retry SABM every 1 sec
-            }
-        }
-        
-        // Allow main thread to also process node1 RX buffers if background thread is busy
-        uint8_t rx_buf[128];
-        int n = read(node1.fd, rx_buf, sizeof(rx_buf));
-        if (n > 0) {
-            hdlc_input_bytes(&node1.ctx, rx_buf, n);
-        }
-        hdlc_tick(&node1.ctx, 10);
-        
-        usleep(10000); // 10ms
-        retries--;
-    }
+    char test_name_fail[64];
     
-    if (!node1.connected || !node2.connected) {
-        char test_name[64];
-        sprintf(test_name, "PTY Connection Failed (Window %d)", window_size);
-        test_fail(test_name, "Timeout");
+    // Connect phase
+    if (!hdlc_test_connect(&node1.ctx, node1.fd, &node1.connected, 5000)) {
+        sprintf(test_name_fail, "PTY Connection Failed (Window %d)", window_size);
+        test_fail(test_name_fail, "Timeout waiting for Node 1 to connect");
         goto cleanup;
     }
     
-    // 2. Send Data
+    // Wait for node2 to also see the connection since connect helper targets one node
+    int sync_timeout = 500;
+    while(!node2.connected && sync_timeout > 0) { usleep(10000); sync_timeout--; }
+    if (!node2.connected) {
+        sprintf(test_name_fail, "PTY Connection Failed (Window %d)", window_size);
+        test_fail(test_name_fail, "Node 2 never reported connected state");
+        goto cleanup;
+    }
+    
+    // Send Data phase
     struct timespec start_time, end_time;
     clock_gettime(CLOCK_MONOTONIC, &start_time);
     
@@ -192,79 +239,31 @@ void run_window_test(int window_size, uint32_t error_prob) {
     uint8_t payload[CHUNK_SIZE];
     memset(payload, 0xAA, sizeof(payload)); // dummy data
     
-    uint32_t sent = 0;
-    int timeout = (error_prob > 0) ? 10000 : 1000; // 10000 * 10ms = 100s timeout for errors
-    while(sent < bytes_to_send && timeout > 0) {
-        uint32_t to_send = (bytes_to_send - sent) > CHUNK_SIZE ? CHUNK_SIZE : (bytes_to_send - sent);
-        
-        // Wait until window opens up
-        if (hdlc_output_frame_i(&node1.ctx, payload, to_send)) {
-            sent += to_send;
-            timeout = (error_prob > 0) ? 10000 : 1000; // reset timeout on successful send
-        } else {
-            // Wait for background thread to process ACKs and slide window
-            // If background thread is delayed, help it process!
-            uint8_t rx_buf[128];
-            int n = read(node1.fd, rx_buf, sizeof(rx_buf));
-            if (n > 0) {
-                hdlc_input_bytes(&node1.ctx, rx_buf, n);
-            }
-            hdlc_tick(&node1.ctx, 10);
-            
-            usleep(10000); 
-            timeout--;
-        }
-    }
-    
-    // Check if we timed out transmitting
-    if (sent < bytes_to_send) {
-        char test_name[64];
-        sprintf(test_name, "PTY Transfer TX Timeout (Window %d)", window_size);
-        test_fail(test_name, "Timeout waiting for window");
+    int tx_timeout_ms = (error_prob > 0) ? 100000 : 10000;
+    if (!hdlc_test_send_data(&node1.ctx, node1.fd, payload, bytes_to_send, tx_timeout_ms)) {
+        sprintf(test_name_fail, "PTY Transfer TX Timeout (Window %d)", window_size);
+        test_fail(test_name_fail, "Timeout waiting for window");
         goto cleanup;
     }
     
-    // Wait for all data to be received on node2
-    timeout = (error_prob > 0) ? 50000 : 5000; // * 10ms intervals
-    while(node2.bytes_received < bytes_to_send && timeout > 0) {
-        usleep(10000); // 10ms instead of 100ms
-        timeout--;
+    // Receive verification phase
+    int rx_timeout_ms = (error_prob > 0) ? 500000 : 50000;
+    if (!hdlc_test_wait_rx(&node2.bytes_received, bytes_to_send, rx_timeout_ms)) {
+        printf("Expected %u bytes, got %u bytes\n", bytes_to_send, node2.bytes_received);
+        sprintf(test_name_fail, "PTY Transfer (Window %d)", window_size);
+        test_fail(test_name_fail, "Incomplete transfer (RX Timeout)");
+        goto cleanup;
     }
     
     clock_gettime(CLOCK_MONOTONIC, &end_time);
     
-    if (node2.bytes_received != bytes_to_send) {
-        printf("Expected %u bytes, got %u bytes\n", bytes_to_send, node2.bytes_received);
-        char test_name[64];
-        sprintf(test_name, "PTY Transfer (Window %d)", window_size);
-        test_fail(test_name, "Incomplete transfer");
-        goto cleanup;
-    }
-    
-    // 3. Disconnect (With retries for DISC drops)
-    retries = 500; // max 5 seconds (500 * 10ms)
-    hdlc_disconnect(&node1.ctx);
-    while((node1.connected || node2.connected) && retries > 0) {
-        if (node1.connected) {
-            if (retries % 100 == 0) {
-                hdlc_disconnect(&node1.ctx);
-            }
-        }
-        
-        uint8_t rx_buf[128];
-        int n = read(node1.fd, rx_buf, sizeof(rx_buf));
-        if (n > 0) {
-            hdlc_input_bytes(&node1.ctx, rx_buf, n);
-        }
-        hdlc_tick(&node1.ctx, 10);
-        
-        usleep(10000); // 10ms instead of 100ms
-        retries--;
-    }
+    // Disconnect phase
+    hdlc_test_disconnect(&node1.ctx, node1.fd, &node1.connected, 5000);
+    hdlc_test_disconnect(&node2.ctx, node2.fd, &node2.connected, 5000); // Ensures both cleanly shut down state
     
     double elapsed = (end_time.tv_sec - start_time.tv_sec) + 
                      (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
-    double speed_kbps = (bytes_to_send / 1024.0) / elapsed;
+    double speed_kbps = (PAYLOAD_SIZE / 1024.0) / elapsed;
     
     char test_name_pass[128];
     if (error_prob > 0) {
