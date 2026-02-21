@@ -32,6 +32,10 @@ typedef struct {
     uint32_t error_probability; // 0 to 10000 (0% to 100%)
     bool drop_next_i_frame;
     
+    // Receive buffer (for file transfer verification)
+    uint8_t *rx_data;
+    uint32_t rx_data_capacity;
+    
     // Stats
     volatile uint32_t bytes_received;
     volatile uint32_t frames_received;
@@ -68,6 +72,10 @@ static void node_output_cb(hdlc_u8 byte, hdlc_bool flush, void *user_data) {
 static void node_on_frame_cb(const hdlc_frame_t *frame, void *user_data) {
     virtual_node_t *node = (virtual_node_t *)user_data;
     if (frame->type == HDLC_FRAME_I) {
+        // If a receive buffer is allocated, copy data into it
+        if (node->rx_data && (node->bytes_received + frame->information_len) <= node->rx_data_capacity) {
+            memcpy(node->rx_data + node->bytes_received, frame->information, frame->information_len);
+        }
         node->bytes_received += frame->information_len;
         node->frames_received++;
     }
@@ -489,6 +497,161 @@ cleanup:
     close(fd2);
 }
 
+void run_file_transfer_test(const char *filepath, int window_size) {
+    printf("\n--- Running PTY File Transfer Test (Window Size = %d, File: %s) ---\n", window_size, filepath);
+    
+    // Read the file into memory
+    FILE *f = fopen(filepath, "rb");
+    if (!f) {
+        printf("Failed to open file: %s\n", filepath);
+        test_fail("File Transfer", "Cannot open test file");
+        return;
+    }
+    
+    fseek(f, 0, SEEK_END);
+    long file_size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    
+    if (file_size <= 0) {
+        fclose(f);
+        test_fail("File Transfer", "File is empty or unreadable");
+        return;
+    }
+    
+    uint8_t *file_data = (uint8_t *)malloc((size_t)file_size);
+    if (!file_data) {
+        fclose(f);
+        test_fail("File Transfer", "malloc failed");
+        return;
+    }
+    
+    size_t bytes_read = fread(file_data, 1, (size_t)file_size, f);
+    fclose(f);
+    
+    if ((long)bytes_read != file_size) {
+        free(file_data);
+        test_fail("File Transfer", "Failed to read entire file");
+        return;
+    }
+    
+    printf("  File size: %ld bytes\n", file_size);
+    
+    int fd1, fd2;
+    if (create_pty_pair(&fd1, &fd2) != 0) {
+        free(file_data);
+        printf("Failed to create PTY pair\n");
+        exit(1);
+    }
+    
+    virtual_node_t node1;
+    virtual_node_t node2;
+    memset(&node1, 0, sizeof(node1));
+    memset(&node2, 0, sizeof(node2));
+    
+    node1.fd = fd1;
+    node2.fd = fd2;
+    node1.running = true;
+    node2.running = true;
+    
+    // Allocate receive buffer for node2 to store file content
+    uint8_t *rx_buffer = (uint8_t *)malloc((size_t)file_size);
+    if (!rx_buffer) {
+        free(file_data);
+        close(fd1);
+        close(fd2);
+        test_fail("File Transfer", "malloc failed for rx_buffer");
+        return;
+    }
+    memset(rx_buffer, 0, (size_t)file_size);
+    node2.rx_data = rx_buffer;
+    node2.rx_data_capacity = (uint32_t)file_size;
+    
+    hdlc_init(&node1.ctx, node1.input_buffer, sizeof(node1.input_buffer),
+              node1.retransmit_buffer, sizeof(node1.retransmit_buffer),
+              500, window_size,
+              node_output_cb, node_on_frame_cb, node_state_cb, &node1);
+
+    hdlc_init(&node2.ctx, node2.input_buffer, sizeof(node2.input_buffer),
+              node2.retransmit_buffer, sizeof(node2.retransmit_buffer),
+              500, window_size,
+              node_output_cb, node_on_frame_cb, node_state_cb, &node2);
+              
+    hdlc_configure_addresses(&node1.ctx, 0x01, 0x02);
+    hdlc_configure_addresses(&node2.ctx, 0x02, 0x01);
+    
+    pthread_create(&node1.thread, NULL, node_thread_func, &node1);
+    pthread_create(&node2.thread, NULL, node_thread_func, &node2);
+    
+    char test_name[256];
+    sprintf(test_name, "File Transfer (Window %d)", window_size);
+    
+    // Connect
+    if (!hdlc_test_connect(&node1.ctx, node1.fd, &node1.connected, 5000)) {
+        test_fail(test_name, "Timeout waiting for Node 1 to connect");
+        goto cleanup;
+    }
+    int sync_timeout = 500;
+    while(!node2.connected && sync_timeout > 0) { usleep(10000); sync_timeout--; }
+    if (!node2.connected) {
+        test_fail(test_name, "Node 2 never reported connected state");
+        goto cleanup;
+    }
+    
+    // Send file data
+    struct timespec start_time, end_time;
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
+    
+    uint32_t bytes_to_send = (uint32_t)file_size;
+    
+    if (!hdlc_test_send_data(&node1.ctx, node1.fd, file_data, bytes_to_send, 300000)) {
+        test_fail(test_name, "TX Timeout");
+        goto cleanup;
+    }
+    
+    if (!hdlc_test_wait_rx(&node2.bytes_received, bytes_to_send, 300000)) {
+        printf("  Expected %u bytes, got %u bytes\n", bytes_to_send, node2.bytes_received);
+        test_fail(test_name, "Incomplete transfer");
+        goto cleanup;
+    }
+    
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    
+    // Byte-for-byte integrity check!
+    if (memcmp(file_data, rx_buffer, (size_t)file_size) != 0) {
+        // Find first mismatch for debugging
+        for (long i = 0; i < file_size; i++) {
+            if (file_data[i] != rx_buffer[i]) {
+                printf("  First mismatch at byte %ld: expected 0x%02X, got 0x%02X\n", i, file_data[i], rx_buffer[i]);
+                break;
+            }
+        }
+        test_fail(test_name, "Data integrity check failed (memcmp mismatch)");
+        goto cleanup;
+    }
+    
+    hdlc_test_disconnect(&node1.ctx, node1.fd, &node1.connected, 5000);
+    hdlc_test_disconnect(&node2.ctx, node2.fd, &node2.connected, 5000);
+    
+    double elapsed = (end_time.tv_sec - start_time.tv_sec) + 
+                     (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
+    double speed_kbps = (file_size / 1024.0) / elapsed;
+    
+    char pass_msg[256];
+    sprintf(pass_msg, "File Transfer (Window %d) [%ld bytes, Time: %.3fs, Speed: %.2f KB/s, Integrity: OK]", 
+            window_size, file_size, elapsed, speed_kbps);
+    test_pass(pass_msg);
+
+cleanup:
+    node1.running = false;
+    node2.running = false;
+    pthread_join(node1.thread, NULL);
+    pthread_join(node2.thread, NULL);
+    close(fd1);
+    close(fd2);
+    free(file_data);
+    free(rx_buffer);
+}
+
 int main(void) {
     srand((unsigned int)time(NULL));
     
@@ -527,6 +690,11 @@ int main(void) {
     // which lacks the capability to send out-of-order packets ahead of a dropped packet anyway.
     for (int w = 2; w <= 7; w++) {
         run_go_back_n_test(w);
+    }
+    
+    printf("\nStarting Virtual COM Tests (File Transfer - test.pdf)...\n");
+    for (int w = 1; w <= 7; w++) {
+        run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w);
     }
     
     printf("\nVirtual COM Tests Completed Successfully.\n");
