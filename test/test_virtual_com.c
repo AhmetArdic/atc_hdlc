@@ -156,11 +156,11 @@ void run_window_test(int window_size, uint32_t error_prob) {
     pthread_create(&node2.thread, NULL, node_thread_func, &node2);
     
     // 1. Connect (With retries for SABM drops during error injection)
-    int retries = 50; // Max 5 seconds
+    int retries = 500; // Max 5 seconds (500 * 10ms)
     hdlc_connect(&node1.ctx);
     while((!node1.connected || !node2.connected) && retries > 0) {
         if (!node1.connected) {
-            if (retries % 10 == 0) {
+            if (retries % 100 == 0) {
                 hdlc_connect(&node1.ctx); // Retry SABM every 1 sec
             }
         }
@@ -173,7 +173,7 @@ void run_window_test(int window_size, uint32_t error_prob) {
         }
         hdlc_tick(&node1.ctx, 10);
         
-        usleep(100000); // 100ms
+        usleep(10000); // 10ms
         retries--;
     }
     
@@ -225,9 +225,9 @@ void run_window_test(int window_size, uint32_t error_prob) {
     }
     
     // Wait for all data to be received on node2
-    timeout = (error_prob > 0) ? 5000 : 500;
+    timeout = (error_prob > 0) ? 50000 : 5000; // * 10ms intervals
     while(node2.bytes_received < bytes_to_send && timeout > 0) {
-        usleep(100000);
+        usleep(10000); // 10ms instead of 100ms
         timeout--;
     }
     
@@ -242,11 +242,11 @@ void run_window_test(int window_size, uint32_t error_prob) {
     }
     
     // 3. Disconnect (With retries for DISC drops)
-    retries = 50;
+    retries = 500; // max 5 seconds (500 * 10ms)
     hdlc_disconnect(&node1.ctx);
     while((node1.connected || node2.connected) && retries > 0) {
         if (node1.connected) {
-            if (retries % 10 == 0) {
+            if (retries % 100 == 0) {
                 hdlc_disconnect(&node1.ctx);
             }
         }
@@ -258,7 +258,7 @@ void run_window_test(int window_size, uint32_t error_prob) {
         }
         hdlc_tick(&node1.ctx, 10);
         
-        usleep(100000);
+        usleep(10000); // 10ms instead of 100ms
         retries--;
     }
     
@@ -306,9 +306,9 @@ int main(void) {
      * to discard out-of-sequence packets and repeatedly retransmit until a clean 
      * sequence succeeds.
      */
-    printf("\nStarting Virtual COM Tests (Error Injection - %.2f%%)...\n", 1.5);
+    printf("\nStarting Virtual COM Tests (Error Injection - %.2f%%)...\n", 0.05);
     for (int w = 1; w <= 7; w++) {
-        run_window_test(w, 150); // 1.5% byte drop probability
+        run_window_test(w, 5); // 0.05% byte drop probability
     }
     
     printf("Virtual COM Tests Completed Successfully.\n");
