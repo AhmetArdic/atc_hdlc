@@ -517,7 +517,7 @@ cleanup:
     node_pair_cleanup(&node1, &node2, &pipe1, &pipe2);
 }
 
-void run_file_transfer_test(const char *filepath, int window_size) {
+void run_file_transfer_test(const char *filepath, int window_size, uint32_t error_prob) {
     // Read the file into memory
     FILE *f = fopen(filepath, "rb");
     if (!f) {
@@ -546,6 +546,9 @@ void run_file_transfer_test(const char *filepath, int window_size) {
     virtual_node_t node1, node2;
     node_pair_init(&node1, &node2, &pipe1, &pipe2, window_size);
     
+    node1.error_probability = error_prob;
+    node2.error_probability = error_prob;
+    
     uint8_t *rx_buffer = (uint8_t *)malloc((size_t)file_size);
     memset(rx_buffer, 0, (size_t)file_size);
     node2.rx_data = rx_buffer;
@@ -554,7 +557,7 @@ void run_file_transfer_test(const char *filepath, int window_size) {
     node_pair_start(&node1, &node2);
     
     char test_name[256];
-    sprintf(test_name, "File Transfer (Window %d)", window_size);
+    sprintf(test_name, "File Transfer %s(Window %d)", (error_prob > 0) ? "[Errored] " : "", window_size);
     
     if (!hdlc_test_connect(&node1, 5000)) {
         test_fail(test_name, "Timeout waiting for Node 1 to connect");
@@ -566,12 +569,15 @@ void run_file_transfer_test(const char *filepath, int window_size) {
     double start_time = get_time_s();
     
     uint32_t bytes_to_send = (uint32_t)file_size;
-    if (!hdlc_test_send_data(&node1, file_data, bytes_to_send, 300000)) {
+    
+    int tx_timeout_ms = (error_prob > 0) ? 900000 : 300000;
+    if (!hdlc_test_send_data(&node1, file_data, bytes_to_send, tx_timeout_ms)) {
         test_fail(test_name, "TX Timeout");
         goto cleanup;
     }
     
-    if (!hdlc_test_wait_rx(&node2.bytes_received, bytes_to_send, 300000)) {
+    int rx_timeout_ms = (error_prob > 0) ? 900000 : 300000;
+    if (!hdlc_test_wait_rx(&node2.bytes_received, bytes_to_send, rx_timeout_ms)) {
         test_fail(test_name, "Incomplete transfer");
         goto cleanup;
     }
@@ -588,7 +594,7 @@ void run_file_transfer_test(const char *filepath, int window_size) {
     
     double speed_kbps = (file_size / 1024.0) / elapsed;
     char pass_msg[256];
-    sprintf(pass_msg, "File Transfer (Window %d) [%ld bytes, Speed: %.2f KB/s]", window_size, file_size, speed_kbps);
+    sprintf(pass_msg, "File Transfer %s(Window %d) [%ld bytes, Speed: %.2f KB/s]", (error_prob > 0) ? "[Errored] " : "", window_size, file_size, speed_kbps);
     test_pass(pass_msg);
 
 cleanup:
@@ -613,7 +619,10 @@ int main(void) {
     for (int w = 2; w <= 7; w++) run_go_back_n_test(w);
     
     printf("\nStarting Mem-Pipe Virtual COM Tests (File Transfer - test.pdf)...\n");
-    for (int w = 1; w <= 7; w++) run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w);
+    for (int w = 1; w <= 7; w++) run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w, 0);
+    
+    printf("\nStarting Mem-Pipe Virtual COM Tests (File Transfer - Error Injection - 0.05%%)...\n");
+    for (int w = 1; w <= 7; w++) run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w, 5);
     
     printf("\nMem-Pipe Virtual COM Tests Completed Successfully.\n");
     return 0;

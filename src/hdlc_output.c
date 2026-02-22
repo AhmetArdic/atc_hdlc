@@ -274,7 +274,7 @@ bool hdlc_output_frame_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len)
   
   // Buffer for Retransmission (store in slot vs % window_size)
   if (ctx->retransmit_buffer != NULL && ctx->retransmit_slot_size > 0) {
-      hdlc_u8 slot = ctx->vs % ctx->window_size;
+      hdlc_u8 slot = ctx->vs % HDLC_SEQUENCE_MODULUS;
       if (len > 0 && data != NULL) {
           if (len > ctx->retransmit_slot_size) {
               return false; // Data too large for retransmit slot.
