@@ -10,6 +10,7 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
 *   **Data Integrity**:
     *   **CRC-16-CCITT** (Polynomial `0x1021`) with pre-computed 256-entry LUT for fast validation.
     *   Recalculate & Compare verification strategy on the receiver side.
+    *   **Early Address Verification**: Discards misaddressed frames before costly CRC computation, saving CPU cycles on noisy lines.
 *   **Flexible Transmission**:
     *   **Packet Mode**:
         *   **Buffered**: Construct a full `atc_hdlc_frame_t` and send it in one call using the context.
@@ -38,7 +39,7 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
     *   Frame Type dispatcher.
 *   **Developer Experience**:
     *   Modern **CMake** build system (C99).
-    *   **Unit tests** covering edge cases (byte stuffing, CRC errors, overflow, fragmentation, control field loopback, reliable transmission, Go-Back-N, TEST frames).
+    *   **Unit tests** covering edge cases (byte stuffing, CRC errors, overflow, fragmentation, control field loopback, reliable transmission, Go-Back-N, TEST frames, Virtual COM port simulation, and multi-platform pipe mechanisms).
     *   **Configurable Symbol Prefix**: All public symbols are prefixed (default `atc_`) to avoid collisions. Changeable at compile time via `ATC_HDLC_PREFIX`.
     *   **C++ compatible** (`extern "C"` wrappers).
 
@@ -65,6 +66,9 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
 │   ├── test_hdlc.c                   # Core protocol unit tests
 │   ├── test_reliable_transmission.c  # Reliable TX, Go-Back-N, retransmission tests
 │   ├── test_connection_management.c  # State machine & connection tests
+│   ├── test_virtual_com.c            # Virtual COM port integration and file transfer tests
+│   ├── test_virtual_pipe.c           # Generic multi-platform pipe mechanism for testing
+│   ├── test_virtual_pipe.h           # Pipe module header
 │   ├── test_common.c                 # Shared test utilities (colors, assertions)
 │   └── test_common.h                 # Shared test header
 ├── CMakeLists.txt      # Root CMake configuration
@@ -329,6 +333,8 @@ Configuration is done in `inc/hdlc_config.h`:
 | `atc_hdlc_create_i_ctrl(ns, nr, pf)` | Create I-Frame control byte |
 | `atc_hdlc_create_s_ctrl(s_bits, nr, pf)` | Create S-Frame control byte |
 | `atc_hdlc_create_u_ctrl(m_lo, m_hi, pf)` | Create U-Frame control byte |
+| `atc_hdlc_get_s_frame_sub_type(control)` | Get S-Frame sub-type from a control field |
+| `atc_hdlc_get_u_frame_sub_type(control)` | Get U-Frame sub-type from a control field |
 
 ### Callback Signatures
 
