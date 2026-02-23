@@ -81,14 +81,12 @@ void test_reliable_retransmission(void) {
     // Tick Timer (1001 ticks of 1ms)
     for(int i=0; i<1001; i++) atc_hdlc_tick(&ctx, 1);
     
-    // Verify Retransmission
-    if (mock_output_len > 0 && mock_output_buffer[2] == 0x10) { // P=1 (if retransmission sets P bit? Or just 0x10 for I-frame with P=1?)
-        // Control 0x10 is I-frame N(S)=0 N(R)=0 P=1. 
-        // Original frame was N(S)=0 N(R)=0 P=0 (0x00).
-        // Retransmission often sets P bit to poll status.
-        test_pass("Retransmission Sent");
+    // Verify Retransmission Enquiry
+    // 0x11 is S-frame, RR, P=1, N(R)=0. (b0=1, b1=0, s=0, p=1, nr=0) => 00010001 = 0x11
+    if (mock_output_len > 0 && mock_output_buffer[2] == 0x11) { 
+        test_pass("Retransmission Enquiry Sent");
     } else {
-        test_fail("Retransmission Sent", "No output or wrong control");
+        test_fail("Retransmission Sent", "No Enquiry output or wrong control");
     }
 }
 
@@ -359,9 +357,25 @@ void test_gobackn_retransmit(void) {
     // Trigger timeout (500ms)
     atc_hdlc_tick(&ctx, 500);
 
+    atc_hdlc_u32 enquiry_frames = ctx.stats_output_frames - frames_before;
+    if (enquiry_frames == 1) {
+        test_pass("GBN Retransmit: Enquiry RR Sent");
+    } else {
+        test_fail("GBN Retransmit", "Enquiry RR not sent on timeout");
+        return;
+    }
+
+    // Now peer replies with RR and F=1 (Response uses peer's own address = 0x02)
+    atc_hdlc_frame_t f1_response = { .address=0x02, .control=atc_hdlc_create_s_ctrl(0x00, 0, 1) }; // RR, NR=0, F=1
+    atc_hdlc_u32 rr_len = 0;
+    atc_hdlc_frame_pack(&f1_response, temp_input_buffer, sizeof(temp_input_buffer), &rr_len);
+    
+    frames_before = ctx.stats_output_frames;
+    atc_hdlc_input_bytes(&ctx, temp_input_buffer, rr_len);
+
     atc_hdlc_u32 retransmitted = ctx.stats_output_frames - frames_before;
     if (retransmitted == 3) {
-        test_pass("GBN Retransmit: All 3 frames retransmitted");
+        test_pass("GBN Retransmit: All 3 frames retransmitted after F=1");
     } else {
         printf("  Expected 3 retransmitted, got %u\n", retransmitted);
         test_fail("GBN Retransmit", "Wrong retransmit count");

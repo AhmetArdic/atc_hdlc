@@ -17,12 +17,6 @@ static bool handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static bool handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static bool handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame);
 static inline void hdlc_process_nr(hdlc_context_t *ctx, hdlc_u8 nr);
-static inline void hdlc_send_u_frame(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf);
-static inline void hdlc_send_ua(hdlc_context_t *ctx, hdlc_u8 pf);
-static inline void hdlc_send_dm(hdlc_context_t *ctx, hdlc_u8 pf);
-static inline void hdlc_send_s_frame(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 s_bits, hdlc_u8 nr, hdlc_u8 pf);
-static inline void hdlc_send_rr(hdlc_context_t *ctx, hdlc_u8 pf);
-static inline void hdlc_send_rej(hdlc_context_t *ctx, hdlc_u8 pf);
 
 /*
  * --------------------------------------------------------------------------
@@ -96,6 +90,38 @@ static bool handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
  * --------------------------------------------------------------------------
  */
 
+static void hdlc_retransmit_go_back_n(hdlc_context_t *ctx, hdlc_u8 from_seq) {
+    if (ctx->vs == from_seq) return;
+
+    hdlc_u8 old_vs = ctx->vs;
+    
+    /* Rewind the Go-Back-N window */
+    ctx->vs = from_seq;
+
+    if (ctx->retransmit_buffer != NULL && ctx->retransmit_slot_size > 0) {
+        ctx->next_tx_slot = ctx->tx_seq_to_slot[ctx->vs];
+    }
+
+    while (ctx->vs != old_vs) {
+        hdlc_u8 slot = ctx->tx_seq_to_slot[ctx->vs];
+        hdlc_control_t ctrl = hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
+        hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
+        if (ctx->retransmit_lens[slot] > 0 && ctx->retransmit_buffer != NULL) {
+            hdlc_output_frame_information_bytes(ctx,
+                ctx->retransmit_buffer + (slot * ctx->retransmit_slot_size),
+                ctx->retransmit_lens[slot]);
+        }
+        hdlc_output_frame_end(ctx);
+        
+        ctx->vs = (ctx->vs + 1) % HDLC_SEQUENCE_MODULUS;
+        if (ctx->retransmit_buffer != NULL && ctx->retransmit_slot_size > 0) {
+            ctx->next_tx_slot = (ctx->next_tx_slot + 1) % ctx->window_size;
+        }
+    }
+
+    ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
+}
+
 static bool handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   hdlc_u8 mode = (frame->control.s_frame.s);
   hdlc_u8 msg_nr = (frame->control.s_frame.nr);
@@ -110,27 +136,17 @@ static bool handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   else if (mode == HDLC_S_REJ) {
       if (ctx->va != ctx->vs) {
           hdlc_process_nr(ctx, msg_nr);
-
-          hdlc_u8 seq = msg_nr;
-          while (seq != ctx->vs) {
-              hdlc_u8 slot = ctx->tx_seq_to_slot[seq];
-              hdlc_control_t ctrl = hdlc_create_i_ctrl(seq, ctx->vr, 0);
-              hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
-              if (ctx->retransmit_lens[slot] > 0 && ctx->retransmit_buffer != NULL) {
-                  hdlc_output_frame_information_bytes(ctx,
-                      ctx->retransmit_buffer + (slot * ctx->retransmit_slot_size),
-                      ctx->retransmit_lens[slot]);
-              }
-              hdlc_output_frame_end(ctx);
-              seq = (seq + 1) % HDLC_SEQUENCE_MODULUS;
-          }
-
-          ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
+          hdlc_retransmit_go_back_n(ctx, msg_nr);
       }
   }
 
   if (is_command && msg_pf) {
-      hdlc_send_rr(ctx, 1);
+      hdlc_send_response_rr(ctx, 1);
+  } else if (!is_command && msg_pf) {
+      HDLC_LOG_WARN("rx: Received F=1 response. Checking for retransmissions.");
+      if (ctx->va != ctx->vs) {
+          hdlc_retransmit_go_back_n(ctx, ctx->va);
+      }
   }
   
   return false; // S-Frames never contain user payload
@@ -330,36 +346,4 @@ static inline void hdlc_process_nr(hdlc_context_t *ctx, hdlc_u8 nr) {
     }
 }
 
-/*
- * --------------------------------------------------------------------------
- * FRAME SEND HELPERS
- * --------------------------------------------------------------------------
- */
 
-static inline void hdlc_send_u_frame(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf) {
-    hdlc_control_t ctrl = hdlc_create_u_ctrl(m_lo, m_hi, pf);
-    hdlc_output_frame_start(ctx, address, ctrl.value);
-    hdlc_output_frame_end(ctx);
-}
-
-static inline void hdlc_send_ua(hdlc_context_t *ctx, hdlc_u8 pf) {
-    hdlc_send_u_frame(ctx, ctx->my_address, HDLC_U_MODIFIER_LO_UA, HDLC_U_MODIFIER_HI_UA, pf);
-}
-
-static inline void hdlc_send_dm(hdlc_context_t *ctx, hdlc_u8 pf) {
-    hdlc_send_u_frame(ctx, ctx->my_address, HDLC_U_MODIFIER_LO_DM, HDLC_U_MODIFIER_HI_DM, pf);
-}
-
-static inline void hdlc_send_s_frame(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 s_bits, hdlc_u8 nr, hdlc_u8 pf) {
-    hdlc_control_t ctrl = hdlc_create_s_ctrl(s_bits, nr, pf);
-    hdlc_output_frame_start(ctx, address, ctrl.value);
-    hdlc_output_frame_end(ctx);
-}
-
-static inline void hdlc_send_rr(hdlc_context_t *ctx, hdlc_u8 pf) {
-    hdlc_send_s_frame(ctx, ctx->peer_address, HDLC_S_RR, ctx->vr, pf);
-}
-
-static inline void hdlc_send_rej(hdlc_context_t *ctx, hdlc_u8 pf) {
-    hdlc_send_s_frame(ctx, ctx->peer_address, HDLC_S_REJ, ctx->vr, pf);
-}

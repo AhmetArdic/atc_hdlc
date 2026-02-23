@@ -150,26 +150,12 @@ void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms) {
             }
 
             if (ctx->retransmit_timer_ms == 0) {
-                // Timeout! Go-Back-N: Retransmit ALL frames from V(A) to V(S)-1.
-                HDLC_LOG_WARN("tx: Retransmit Timeout! Go-Back-N from V(A)=%u to V(S)=%u", ctx->va, ctx->vs);
-                hdlc_u8 seq = ctx->va;
-                while (seq != ctx->vs) {
-                    hdlc_u8 slot = ctx->tx_seq_to_slot[seq];
-                    hdlc_u8 pf = (seq == ctx->va) ? 1 : 0; // P=1 on first frame
-                    hdlc_control_t ctrl = hdlc_create_i_ctrl(seq, ctx->vr, pf);
-                    hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
-                    
-                    if (ctx->retransmit_buffer != NULL && ctx->retransmit_lens[slot] > 0) {
-                        hdlc_output_frame_information_bytes(ctx,
-                            ctx->retransmit_buffer + (slot * ctx->retransmit_slot_size),
-                            ctx->retransmit_lens[slot]);
-                    }
-                    
-                    hdlc_output_frame_end(ctx);
-                    seq = (seq + 1) % HDLC_SEQUENCE_MODULUS;
-                }
+                // Timeout! Send Enquiry (RR with P=1) to poll receiver status
+                HDLC_LOG_WARN("tx: Retransmit Timeout! Sending Enquiry RR(P=1)");
                 
-                // Restart Timer
+                hdlc_send_rr(ctx, 1);
+                
+                // Restart Timer expecting a response (F=1)
                 ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
             }
         }

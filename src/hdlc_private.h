@@ -164,4 +164,42 @@ hdlc_bool frame_pack_core(const hdlc_frame_t *frame, hdlc_put_byte_fn put_fn, hd
 /* hdlc_input.c — Process complete frame (called from input parser) */
 void process_complete_frame(hdlc_context_t *ctx);
 
+/*
+ * --------------------------------------------------------------------------
+ * INTERNAL FRAME SEND HELPERS
+ * --------------------------------------------------------------------------
+ */
+
+static inline void hdlc_send_u_frame(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 m_lo, hdlc_u8 m_hi, hdlc_u8 pf) {
+    hdlc_control_t ctrl = hdlc_create_u_ctrl(m_lo, m_hi, pf);
+    hdlc_output_frame_start(ctx, address, ctrl.value);
+    hdlc_output_frame_end(ctx);
+}
+
+static inline void hdlc_send_ua(hdlc_context_t *ctx, hdlc_u8 pf) {
+    hdlc_send_u_frame(ctx, ctx->my_address, HDLC_U_MODIFIER_LO_UA, HDLC_U_MODIFIER_HI_UA, pf);
+}
+
+static inline void hdlc_send_dm(hdlc_context_t *ctx, hdlc_u8 pf) {
+    hdlc_send_u_frame(ctx, ctx->my_address, HDLC_U_MODIFIER_LO_DM, HDLC_U_MODIFIER_HI_DM, pf);
+}
+
+static inline void hdlc_send_s_frame(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 s_bits, hdlc_u8 nr, hdlc_u8 pf) {
+    hdlc_control_t ctrl = hdlc_create_s_ctrl(s_bits, nr, pf);
+    hdlc_output_frame_start(ctx, address, ctrl.value);
+    hdlc_output_frame_end(ctx);
+}
+
+static inline void hdlc_send_rr(hdlc_context_t *ctx, hdlc_u8 pf) {
+    hdlc_send_s_frame(ctx, ctx->peer_address, HDLC_S_RR, ctx->vr, pf); // Command
+}
+
+static inline void hdlc_send_response_rr(hdlc_context_t *ctx, hdlc_u8 pf) {
+    hdlc_send_s_frame(ctx, ctx->my_address, HDLC_S_RR, ctx->vr, pf); // Response (Address = Sender's own address)
+}
+
+static inline void hdlc_send_rej(hdlc_context_t *ctx, hdlc_u8 pf) {
+    hdlc_send_s_frame(ctx, ctx->peer_address, HDLC_S_REJ, ctx->vr, pf);
+}
+
 #endif // HDLC_PRIVATE_H
