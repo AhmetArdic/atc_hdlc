@@ -1,55 +1,7 @@
-#define _DEFAULT_SOURCE
-#define _XOPEN_SOURCE 600
+#include "test_virtual_pipe.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <time.h>
-
-#ifdef _WIN32
-#include <windows.h>
-#include <process.h>
-typedef HANDLE thread_t;
-typedef CRITICAL_SECTION mutex_t;
-#define MUTEX_INIT(m) InitializeCriticalSection(m)
-#define MUTEX_LOCK(m) EnterCriticalSection(m)
-#define MUTEX_UNLOCK(m) LeaveCriticalSection(m)
-#define MUTEX_DESTROY(m) DeleteCriticalSection(m)
-#define SLEEP_MS(ms) Sleep(ms)
-static inline void YIELD_THREAD(void) {
-    if (!SwitchToThread()) {
-        Sleep(0);
-    }
-}
-
-static inline double get_time_s(void) {
-    LARGE_INTEGER freq;
-    LARGE_INTEGER time;
-    QueryPerformanceFrequency(&freq);
-    QueryPerformanceCounter(&time);
-    return (double)time.QuadPart / (double)freq.QuadPart;
-}
-#else
-#include <pthread.h>
-#include <unistd.h>
-typedef pthread_t thread_t;
-typedef pthread_mutex_t mutex_t;
-#define MUTEX_INIT(m) pthread_mutex_init(m, NULL)
-#define MUTEX_LOCK(m) pthread_mutex_lock(m)
-#define MUTEX_UNLOCK(m) pthread_mutex_unlock(m)
-#define MUTEX_DESTROY(m) pthread_mutex_destroy(m)
-#define SLEEP_MS(ms) usleep((ms) * 1000)
-static inline void YIELD_THREAD(void) {
-    usleep(100);
-}
-
-static inline double get_time_s(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return ts.tv_sec + (double)ts.tv_nsec / 1e9;
-}
-#endif
 
 #include "../inc/hdlc.h"
 #include "test_common.h"
@@ -59,47 +11,7 @@ static inline double get_time_s(void) {
 #define CHUNK_SIZE 150
 #define BUFFER_SIZE 256
 
-typedef struct {
-    uint8_t buffer[65536];
-    int head;
-    int tail;
-    mutex_t lock;
-} pipe_queue_t;
-
-static void pipe_init(pipe_queue_t *q) {
-    q->head = 0;
-    q->tail = 0;
-    MUTEX_INIT(&q->lock);
-}
-
-static void pipe_destroy(pipe_queue_t *q) {
-    MUTEX_DESTROY(&q->lock);
-}
-
-static int pipe_write(pipe_queue_t *q, const uint8_t *data, int len) {
-    MUTEX_LOCK(&q->lock);
-    int written = 0;
-    for (int i = 0; i < len; i++) {
-        int next_head = (q->head + 1) % sizeof(q->buffer);
-        if (next_head == q->tail) break;
-        q->buffer[q->head] = data[i];
-        q->head = next_head;
-        written++;
-    }
-    MUTEX_UNLOCK(&q->lock);
-    return written;
-}
-
-static int pipe_read(pipe_queue_t *q, uint8_t *data, int max_len) {
-    MUTEX_LOCK(&q->lock);
-    int read_count = 0;
-    while (read_count < max_len && q->tail != q->head) {
-        data[read_count++] = q->buffer[q->tail];
-        q->tail = (q->tail + 1) % sizeof(q->buffer);
-    }
-    MUTEX_UNLOCK(&q->lock);
-    return read_count;  // non-blocking
-}
+/* Pipe queue provided by test_virtual_pipe.h */
 
 typedef struct {
     pipe_queue_t *tx_pipe;
@@ -203,26 +115,7 @@ void* node_thread_func(void* arg) {
     return NULL;
 }
 
-#ifdef _WIN32
-static DWORD WINAPI thread_stub(LPVOID arg) {
-    node_thread_func(arg);
-    return 0;
-}
-static void thread_create(thread_t *t, void *arg) {
-    *t = CreateThread(NULL, 0, thread_stub, arg, 0, NULL);
-}
-static void thread_join(thread_t t) {
-    WaitForSingleObject(t, INFINITE);
-    CloseHandle(t);
-}
-#else
-static void thread_create(thread_t *t, void *arg) {
-    pthread_create(t, NULL, node_thread_func, arg);
-}
-static void thread_join(thread_t t) {
-    pthread_join(t, NULL);
-}
-#endif
+/* Thread handling moved to test_virtual_pipe.c */
 
 static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_queue_t *pipe1, pipe_queue_t *pipe2, int window_size) {
     memset(node1, 0, sizeof(*node1));
@@ -258,8 +151,8 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
 }
 
 static void node_pair_start(virtual_node_t *node1, virtual_node_t *node2) {
-    thread_create(&node1->thread, node1);
-    thread_create(&node2->thread, node2);
+    thread_create(&node1->thread, node_thread_func, node1);
+    thread_create(&node2->thread, node_thread_func, node2);
 }
 
 static void node_pair_cleanup(virtual_node_t *node1, virtual_node_t *node2, pipe_queue_t *pipe1, pipe_queue_t *pipe2) {
