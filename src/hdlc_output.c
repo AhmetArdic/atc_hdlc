@@ -272,9 +272,12 @@ bool hdlc_output_frame_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len)
       return false; // Window full
   }
   
-  // Buffer for Retransmission (store in slot vs % window_size)
+  // Buffer for Retransmission using dynamic slot allocation
   if (ctx->retransmit_buffer != NULL && ctx->retransmit_slot_size > 0) {
-      hdlc_u8 slot = ctx->vs % HDLC_SEQUENCE_MODULUS;
+      hdlc_u8 slot = ctx->next_tx_slot;
+      ctx->tx_seq_to_slot[ctx->vs] = slot;
+      ctx->next_tx_slot = (ctx->next_tx_slot + 1) % ctx->window_size;
+      
       if (len > 0 && data != NULL) {
           if (len > ctx->retransmit_slot_size) {
               return false; // Data too large for retransmit slot.

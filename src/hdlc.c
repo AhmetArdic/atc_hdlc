@@ -57,7 +57,7 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *input_buffer, hdlc_u32 input_buffer
   ctx->retransmit_buffer_len = retransmit_buffer_len;
   ctx->window_size = window_size;
   if (retransmit_buffer != NULL && retransmit_buffer_len > 0) {
-      ctx->retransmit_slot_size = retransmit_buffer_len / HDLC_SEQUENCE_MODULUS;
+      ctx->retransmit_slot_size = retransmit_buffer_len / window_size;
   }
 
   // Bind callbacks
@@ -76,6 +76,8 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *input_buffer, hdlc_u32 input_buffer
   ctx->va = 0;
   ctx->ack_pending = false;
   ctx->retransmit_timeout_ms = retransmit_timeout_ms;
+  ctx->next_tx_slot = 0;
+  memset(ctx->tx_seq_to_slot, 0, sizeof(ctx->tx_seq_to_slot));
 }
 
 /**
@@ -152,7 +154,7 @@ void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms) {
                 HDLC_LOG_WARN("tx: Retransmit Timeout! Go-Back-N from V(A)=%u to V(S)=%u", ctx->va, ctx->vs);
                 hdlc_u8 seq = ctx->va;
                 while (seq != ctx->vs) {
-                    hdlc_u8 slot = seq % HDLC_SEQUENCE_MODULUS;
+                    hdlc_u8 slot = ctx->tx_seq_to_slot[seq];
                     hdlc_u8 pf = (seq == ctx->va) ? 1 : 0; // P=1 on first frame
                     hdlc_control_t ctrl = hdlc_create_i_ctrl(seq, ctx->vr, pf);
                     hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);

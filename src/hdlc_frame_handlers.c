@@ -113,7 +113,7 @@ static bool handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
 
           hdlc_u8 seq = msg_nr;
           while (seq != ctx->vs) {
-              hdlc_u8 slot = seq % HDLC_SEQUENCE_MODULUS;
+              hdlc_u8 slot = ctx->tx_seq_to_slot[seq];
               hdlc_control_t ctrl = hdlc_create_i_ctrl(seq, ctx->vr, 0);
               hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
               if (ctx->retransmit_lens[slot] > 0 && ctx->retransmit_buffer != NULL) {

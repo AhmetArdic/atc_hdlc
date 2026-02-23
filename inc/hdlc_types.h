@@ -297,7 +297,9 @@ typedef struct {
     hdlc_u8 *retransmit_buffer; /**< User-supplied buffer, divided into window_size equal slots. */
     hdlc_u32 retransmit_buffer_len; /**< Total length of the retransmit buffer. */
     hdlc_u32 retransmit_slot_size;  /**< Max payload per slot (retransmit_buffer_len / window_size). */
-    hdlc_u32 retransmit_lens[8];    /**< Payload length stored per slot (8 slots corresponding to seq mod 8). */
+    hdlc_u32 retransmit_lens[8];    /**< Payload length stored per slot. */
+    hdlc_u8 tx_seq_to_slot[8];      /**< Dynamic mapping: Sequence number V(S) to physical buffer slot index. */
+    hdlc_u8 next_tx_slot;           /**< The next available physical slot index (0 to window_size-1). */
     hdlc_u32 retransmit_timer_ms; /**< Timer for retransmission (counts down). */
     hdlc_u32 retransmit_timeout_ms; /**< Configurable retransmission timeout period in ms. */
 

@@ -57,6 +57,7 @@ static inline double get_time_s(void) {
 // Configuration
 #define PAYLOAD_SIZE 1024 * 1024 // 1MB
 #define CHUNK_SIZE 150
+#define BUFFER_SIZE 256
 
 typedef struct {
     uint8_t buffer[65536];
@@ -107,8 +108,8 @@ typedef struct {
     mutex_t ctx_lock;
     
     hdlc_context_t ctx;
-    hdlc_u8 input_buffer[8192];
-    hdlc_u8 retransmit_buffer[8192];
+    hdlc_u8 input_buffer[BUFFER_SIZE * 2];
+    hdlc_u8 retransmit_buffer[BUFFER_SIZE * 2 * 8];    
     thread_t thread;
     volatile bool running;
     
