@@ -11,7 +11,7 @@
 #include "../inc/hdlc.h"
 #include "hdlc_crc.h"
 #include "hdlc_private.h"
-
+#include <string.h>
 /**
  * @brief Input a received byte into the HDLC Parser.
  * @note **ISR UNSAFE**: Performs heavy validation (CRC) on frame end. Checks
@@ -75,8 +75,10 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
       }
     }
 
-    // Reset for next frame
-    ctx->input_state = HDLC_INPUT_STATE_ADDRESS; // Expecting Address next
+    // Reset for next frame. We set it to ADDRESS expecting the next frame right away (Back-to-Back).
+    // If the next byte is noise instead of a valid address, the Early Abort logic below will
+    // immediately catch it and drop the state to HUNT.
+    ctx->input_state = HDLC_INPUT_STATE_ADDRESS;
     ctx->input_index = 0;
     ctx->input_crc = HDLC_FCS_INIT_VALUE;
     return;
@@ -112,6 +114,16 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
 
   // Store byte in buffer
   ctx->input_buffer[ctx->input_index++] = byte;
+
+  // Early abort if Address byte is invalid
+  if (ctx->input_index == 1) {
+    if (byte != ctx->my_address && byte != ctx->peer_address && byte != HDLC_BROADCAST_ADDRESS) {
+      HDLC_LOG_WARN("rx: Invalid Address 0x%02X. Frame discarded, returning to HUNT.", byte);
+      ctx->input_state = HDLC_INPUT_STATE_HUNT;
+      ctx->input_index = 0;
+      return;
+    }
+  }
 }
 
 /**

@@ -67,7 +67,7 @@ void test_empty_information() {
   setup_test_context(&ctx);
 
   atc_hdlc_frame_t frame_out = {
-      .address = 0x01, .control.value = 0x00, .information = NULL, .information_len = 0};
+      .address = 0xFF, .control.value = 0x00, .information = NULL, .information_len = 0};
 
   atc_hdlc_output_frame(&ctx, &frame_out);
   
@@ -230,9 +230,9 @@ void test_min_size_rejection() {
   setup_test_context(&ctx);
 
   // Min size is usually ~4 bytes (Addr+Ctrl+FCS). 
-  // Send 0x7E 0x01 0x7E (Too short)
+  // Send 0x7E 0xFF 0x7E (Too short)
   atc_hdlc_input_byte(&ctx, 0x7E);
-  atc_hdlc_input_byte(&ctx, 0x01); // Just address
+  atc_hdlc_input_byte(&ctx, 0xFF); // Just address
   atc_hdlc_input_byte(&ctx, 0x7E);
   
   if (on_frame_call_count != 0) {
@@ -257,7 +257,7 @@ void test_aborted_frame() {
 
   // Send start of frame: 7E Addr Ctrl Data...
   atc_hdlc_input_byte(&ctx, 0x7E);
-  atc_hdlc_input_byte(&ctx, 0x05);
+  atc_hdlc_input_byte(&ctx, 0xFF);
   atc_hdlc_input_byte(&ctx, 0x00);
   atc_hdlc_input_byte(&ctx, 'A');
   atc_hdlc_input_byte(&ctx, 'B');
@@ -285,7 +285,7 @@ void test_crc_error_injection() {
   setup_test_context(&ctx);
 
   // Generate valid frame
-  atc_hdlc_frame_t f = {.address=0x06, .control.value=0x00, .information=(atc_hdlc_u8*)"123", .information_len=3};
+  atc_hdlc_frame_t f = {.address=0xFF, .control.value=0x00, .information=(atc_hdlc_u8*)"123", .information_len=3};
   atc_hdlc_output_frame(&ctx, &f);
   
   // Corrupt it: Flip bit in data
@@ -409,7 +409,7 @@ void test_control_field_i(void) {
    */
 
   // Construct I-Frame: N(S)=3, N(R)=5, P=1.
-  atc_hdlc_frame_t f = {.address=0x01, .control=atc_hdlc_create_i_ctrl(3, 5, 1), .information=NULL, .information_len=0};
+  atc_hdlc_frame_t f = {.address=0xFF, .control=atc_hdlc_create_i_ctrl(3, 5, 1), .information=NULL, .information_len=0};
   
   mock_output_len = 0;
   atc_hdlc_output_frame(&ctx, &f);
@@ -438,7 +438,7 @@ void test_control_field_s(void) {
   setup_test_context(&ctx);
 
   // Construct S-Frame: REJ (S=10 -> 2), N(R)=7, P/F=0
-  atc_hdlc_frame_t f = {.address=0x01, .control=atc_hdlc_create_s_ctrl(0x02, 7, 0), .information=NULL, .information_len=0};
+  atc_hdlc_frame_t f = {.address=0xFF, .control=atc_hdlc_create_s_ctrl(0x02, 7, 0), .information=NULL, .information_len=0};
   
   atc_hdlc_output_frame(&ctx, &f);
   
