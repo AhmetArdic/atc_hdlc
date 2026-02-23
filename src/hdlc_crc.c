@@ -8,7 +8,7 @@
  * standard CCITT CRC-16 (Polynomial: 0x1021).
  */
 
-#include "../inc/hdlc_types.h"
+#include "hdlc_crc.h"
 
 /*
  * Polynomial: x^16 + x^12 + x^5 + 1 (0x1021)
@@ -51,11 +51,8 @@ static const hdlc_u16 fcstab[256] = {0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x5
                                      0x3de3, 0x2c6a, 0x1ef1, 0x0f78};
 
 /**
- * @brief Update the running CRC value with a new data byte.
- *
- * @param fcs  Current accumulated CRC value (Initial should be 0xFFFF).
- * @param data New data byte to include in the CRC.
- * @return hdlc_u16 Updated CRC value.
+ * @brief Update the running CRC-16-CCITT value.
+ * @see hdlc_crc.h
  */
 hdlc_u16 hdlc_crc_ccitt_update(hdlc_u16 fcs, hdlc_u8 data) {
     return (fcs >> 8) ^ fcstab[(fcs ^ data) & 0xff];

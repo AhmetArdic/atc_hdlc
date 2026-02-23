@@ -25,6 +25,16 @@ extern "C" {
  * DEFINITIONS
  * --------------------------------------------------------------------------
  */
+/**
+ * @brief HDLC Broadcast Address.
+ *
+ * Frames sent to this address are processed by all stations but
+ * never generate a response (ACK/UA).
+ */
+#ifndef HDLC_BROADCAST_ADDRESS
+#define HDLC_BROADCAST_ADDRESS 0xFF
+#endif
+
 #define HDLC_FLAG_LEN               (1)     /**< Flag. */
 #define HDLC_ADDRESS_LEN            (1)     /**< Address Field. */
 #define HDLC_CONTROL_LEN            (1)     /**< Control Field. */
@@ -76,6 +86,35 @@ typedef enum {
     HDLC_FRAME_U,      /**< Unnumbered Frame (Link management) */
     HDLC_FRAME_INVALID /**< Invalid or Unknown Frame format */
 } hdlc_frame_type_t;
+
+/**
+ * @brief HDLC Supervisory (S) Frame Sub-Types.
+ */
+typedef enum {
+    HDLC_S_FRAME_TYPE_RR,      /**< Receive Ready */
+    HDLC_S_FRAME_TYPE_RNR,     /**< Receive Not Ready */
+    HDLC_S_FRAME_TYPE_REJ,     /**< Reject */
+    HDLC_S_FRAME_TYPE_UNKNOWN  /**< Unknown or Invalid S-Frame */
+} hdlc_s_frame_sub_type_t;
+
+/**
+ * @brief HDLC Unnumbered (U) Frame Sub-Types.
+ */
+typedef enum {
+    HDLC_U_FRAME_TYPE_SABM,    /**< Set Asynchronous Balanced Mode */
+    HDLC_U_FRAME_TYPE_SNRM,    /**< Set Normal Response Mode */
+    HDLC_U_FRAME_TYPE_SARM,    /**< Set Asynchronous Response Mode (DM command) */
+    HDLC_U_FRAME_TYPE_SABME,   /**< Set Asynchronous Balanced Mode Extended */
+    HDLC_U_FRAME_TYPE_SNRME,   /**< Set Normal Response Mode Extended */
+    HDLC_U_FRAME_TYPE_SARME,   /**< Set Asynchronous Response Mode Extended */
+    HDLC_U_FRAME_TYPE_DISC,    /**< Disconnect */
+    HDLC_U_FRAME_TYPE_UA,      /**< Unnumbered Acknowledgment */
+    HDLC_U_FRAME_TYPE_DM,      /**< Disconnect Mode */
+    HDLC_U_FRAME_TYPE_FRMR,    /**< Frame Reject */
+    HDLC_U_FRAME_TYPE_UI,      /**< Unnumbered Information */
+    HDLC_U_FRAME_TYPE_TEST,    /**< Test */
+    HDLC_U_FRAME_TYPE_UNKNOWN  /**< Unknown or Invalid U-Frame */
+} hdlc_u_frame_sub_type_t;
 
 /*
  * --------------------------------------------------------------------------
@@ -149,6 +188,42 @@ typedef struct {
     hdlc_frame_type_t type;         /**< Resolved Frame Type (I/S/U). */
 } hdlc_frame_t;
 
+/**
+ * @brief Frame Reject (FRMR) Information Fields.
+ * Standard format for the information field of an FRMR response.
+ */
+typedef struct {
+    hdlc_u16 rejected_control; /**< Copy of the rejected control field. */
+    hdlc_u8 v_s;               /**< Current Send Sequence Number V(S). */
+    hdlc_u8 v_r;               /**< Current Receive Sequence Number V(R). */
+    hdlc_bool cr;              /**< Command/Response flag. */
+    struct {
+        hdlc_bool w; /**< Control field undefined/unimplemented. */
+        hdlc_bool x; /**< Info field not allowed with this frame. */
+        hdlc_bool y; /**< Info field too long. */
+        hdlc_bool z; /**< Invalid N(R). */
+        hdlc_bool v; /**< Invalid N(S). */
+    } errors;
+} hdlc_frmr_data_t;
+
+/*
+ * --------------------------------------------------------------------------
+ * PROTOCOL STATES
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief HDLC Protocol States.
+ *
+ * Defines the connection state of the HDLC station.
+ */
+typedef enum {
+    HDLC_PROTOCOL_STATE_DISCONNECTED, /**< No logical connection. Messages ignored except SABM. */
+    HDLC_PROTOCOL_STATE_CONNECTING,   /**< SABM sent, waiting for UA. */
+    HDLC_PROTOCOL_STATE_CONNECTED,    /**< Logical connection established. Ready for I-frames. */
+    HDLC_PROTOCOL_STATE_DISCONNECTING /**< DISC sent, waiting for UA. */
+} hdlc_protocol_state_t;
+
 /*
  * --------------------------------------------------------------------------
  * CALLBACK DEFINITIONS
@@ -176,6 +251,17 @@ typedef void (*hdlc_output_byte_cb_t)(hdlc_u8 byte, hdlc_bool flush, void *user_
  */
 typedef void (*hdlc_on_frame_cb_t)(const hdlc_frame_t* frame, void *user_data);
 
+/**
+ * @brief Connection State Change Callback.
+ *
+ * Notifies the application when the logical connection state changes
+ * (e.g., Connected, Disconnected).
+ *
+ * @param state     The new state of the connection.
+ * @param user_data Pointer to user-defined context data.
+ */
+typedef void (*hdlc_on_state_change_cb_t)(hdlc_protocol_state_t state, void *user_data);
+
 /*
  * --------------------------------------------------------------------------
  * CONTEXT STRUCTURE
@@ -190,9 +276,32 @@ typedef void (*hdlc_on_frame_cb_t)(const hdlc_frame_t* frame, void *user_data);
  */
 typedef struct {
     /* Configuration & Callbacks */
-    hdlc_output_byte_cb_t output_byte_cb;  /**< Hardware TX callback. */
-    hdlc_on_frame_cb_t on_frame_cb; /**< Application RX callback. */
-    void *user_data;          /**< User context passed to callbacks. */
+    hdlc_output_byte_cb_t output_byte_cb;   /**< Hardware TX callback. */
+    hdlc_on_frame_cb_t on_frame_cb;         /**< Application RX callback. */
+    hdlc_on_state_change_cb_t on_state_change_cb; /**< State change callback. */
+    void *user_data;                        /**< User context passed to callbacks. */
+
+    /* Protocol Logic State */
+    volatile hdlc_protocol_state_t current_state; /**< Current connection state. */
+    hdlc_u8 my_address;                           /**< Local station address. */
+    hdlc_u8 peer_address;                         /**< Remote station address. */
+
+    /* Reliable Transmission State (Go-Back-N) */
+    hdlc_u8 vs;                 /**< Send State Variable V(S). Sequence number of next I-frame to send. */
+    hdlc_u8 vr;                 /**< Receive State Variable V(R). Sequence number of next expected I-frame. */
+    hdlc_u8 va;                 /**< Acknowledge State Variable V(A). Oldest unacknowledged sequence number. */
+    hdlc_u8 window_size;        /**< Transmit window size (1..7). */
+    hdlc_bool ack_pending;      /**< Flag indicating an acknowledgement is pending. */
+    
+    /* Retransmission Buffer (Go-Back-N, slotted) */
+    hdlc_u8 *retransmit_buffer; /**< User-supplied buffer, divided into window_size equal slots. */
+    hdlc_u32 retransmit_buffer_len; /**< Total length of the retransmit buffer. */
+    hdlc_u32 retransmit_slot_size;  /**< Max payload per slot (retransmit_buffer_len / window_size). */
+    hdlc_u32 retransmit_lens[8];    /**< Payload length stored per slot. */
+    hdlc_u8 tx_seq_to_slot[8];      /**< Dynamic mapping: Sequence number V(S) to physical buffer slot index. */
+    hdlc_u8 next_tx_slot;           /**< The next available physical slot index (0 to window_size-1). */
+    hdlc_u32 retransmit_timer_ms; /**< Timer for retransmission (counts down). */
+    hdlc_u32 retransmit_timeout_ms; /**< Configurable retransmission timeout period in ms. */
 
     /* Receiver Engine State */
     hdlc_u8 input_state;        /**< Current internal parser state. */
