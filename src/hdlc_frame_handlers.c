@@ -336,6 +336,7 @@ static inline void hdlc_process_nr(hdlc_context_t *ctx, hdlc_u8 nr) {
     if (hdlc_nr_valid(ctx->va, nr, ctx->vs)) {
         HDLC_LOG_DEBUG("rx: Peer acknowledged up to V(A)=%u", nr);
         ctx->va = nr;
+        ctx->retry_count = 0; /* Reset retry count on valid ACK */
         if (ctx->va == ctx->vs) {
             ctx->retransmit_timer_ms = 0;
         } else {

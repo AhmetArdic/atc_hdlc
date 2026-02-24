@@ -325,7 +325,7 @@ void test_input_buffer_overflow() {
   atc_hdlc_u8 small_rx_buf[10];
   atc_hdlc_context_t small_ctx;
   atc_hdlc_init(&small_ctx, small_rx_buf, sizeof(small_rx_buf), 
-                NULL, 0, 0, HDLC_DEFAULT_WINDOW_SIZE, 
+                NULL, 0, 0, HDLC_DEFAULT_WINDOW_SIZE, 3,
                 mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
   
   // Feed 20 bytes (Start + 20 bytes + End)

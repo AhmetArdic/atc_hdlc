@@ -149,6 +149,22 @@ extern "C" {
 
 /*
  * --------------------------------------------------------------------------
+ * RETRY COUNT DEFAULTS
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Default maximum retry count (N2) before link failure.
+ *
+ * Used as the default value for the max_retry_count parameter
+ * in hdlc_init(). Can be overridden at init time.
+ */
+#ifndef HDLC_DEFAULT_MAX_RETRY_COUNT
+#define HDLC_DEFAULT_MAX_RETRY_COUNT  3
+#endif
+
+/*
+ * --------------------------------------------------------------------------
  * WINDOW SIZE DEFAULTS
  * --------------------------------------------------------------------------
  */

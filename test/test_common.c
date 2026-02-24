@@ -48,6 +48,7 @@ void setup_test_context(atc_hdlc_context_t *ctx) {
                       static_retx_buf, sizeof(static_retx_buf), 
                       HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, 
                       HDLC_DEFAULT_WINDOW_SIZE, 
+                      3,
                       mock_output_byte_cb, 
                       mock_on_frame_cb, 
                       NULL, NULL);

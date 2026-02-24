@@ -282,7 +282,7 @@ void test_window_size_2_basic(void) {
     // We use mock buffers from common where possible, but context needs its own pointers if we don't use setup_test_context
     // We can use mock_rx_buffer for rx
     atc_hdlc_u8 retx_buf[128];
-    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), retx_buf, sizeof(retx_buf), HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, 2, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), retx_buf, sizeof(retx_buf), HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, 2, 3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
 
@@ -334,7 +334,7 @@ void test_gobackn_retransmit(void) {
     atc_hdlc_context_t ctx;
     atc_hdlc_u8 retx_buf[192];
     // Manual init for custom window size 3 and timeout 500
-    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), retx_buf, sizeof(retx_buf), 500, 3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), retx_buf, sizeof(retx_buf), 500, 3, 3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
 
@@ -412,6 +412,7 @@ void test_window7_mid_rej(void) {
     atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer),
                   retx_buf, sizeof(retx_buf),
                   HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, 7,
+                  3,
                   mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
@@ -554,6 +555,7 @@ static bench_result_t run_throughput_bench(int window_size) {
     atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer),
                   retx_buf, sizeof(retx_buf),
                   HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, (atc_hdlc_u8)window_size,
+                  3,
                   mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
@@ -723,6 +725,7 @@ void test_process_tx_task_simulation(void) {
     atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), 
                   retx_buf, sizeof(retx_buf), 
                   HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, 2, 
+                  3,
                   mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;

@@ -38,6 +38,7 @@ extern "C" {
  * @param retransmit_buffer_len Total length of the retransmit buffer.
  * @param retransmit_timeout_ms Retransmission timeout in milliseconds (use HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS for default).
  * @param window_size           Transmit window size, 1..7 (use HDLC_DEFAULT_WINDOW_SIZE for default).
+ * @param max_retry_count       Maximum number of retransmissions before considering the link failed (N2).
  * @param output_cb             Callback function for sending a byte to the hardware.
  * @param on_frame_cb           Callback function for receiving valid frames.
  * @param on_state_change_cb    Callback function for connection state changes (Optional, can be NULL).
@@ -48,6 +49,7 @@ void hdlc_init(hdlc_context_t *ctx,
                       hdlc_u8 *retransmit_buffer, hdlc_u32 retransmit_buffer_len,
                       hdlc_u32 retransmit_timeout_ms,
                       hdlc_u8 window_size,
+                      hdlc_u8 max_retry_count,
                       hdlc_output_byte_cb_t output_cb,
                       hdlc_on_frame_cb_t on_frame_cb,
                       hdlc_on_state_change_cb_t on_state_change_cb,

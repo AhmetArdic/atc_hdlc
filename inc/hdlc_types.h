@@ -302,6 +302,8 @@ typedef struct {
     hdlc_u8 next_tx_slot;           /**< The next available physical slot index (0 to window_size-1). */
     hdlc_u32 retransmit_timer_ms; /**< Timer for retransmission (counts down). */
     hdlc_u32 retransmit_timeout_ms; /**< Configurable retransmission timeout period in ms. */
+    hdlc_u8 max_retry_count;      /**< Maximum number of retransmissions before link failure (N2). */
+    hdlc_u8 retry_count;          /**< Current retransmission count. */
 
     /* Receiver Engine State */
     hdlc_u8 input_state;        /**< Current internal parser state. */

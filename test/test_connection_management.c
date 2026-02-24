@@ -44,7 +44,7 @@ void on_state_change(atc_hdlc_protocol_state_t state, void *user_data) {
 // Helper to reset test state (Custom for this file to include state change)
 void setup_context(void) {
     // We call init manually to inject on_state_change, but use shared buffers/callbacks for the rest
-    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), NULL, 0, HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, HDLC_DEFAULT_WINDOW_SIZE, mock_output_byte_cb, mock_on_frame_cb, on_state_change, NULL);
+    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), NULL, 0, HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, HDLC_DEFAULT_WINDOW_SIZE, 3, mock_output_byte_cb, mock_on_frame_cb, on_state_change, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02); // Me=0x01, Peer=0x02
     
     // Reset shared state

@@ -139,11 +139,13 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     hdlc_init(&node1->ctx, node1->input_buffer, sizeof(node1->input_buffer),
               node1->retransmit_buffer, sizeof(node1->retransmit_buffer),
               20, window_size, // 20ms timeout instead of 500ms for fast PC simulation
+              25, // max_retry_count (allow up to 500ms total delay before link drop)
               node_output_cb, node_on_frame_cb, node_state_cb, node1);
 
     hdlc_init(&node2->ctx, node2->input_buffer, sizeof(node2->input_buffer),
               node2->retransmit_buffer, sizeof(node2->retransmit_buffer),
               20, window_size,
+              25, // max_retry_count
               node_output_cb, node_on_frame_cb, node_state_cb, node2);
               
     hdlc_configure_addresses(&node1->ctx, 0x01, 0x02);
@@ -189,6 +191,7 @@ static bool hdlc_test_send_data(virtual_node_t *node, const uint8_t *payload, ui
     double timeout_s = (double)timeout_ms / 1000.0;
     
     while(sent < payload_len && (get_time_s() - start) < timeout_s) {
+        if (!node->connected) break;
         uint32_t to_send = (payload_len - sent) > CHUNK_SIZE ? CHUNK_SIZE : (payload_len - sent);
         
         MUTEX_LOCK(&node->ctx_lock);
@@ -209,6 +212,7 @@ static bool hdlc_test_wait_rx(volatile uint32_t *bytes_received, uint32_t expect
     double start = get_time_s();
     double timeout_s = (double)timeout_ms / 1000.0;
     while(*bytes_received < expected_bytes && (get_time_s() - start) < timeout_s) {
+        // If the receiver node's context indicates it's disconnected, there's no point in waiting
         YIELD_THREAD();
     }
     return *bytes_received == expected_bytes;
@@ -367,6 +371,7 @@ void run_go_back_n_test(int window_size) {
     double timeout_s = 5.0; // 5 seconds
     
     while(sent < bytes_to_send && (get_time_s() - start) < timeout_s) {
+        if (!node1.connected) break;
         uint32_t to_send = CHUNK_SIZE;
         if (bytes_to_send - sent < CHUNK_SIZE) to_send = bytes_to_send - sent;
         
@@ -394,6 +399,7 @@ void run_go_back_n_test(int window_size) {
     
     double rx_start = get_time_s();
     while(node2.bytes_received < bytes_to_send && (get_time_s() - rx_start) < 10.0) {
+        if (!node2.connected) break;
         YIELD_THREAD();
     }
     

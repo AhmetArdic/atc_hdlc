@@ -33,6 +33,7 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *input_buffer, hdlc_u32 input_buffer
                       hdlc_u8 *retransmit_buffer, hdlc_u32 retransmit_buffer_len,
                       hdlc_u32 retransmit_timeout_ms,
                       hdlc_u8 window_size,
+                      hdlc_u8 max_retry_count,
                       hdlc_output_byte_cb_t output_cb,
                       hdlc_on_frame_cb_t on_frame_cb,
                       hdlc_on_state_change_cb_t on_state_change_cb,
@@ -76,6 +77,8 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *input_buffer, hdlc_u32 input_buffer
   ctx->va = 0;
   ctx->ack_pending = false;
   ctx->retransmit_timeout_ms = retransmit_timeout_ms;
+  ctx->max_retry_count = max_retry_count;
+  ctx->retry_count = 0;
   ctx->next_tx_slot = 0;
   memset(ctx->tx_seq_to_slot, 0, sizeof(ctx->tx_seq_to_slot));
 }
@@ -150,13 +153,33 @@ void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms) {
             }
 
             if (ctx->retransmit_timer_ms == 0) {
-                // Timeout! Send Enquiry (RR with P=1) to poll receiver status
-                HDLC_LOG_WARN("tx: Retransmit Timeout! Sending Enquiry RR(P=1)");
+                ctx->retry_count++;
                 
-                hdlc_send_rr(ctx, 1);
-                
-                // Restart Timer expecting a response (F=1)
-                ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
+                if (ctx->max_retry_count > 0 && ctx->retry_count > ctx->max_retry_count) {
+                    HDLC_LOG_ERROR("tx: Link Failure! Max retransmission limit reached.");
+                    
+                    /* 1. Veri aktarimi durumu durdurulmali */
+                    hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_DISCONNECTED);
+                    
+                    /* 2. Gonderim ve alim degiskenleri sifirlanmali */
+                    ctx->vs = 0;
+                    ctx->vr = 0;
+                    ctx->va = 0;
+                    ctx->ack_pending = false;
+                    ctx->retry_count = 0;
+                    
+                    /* 3. Tamponda (Buffer) bekleyen paketler iptal edilmeli */
+                    ctx->next_tx_slot = 0;
+                    memset(ctx->tx_seq_to_slot, 0, sizeof(ctx->tx_seq_to_slot));
+                } else {
+                    /* Timeout! Send Enquiry (RR with P=1) to poll receiver status */
+                    HDLC_LOG_WARN("tx: Retransmit Timeout! Sending Enquiry RR(P=1) (Retry %u/%u)", ctx->retry_count, ctx->max_retry_count);
+                    
+                    hdlc_send_rr(ctx, 1);
+                    
+                    /* Restart Timer expecting a response (F=1) */
+                    ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
+                }
             }
         }
     }
