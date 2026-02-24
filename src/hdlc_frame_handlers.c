@@ -95,6 +95,8 @@ static void hdlc_retransmit_go_back_n(hdlc_context_t *ctx, hdlc_u8 from_seq) {
 
     hdlc_u8 old_vs = ctx->vs;
     
+    HDLC_LOG_WARN("tx: Go-Back-N triggered! Rewinding V(S) from %u back to %u", old_vs, from_seq);
+
     /* Rewind the Go-Back-N window */
     ctx->vs = from_seq;
 
@@ -348,7 +350,11 @@ static inline bool hdlc_nr_valid(hdlc_u8 va, hdlc_u8 nr, hdlc_u8 vs) {
 
 static inline void hdlc_process_nr(hdlc_context_t *ctx, hdlc_u8 nr) {
     if (hdlc_nr_valid(ctx->va, nr, ctx->vs)) {
-        HDLC_LOG_DEBUG("rx: Peer acknowledged up to V(A)=%u", nr);
+        if (nr < ctx->va && nr <= ctx->vs) {
+             HDLC_LOG_DEBUG("rx: Peer acknowledged across a wrap-around! (V(A)=%u -> N(R)=%u)", ctx->va, nr);
+        } else {
+             HDLC_LOG_DEBUG("rx: Peer acknowledged up to V(A)=%u (now %u)", ctx->va, nr);
+        }
         ctx->va = nr;
         ctx->retry_count = 0; /* Reset retry count on valid ACK */
         if (ctx->va == ctx->vs) {

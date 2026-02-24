@@ -157,6 +157,7 @@ void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms) {
                 
                 if (ctx->max_retry_count > 0 && ctx->retry_count > ctx->max_retry_count) {
                     HDLC_LOG_ERROR("tx: Link Failure! Max retransmission limit reached.");
+                    HDLC_LOG_DEBUG("tx: State before reset -> V(S)=%u, V(R)=%u, V(A)=%u", ctx->vs, ctx->vr, ctx->va);
                     
                     /* 1. Veri aktarimi durumu durdurulmali */
                     hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_DISCONNECTED);
