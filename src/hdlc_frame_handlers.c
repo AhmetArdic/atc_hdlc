@@ -326,10 +326,9 @@ static bool handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
  */
 
 static inline bool hdlc_nr_valid(hdlc_u8 va, hdlc_u8 nr, hdlc_u8 vs) {
-    if (va == vs) return false;
     hdlc_u8 diff_nr = (nr - va + HDLC_SEQUENCE_MODULUS) % HDLC_SEQUENCE_MODULUS;
     hdlc_u8 diff_vs = (vs - va + HDLC_SEQUENCE_MODULUS) % HDLC_SEQUENCE_MODULUS;
-    return (diff_nr > 0 && diff_nr <= diff_vs);
+    return (diff_nr <= diff_vs);
 }
 
 static inline void hdlc_process_nr(hdlc_context_t *ctx, hdlc_u8 nr) {

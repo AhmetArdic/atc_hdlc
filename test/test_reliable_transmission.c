@@ -770,6 +770,140 @@ void test_process_tx_task_simulation(void) {
     }
 }
 
+void test_nr_modulo_validation(void) {
+    printf("\nTEST: N(R) Modulo Validation Bug\n");
+    reset_test_state();
+
+    atc_hdlc_context_t ctx;
+    atc_hdlc_u8 retx_buf[256];
+    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), 
+                  retx_buf, sizeof(retx_buf), 
+                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, 7, 
+                  3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
+
+    // 1. Send 6 frames (0 to 5)
+    char payload[8] = "DATA";
+    for (int i = 0; i < 6; i++) {
+        atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8 *)payload, 4);
+    }
+    // 2. Peer ACKs them: N(R)=6
+    atc_hdlc_frame_t rr_frame = { .address=0x01, .control=atc_hdlc_create_s_ctrl(0x00, 6, 0) };
+    atc_hdlc_u32 len = 0;
+    atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
+    atc_hdlc_input_bytes(&ctx, temp_input_buffer, len);
+    
+    if (ctx.va != 6 || ctx.vs != 6) { test_fail("NR Bug Test", "Setup failed"); return; }
+    
+    // 3. Send 2 more frames (Seq 6, and Seq 7)
+    atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8 *)"DATA6", 5);
+    atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8 *)"DATA7", 5);
+    
+    // Now V(A)=6, V(S)=0 (wrap around). Outstanding: 6, 7.
+    if (ctx.va != 6 || ctx.vs != 0) { test_fail("NR Bug Test", "Wrap around setup failed"); return; }
+
+    // Tick the timer so we can observe if it resets
+    atc_hdlc_tick(&ctx, 100);
+    atc_hdlc_u32 timer_before = ctx.retransmit_timer_ms;
+
+    // 4. Peer sends RR N(R)=6. This is perfectly valid (peer acknowledging up to 5, waiting for 6)
+    // If hdlc_nr_valid has the bug, it will reject N(R)=6 because it thinks 6 is outside [6, 0].
+    atc_hdlc_frame_t rr_frame2 = { .address=0x01, .control=atc_hdlc_create_s_ctrl(0x00, 6, 0) };
+    atc_hdlc_frame_pack(&rr_frame2, temp_input_buffer, sizeof(temp_input_buffer), &len);
+    atc_hdlc_input_bytes(&ctx, temp_input_buffer, len);
+
+    // If valid, the timer should be reset to timeout. If ignored, the timer continues ticking down.
+    if (ctx.retransmit_timer_ms == 0 || ctx.retransmit_timer_ms == timer_before) {
+        test_fail("NR Modulo Bug", "Ignored valid N(R)=6 due to modulo arithmetic bug");
+        return;
+    }
+
+    test_pass("NR Modulo Bug Fixed");
+}
+
+void test_nr_edge_cases(void) {
+    printf("\nTEST: N(R) Edge Cases\n");
+    reset_test_state();
+
+    atc_hdlc_context_t ctx;
+    atc_hdlc_u8 retx_buf[256];
+    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), 
+                  retx_buf, sizeof(retx_buf), 
+                  1000, 7, 
+                  3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
+
+    typedef struct {
+        uint8_t va;
+        uint8_t vs;
+        uint8_t nr;
+        bool expect_valid;
+        const char *desc;
+    } nr_test_case_t;
+
+    nr_test_case_t cases[] = {
+        // Normal window [va=0, vs=3)
+        { 0, 3, 0, true,  "Normal window, ACK none" },
+        { 0, 3, 1, true,  "Normal window, ACK 0" },
+        { 0, 3, 3, true,  "Normal window, ACK all" },
+        { 0, 3, 4, false, "Normal window, out of bounds future" },
+        { 0, 3, 7, false, "Normal window, out of bounds past" },
+
+        // Wrap-around window [va=6, vs=1) 
+        { 6, 1, 6, true,  "Wrap window, ACK none" },
+        { 6, 1, 7, true,  "Wrap window, ACK 6" },
+        { 6, 1, 0, true,  "Wrap window, ACK 6,7" },
+        { 6, 1, 1, true,  "Wrap window, ACK all" },
+        { 6, 1, 2, false, "Wrap window, out of bounds future" },
+        { 6, 1, 5, false, "Wrap window, out of bounds past" },
+
+        // Full window [va=2, vs=1)
+        { 2, 1, 2, true,  "Full window wrap, ACK none" },
+        { 2, 1, 0, true,  "Full window wrap, ACK past wrap" },
+        { 2, 1, 1, true,  "Full window wrap, ACK all" },
+
+        // Empty window [va=4, vs=4)
+        { 4, 4, 4, true,  "Empty window, ACK none/all" },
+        { 4, 4, 5, false, "Empty window, invalid future" },
+        { 4, 4, 3, false, "Empty window, invalid past" }
+    };
+
+    for (int i = 0; i < sizeof(cases)/sizeof(cases[0]); i++) {
+        ctx.va = cases[i].va;
+        ctx.vs = cases[i].vs;
+        ctx.retransmit_timer_ms = 100; // arbitrary tick value to observe change
+
+        atc_hdlc_frame_t rr_frame = { .address=0x01, .control=atc_hdlc_create_s_ctrl(0x00, cases[i].nr, 0) };
+        atc_hdlc_u32 len = 0;
+        atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
+        
+        atc_hdlc_input_bytes(&ctx, temp_input_buffer, len);
+
+        bool was_treated_as_valid = false;
+        
+        // If the frame is valid, V(A) becomes N(R).
+        // If N(R) == V(A), V(A) doesn't change, but processing a valid N(R) updates the retransmit timer.
+        if (ctx.va != cases[i].va) {
+            was_treated_as_valid = true;
+        } else if (cases[i].nr == cases[i].va && ctx.retransmit_timer_ms != 100) {
+            was_treated_as_valid = true;
+        }
+
+        if (was_treated_as_valid != cases[i].expect_valid) {
+            char fail_msg[256];
+            snprintf(fail_msg, sizeof(fail_msg), "%s. Case: %s [va=%u vs=%u nr=%u]", 
+                cases[i].expect_valid ? "Expected Valid, but rejected" : "Expected Invalid, but accepted", 
+                cases[i].desc, cases[i].va, cases[i].vs, cases[i].nr);
+            test_fail("NR Edge Cases", fail_msg);
+            return;
+        }
+    }
+    
+    test_pass("NR Edge Cases Evaluated Successfully");
+}
+
 int main(void) {
   printf("\n%sSTARTING RELIABLE TRANSMISSION TEST SUITE%s\n", COL_YELLOW,
          COL_RESET);
@@ -786,6 +920,8 @@ int main(void) {
   test_window7_mid_rej();
   test_throughput_benchmark();
   test_process_tx_task_simulation();
+  test_nr_modulo_validation();
+  test_nr_edge_cases();
 
   printf("\n%sALL RELIABLE TRANSMISSION TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
   return 0;
