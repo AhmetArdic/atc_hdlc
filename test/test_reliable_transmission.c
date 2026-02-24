@@ -904,6 +904,59 @@ void test_nr_edge_cases(void) {
     test_pass("NR Edge Cases Evaluated Successfully");
 }
 
+void test_state_initialization(void) {
+    printf("\nTEST: SABM/UA State Initialization\n");
+    reset_test_state();
+
+    atc_hdlc_context_t ctx;
+    setup_test_context(&ctx);
+    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
+
+    // 1. Send an I-frame so that V(S) increments to 1
+    atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8 *)"TEST", 4);
+    
+    // Simulate peer sending an I-frame so V(R) increments to 1
+    atc_hdlc_frame_t peer_i_frame = {
+        .address = 0x01,
+        .control = atc_hdlc_create_i_ctrl(0, 0, 0),
+        .information = (atc_hdlc_u8 *)"PEER",
+        .information_len = 4
+    };
+    atc_hdlc_u32 len = 0;
+    atc_hdlc_frame_pack(&peer_i_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
+    atc_hdlc_input_bytes(&ctx, temp_input_buffer, len);
+    
+    // Simulate peer sending RR N(R)=1 so V(A) increments to 1
+    atc_hdlc_frame_t peer_rr = { .address = 0x01, .control = atc_hdlc_create_s_ctrl(0x00, 1, 0) };
+    atc_hdlc_frame_pack(&peer_rr, temp_input_buffer, sizeof(temp_input_buffer), &len);
+    atc_hdlc_input_bytes(&ctx, temp_input_buffer, len);
+
+    if (ctx.vs == 0 || ctx.vr == 0 || ctx.va == 0) {
+        test_fail("State Init Setup", "Failed to advance state variables before reset");
+        return;
+    }
+
+    // 2. Peer sends SABM to reset connection
+    printf("   Peer sends SABM to trigger reset.\n");
+    atc_hdlc_frame_t sabm_frame = {
+        .address = 0x01,
+        .control = atc_hdlc_create_u_ctrl(3, 1, 1), // SABM modifier lo=3, hi=1
+    };
+    atc_hdlc_frame_pack(&sabm_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
+    atc_hdlc_input_bytes(&ctx, temp_input_buffer, len);
+
+    // After processing SABM, we should be connected and state variables MUST be 0
+    if (ctx.vs != 0 || ctx.vr != 0 || ctx.va != 0) {
+        char msg[128];
+        sprintf(msg, "Variables not reset: V(S)=%d, V(R)=%d, V(A)=%d", ctx.vs, ctx.vr, ctx.va);
+        test_fail("State Init", msg);
+        return;
+    }
+
+    test_pass("SABM/UA State Initialization Working");
+}
+
 int main(void) {
   printf("\n%sSTARTING RELIABLE TRANSMISSION TEST SUITE%s\n", COL_YELLOW,
          COL_RESET);
@@ -922,6 +975,7 @@ int main(void) {
   test_process_tx_task_simulation();
   test_nr_modulo_validation();
   test_nr_edge_cases();
+  test_state_initialization();
 
   printf("\n%sALL RELIABLE TRANSMISSION TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
   return 0;

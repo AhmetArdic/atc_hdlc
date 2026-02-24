@@ -159,7 +159,21 @@ static bool handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
  */
 
 /* U-Frame sub-handlers */
+static void hdlc_reset_connection_state(hdlc_context_t *ctx) {
+    ctx->vs = 0;
+    ctx->vr = 0;
+    ctx->va = 0;
+    if (ctx->retransmit_buffer != NULL) {
+        memset(ctx->retransmit_lens, 0, sizeof(ctx->retransmit_lens));
+    }
+    ctx->next_tx_slot = 0;
+    ctx->ack_pending = false;
+    ctx->retransmit_timer_ms = 0;
+    ctx->retry_count = 0;
+}
+
 static void hdlc_process_sabm(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+    hdlc_reset_connection_state(ctx);
     hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_CONNECTED);
     hdlc_send_ua(ctx, frame->control.u_frame.pf);
 }
@@ -192,6 +206,7 @@ static void hdlc_process_disc(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
 static void hdlc_process_ua(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
     (void)frame;
     if (ctx->current_state == HDLC_PROTOCOL_STATE_CONNECTING) {
+        hdlc_reset_connection_state(ctx);
         hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_CONNECTED);
     } else if (ctx->current_state == HDLC_PROTOCOL_STATE_DISCONNECTING) {
         hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_DISCONNECTED);
@@ -326,8 +341,8 @@ static bool handle_u_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
  */
 
 static inline bool hdlc_nr_valid(hdlc_u8 va, hdlc_u8 nr, hdlc_u8 vs) {
-    hdlc_u8 diff_nr = (nr - va + HDLC_SEQUENCE_MODULUS) % HDLC_SEQUENCE_MODULUS;
-    hdlc_u8 diff_vs = (vs - va + HDLC_SEQUENCE_MODULUS) % HDLC_SEQUENCE_MODULUS;
+    hdlc_u8 diff_nr = (nr - va) & (HDLC_SEQUENCE_MODULUS - 1);
+    hdlc_u8 diff_vs = (vs - va) & (HDLC_SEQUENCE_MODULUS - 1);
     return (diff_nr <= diff_vs);
 }
 
