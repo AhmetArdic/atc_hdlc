@@ -36,7 +36,7 @@ extern "C" {
  * @param retransmit_buffer     Pointer to buffer for storing unacknowledged frames (for retransmission).
  *                              The buffer is divided into window_size equal slots internally.
  * @param retransmit_buffer_len Total length of the retransmit buffer.
- * @param retransmit_timeout_ms Retransmission timeout in milliseconds (use HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS for default).
+ * @param retransmit_timeout    Retransmission timeout in ticks (use HDLC_DEFAULT_RETRANSMIT_TIMEOUT for default).
  * @param window_size           Transmit window size, 1..7 (use HDLC_DEFAULT_WINDOW_SIZE for default).
  * @param max_retry_count       Maximum number of retransmissions before considering the link failed (N2).
  * @param output_cb             Callback function for sending a byte to the hardware.
@@ -47,7 +47,7 @@ extern "C" {
 void hdlc_init(hdlc_context_t *ctx, 
                       hdlc_u8 *input_buffer, hdlc_u32 input_buffer_len,
                       hdlc_u8 *retransmit_buffer, hdlc_u32 retransmit_buffer_len,
-                      hdlc_u32 retransmit_timeout_ms,
+                      hdlc_u32 retransmit_timeout,
                       hdlc_u8 window_size,
                       hdlc_u8 max_retry_count,
                       hdlc_output_byte_cb_t output_cb,
@@ -99,13 +99,14 @@ bool hdlc_is_connected(hdlc_context_t *ctx);
 /**
  * @brief Periodic Tick for Timers.
  *
- * Must be called periodically (e.g., every 1ms or 10ms) to drive
- * internal timers for retransmission and status polling.
+ * Must be called periodically to drive internal timers for
+ * retransmission and delayed ACK. Each call decrements the timer
+ * by 1 tick. The user defines the tick period by choosing the call
+ * frequency (e.g., every 1ms, 10ms, or 100ms).
  *
  * @param ctx Pointer to the initialized HDLC context.
- * @param delta_ms Time elapsed since last call in milliseconds.
  */
-void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms);
+void hdlc_tick(hdlc_context_t *ctx);
 
 /**
  * @brief Input a received byte into the HDLC Parser.

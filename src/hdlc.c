@@ -31,7 +31,7 @@
  */
 void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *input_buffer, hdlc_u32 input_buffer_len,
                       hdlc_u8 *retransmit_buffer, hdlc_u32 retransmit_buffer_len,
-                      hdlc_u32 retransmit_timeout_ms,
+                      hdlc_u32 retransmit_timeout,
                       hdlc_u8 window_size,
                       hdlc_u8 max_retry_count,
                       hdlc_output_byte_cb_t output_cb,
@@ -77,7 +77,7 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *input_buffer, hdlc_u32 input_buffer
   ctx->va = 0;
   ctx->ack_pending = false;
   ctx->rej_exception = false;
-  ctx->retransmit_timeout_ms = retransmit_timeout_ms;
+  ctx->retransmit_timeout = retransmit_timeout;
   ctx->max_retry_count = max_retry_count;
   ctx->retry_count = 0;
   ctx->next_tx_slot = 0;
@@ -141,7 +141,7 @@ bool hdlc_is_connected(hdlc_context_t *ctx) {
  * @brief Periodic Tick for Timers.
  * @see hdlc.h
  */
-void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms) {
+void hdlc_tick(hdlc_context_t *ctx) {
     if (ctx == NULL) return;
 
     // Delayed ACK: Flush pending acknowledgement
@@ -152,14 +152,10 @@ void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms) {
 
     // Retransmission Timer (only if frames are outstanding)
     if (ctx->va != ctx->vs) {
-        if (ctx->retransmit_timer_ms > 0) {
-            if (ctx->retransmit_timer_ms > delta_ms) {
-                ctx->retransmit_timer_ms -= delta_ms;
-            } else {
-                ctx->retransmit_timer_ms = 0;
-            }
+        if (ctx->retransmit_timer > 0) {
+            ctx->retransmit_timer--;
 
-            if (ctx->retransmit_timer_ms == 0) {
+            if (ctx->retransmit_timer == 0) {
                 ctx->retry_count++;
                 
                 if (ctx->max_retry_count > 0 && ctx->retry_count > ctx->max_retry_count) {
@@ -186,7 +182,7 @@ void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms) {
                     hdlc_send_rr(ctx, 1);
                     
                     /* Restart Timer expecting a response (F=1) */
-                    ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
+                    ctx->retransmit_timer = ctx->retransmit_timeout;
                 }
             }
         }

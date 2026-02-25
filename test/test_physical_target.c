@@ -15,7 +15,7 @@
 #define BAUDRATE B921600
 #define CHUNK_SIZE 355
 #define BUFFER_SIZE 4096
-#define PDF_PATH "../test/test.pdf"
+#define PDF_PATH TEST_DATA_DIR "/test.pdf"
 
 typedef struct {
     int fd;
@@ -135,7 +135,7 @@ static bool wait_for_connection(physical_node_t *node, int timeout_ms) {
         
         if (retries % 1000 == 0) {
             pthread_mutex_lock(&node->ctx_lock);
-            hdlc_tick(&node->ctx, 1000);
+            for(int _t=0; _t<1000; _t++) hdlc_tick(&node->ctx);
             pthread_mutex_unlock(&node->ctx_lock);
         }
         
@@ -165,7 +165,7 @@ void* serial_rx_thread(void* arg) {
         }
         
         if (elapsed_ms >= 10) {
-            hdlc_tick(&node->ctx, elapsed_ms);
+            for(long _t=0; _t<elapsed_ms; _t++) hdlc_tick(&node->ctx);
             last = now;
         }
         

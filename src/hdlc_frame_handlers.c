@@ -117,7 +117,7 @@ static void hdlc_retransmit_go_back_n(hdlc_context_t *ctx, hdlc_u8 from_seq) {
         }
     }
 
-    ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
+    ctx->retransmit_timer = ctx->retransmit_timeout;
 }
 
 static bool handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
@@ -177,7 +177,7 @@ static void hdlc_reset_connection_state(hdlc_context_t *ctx) {
     ctx->next_tx_slot = 0;
     ctx->ack_pending = false;
     ctx->rej_exception = false;
-    ctx->retransmit_timer_ms = 0;
+    ctx->retransmit_timer = 0;
     ctx->retry_count = 0;
 }
 
@@ -372,9 +372,9 @@ static inline void hdlc_process_nr(hdlc_context_t *ctx, hdlc_u8 nr) {
         }
 
         if (ctx->va == ctx->vs) {
-            ctx->retransmit_timer_ms = 0;
+            ctx->retransmit_timer = 0;
         } else {
-            ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
+            ctx->retransmit_timer = ctx->retransmit_timeout;
         }
     } else {
         HDLC_LOG_WARN("rx: Ignored invalid N(R)=%u (V(A)=%u, V(S)=%u)", nr, ctx->va, ctx->vs);

@@ -101,10 +101,10 @@ void* node_thread_func(void* arg) {
         
         if (elapsed_ms >= 1.0) {
             uint32_t ticks = (uint32_t)elapsed_ms;
-            hdlc_tick(&node->ctx, ticks);
+            for(uint32_t _t=0; _t<ticks; _t++) hdlc_tick(&node->ctx);
             last_time += (double)ticks / 1000.0; // Preserve fractional ms
         } else {
-            hdlc_tick(&node->ctx, 0);
+            hdlc_tick(&node->ctx);
         }
         MUTEX_UNLOCK(&node->ctx_lock);
         

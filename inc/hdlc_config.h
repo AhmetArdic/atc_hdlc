@@ -138,13 +138,14 @@ extern "C" {
  */
 
 /**
- * @brief Default retransmission (T1) timeout in milliseconds.
+ * @brief Default retransmission (T1) timeout in ticks.
  *
- * Used as the default value for the retransmit_timeout_ms parameter
+ * Used as the default value for the retransmit_timeout parameter
  * in hdlc_init(). Can be overridden at init time.
+ * The actual time depends on how frequently hdlc_tick() is called.
  */
-#ifndef HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS
-#define HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS  1000
+#ifndef HDLC_DEFAULT_RETRANSMIT_TIMEOUT
+#define HDLC_DEFAULT_RETRANSMIT_TIMEOUT  1000
 #endif
 
 /*
@@ -191,7 +192,7 @@ extern "C" {
  * Set to 1 to enable HDLC debug printouts. Requires <stdio.h>.
  */
 #ifndef HDLC_ENABLE_DEBUG_LOGS
-#define HDLC_ENABLE_DEBUG_LOGS 1
+#define HDLC_ENABLE_DEBUG_LOGS 0
 #endif
 
 #if HDLC_ENABLE_DEBUG_LOGS

@@ -79,7 +79,7 @@ void test_reliable_retransmission(void) {
     mock_output_len = 0; // Clear output
     
     // Tick Timer (1001 ticks of 1ms)
-    for(int i=0; i<1001; i++) atc_hdlc_tick(&ctx, 1);
+    for(int i=0; i<1001; i++) atc_hdlc_tick(&ctx);
     
     // Verify Retransmission Enquiry
     // 0x11 is S-frame, RR, P=1, N(R)=0. (b0=1, b1=0, s=0, p=1, nr=0) => 00010001 = 0x11
@@ -282,7 +282,7 @@ void test_window_size_2_basic(void) {
     // We use mock buffers from common where possible, but context needs its own pointers if we don't use setup_test_context
     // We can use mock_rx_buffer for rx
     atc_hdlc_u8 retx_buf[128];
-    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), retx_buf, sizeof(retx_buf), HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, 2, 3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), retx_buf, sizeof(retx_buf), HDLC_DEFAULT_RETRANSMIT_TIMEOUT, 2, 3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
 
@@ -354,8 +354,8 @@ void test_gobackn_retransmit(void) {
     // Record output frame count before timeout
     atc_hdlc_u32 frames_before = ctx.stats_output_frames;
 
-    // Trigger timeout (500ms)
-    atc_hdlc_tick(&ctx, 500);
+    // Trigger timeout (500 ticks)
+    for(int _t=0; _t<500; _t++) atc_hdlc_tick(&ctx);
 
     atc_hdlc_u32 enquiry_frames = ctx.stats_output_frames - frames_before;
     if (enquiry_frames == 1) {
@@ -390,7 +390,7 @@ void test_gobackn_retransmit(void) {
     }
 
     // Timer should have been restarted
-    if (ctx.retransmit_timer_ms == 500) {
+    if (ctx.retransmit_timer == 500) {
         test_pass("GBN Retransmit: Timer restarted");
     } else {
         test_fail("GBN Retransmit", "Timer check failed");
@@ -411,7 +411,7 @@ void test_window7_mid_rej(void) {
     atc_hdlc_u8 retx_buf[512];
     atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer),
                   retx_buf, sizeof(retx_buf),
-                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, 7,
+                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT, 7,
                   3,
                   mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
@@ -554,7 +554,7 @@ static bench_result_t run_throughput_bench(int window_size) {
     atc_hdlc_u8 retx_buf[4096];
     atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer),
                   retx_buf, sizeof(retx_buf),
-                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, (atc_hdlc_u8)window_size,
+                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT, (atc_hdlc_u8)window_size,
                   3,
                   mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
@@ -724,7 +724,7 @@ void test_process_tx_task_simulation(void) {
     // We use window size 2 so the task hits a "Window Full" state and returns TX_SENDING
     atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), 
                   retx_buf, sizeof(retx_buf), 
-                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, 2, 
+                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT, 2, 
                   3,
                   mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
@@ -778,7 +778,7 @@ void test_nr_modulo_validation(void) {
     atc_hdlc_u8 retx_buf[256];
     atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), 
                   retx_buf, sizeof(retx_buf), 
-                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, 7, 
+                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT, 7, 
                   3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
@@ -804,8 +804,8 @@ void test_nr_modulo_validation(void) {
     if (ctx.va != 6 || ctx.vs != 0) { test_fail("NR Bug Test", "Wrap around setup failed"); return; }
 
     // Tick the timer so we can observe if it resets
-    atc_hdlc_tick(&ctx, 100);
-    atc_hdlc_u32 timer_before = ctx.retransmit_timer_ms;
+    for(int _t=0; _t<100; _t++) atc_hdlc_tick(&ctx);
+    atc_hdlc_u32 timer_before = ctx.retransmit_timer;
 
     // 4. Peer sends RR N(R)=6. This is perfectly valid (peer acknowledging up to 5, waiting for 6)
     // If hdlc_nr_valid has the bug, it will reject N(R)=6 because it thinks 6 is outside [6, 0].
@@ -814,7 +814,7 @@ void test_nr_modulo_validation(void) {
     atc_hdlc_input_bytes(&ctx, temp_input_buffer, len);
 
     // If valid, the timer should be reset to timeout. If ignored, the timer continues ticking down.
-    if (ctx.retransmit_timer_ms == 0 || ctx.retransmit_timer_ms == timer_before) {
+    if (ctx.retransmit_timer == 0 || ctx.retransmit_timer == timer_before) {
         test_fail("NR Modulo Bug", "Ignored valid N(R)=6 due to modulo arithmetic bug");
         return;
     }
@@ -873,7 +873,7 @@ void test_nr_edge_cases(void) {
     for (int i = 0; i < sizeof(cases)/sizeof(cases[0]); i++) {
         ctx.va = cases[i].va;
         ctx.vs = cases[i].vs;
-        ctx.retransmit_timer_ms = 100; // arbitrary tick value to observe change
+        ctx.retransmit_timer = 100; // arbitrary tick value to observe change
 
         atc_hdlc_frame_t rr_frame = { .address=0x01, .control=atc_hdlc_create_s_ctrl(0x00, cases[i].nr, 0) };
         atc_hdlc_u32 len = 0;
@@ -887,7 +887,7 @@ void test_nr_edge_cases(void) {
         // If N(R) == V(A), V(A) doesn't change, but processing a valid N(R) updates the retransmit timer.
         if (ctx.va != cases[i].va) {
             was_treated_as_valid = true;
-        } else if (cases[i].nr == cases[i].va && ctx.retransmit_timer_ms != 100) {
+        } else if (cases[i].nr == cases[i].va && ctx.retransmit_timer != 100) {
             was_treated_as_valid = true;
         }
 

@@ -305,7 +305,7 @@ bool hdlc_output_frame_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len)
   
   // Start Timer (only if this is the first outstanding frame)
   if (outstanding == 0) {
-      ctx->retransmit_timer_ms = ctx->retransmit_timeout_ms;
+      ctx->retransmit_timer = ctx->retransmit_timeout;
   }
   
   return true;
