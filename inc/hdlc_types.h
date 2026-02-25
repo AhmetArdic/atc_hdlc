@@ -292,6 +292,7 @@ typedef struct {
     hdlc_u8 va;                 /**< Acknowledge State Variable V(A). Oldest unacknowledged sequence number. */
     hdlc_u8 window_size;        /**< Transmit window size (1..7). */
     hdlc_bool ack_pending;      /**< Flag indicating an acknowledgement is pending. */
+    hdlc_bool rej_exception;    /**< REJ exception condition. Prevents duplicate REJ retransmission. */
     
     /* Retransmission Buffer (Go-Back-N, slotted) */
     hdlc_u8 *retransmit_buffer; /**< User-supplied buffer, divided into window_size equal slots. */

@@ -191,7 +191,7 @@ extern "C" {
  * Set to 1 to enable HDLC debug printouts. Requires <stdio.h>.
  */
 #ifndef HDLC_ENABLE_DEBUG_LOGS
-#define HDLC_ENABLE_DEBUG_LOGS 0
+#define HDLC_ENABLE_DEBUG_LOGS 1
 #endif
 
 #if HDLC_ENABLE_DEBUG_LOGS

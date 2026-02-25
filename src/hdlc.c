@@ -76,6 +76,7 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *input_buffer, hdlc_u32 input_buffer
   ctx->vr = 0;
   ctx->va = 0;
   ctx->ack_pending = false;
+  ctx->rej_exception = false;
   ctx->retransmit_timeout_ms = retransmit_timeout_ms;
   ctx->max_retry_count = max_retry_count;
   ctx->retry_count = 0;

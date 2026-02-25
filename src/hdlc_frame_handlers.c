@@ -136,12 +136,22 @@ static bool handle_s_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
       hdlc_process_nr(ctx, msg_nr);
   }
   else if (mode == HDLC_S_REJ) {
-      if (ctx->va != ctx->vs) {
-          hdlc_process_nr(ctx, msg_nr);
+      /* Always process N(R) for acknowledgement */
+      hdlc_process_nr(ctx, msg_nr);
+
+      /*
+       * REJ exception condition:
+       * Only the first REJ triggers Go-Back-N retransmission.
+       * Subsequent duplicate REJ frames are treated as simple ACKs.
+       * The exception is cleared when V(A) advances past the REJ point.
+       */
+      if (!ctx->rej_exception && ctx->va != ctx->vs) {
+          ctx->rej_exception = true;
           hdlc_retransmit_go_back_n(ctx, msg_nr);
       }
   }
 
+  /* P/F handling: respond before any retransmission for correct ordering */
   if (is_command && msg_pf) {
       hdlc_send_response_rr(ctx, 1);
   } else if (!is_command && msg_pf) {
@@ -170,6 +180,7 @@ static void hdlc_reset_connection_state(hdlc_context_t *ctx) {
     }
     ctx->next_tx_slot = 0;
     ctx->ack_pending = false;
+    ctx->rej_exception = false;
     ctx->retransmit_timer_ms = 0;
     ctx->retry_count = 0;
 }
@@ -350,6 +361,7 @@ static inline bool hdlc_nr_valid(hdlc_u8 va, hdlc_u8 nr, hdlc_u8 vs) {
 
 static inline void hdlc_process_nr(hdlc_context_t *ctx, hdlc_u8 nr) {
     if (hdlc_nr_valid(ctx->va, nr, ctx->vs)) {
+        hdlc_u8 old_va = ctx->va;
         if (nr < ctx->va && nr <= ctx->vs) {
              HDLC_LOG_DEBUG("rx: Peer acknowledged across a wrap-around! (V(A)=%u -> N(R)=%u)", ctx->va, nr);
         } else {
@@ -357,6 +369,12 @@ static inline void hdlc_process_nr(hdlc_context_t *ctx, hdlc_u8 nr) {
         }
         ctx->va = nr;
         ctx->retry_count = 0; /* Reset retry count on valid ACK */
+
+        /* Clear REJ exception when V(A) advances */
+        if (ctx->va != old_va) {
+            ctx->rej_exception = false;
+        }
+
         if (ctx->va == ctx->vs) {
             ctx->retransmit_timer_ms = 0;
         } else {
