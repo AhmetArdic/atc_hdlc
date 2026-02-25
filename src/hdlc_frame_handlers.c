@@ -75,10 +75,6 @@ static bool handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   if (msg_p) {
       hdlc_send_rr(ctx, 1);
       ctx->ack_pending = false;
-  } 
-  else if (ctx->ack_pending) {
-       hdlc_send_rr(ctx, 0);
-       ctx->ack_pending = false;
   }
   
   return true; // Frame accepted and in-sequence

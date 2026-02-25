@@ -251,7 +251,7 @@ int main(void) {
     
     hdlc_init(&node.ctx, node.input_buffer, sizeof(node.input_buffer),
               node.retransmit_buffer, sizeof(node.retransmit_buffer),
-              1000, 7, 3, node_output_cb, node_on_frame_cb, node_state_cb, &node);
+              50, 7, 3, node_output_cb, node_on_frame_cb, node_state_cb, &node);
 
     hdlc_configure_addresses(&node.ctx, 0x01, 0x02);
 
@@ -296,8 +296,10 @@ int main(void) {
                     printf("  [Wait] TX Window full. V(S)=%u, V(R)=%u, V(A)=%u\n",
                            node.ctx.vs, node.ctx.vr, node.ctx.va);
                 }
-                usleep(100);
+                usleep(50);
             }
+
+            //usleep(2000);
         }
         
         sent_bytes += chunk;
@@ -307,7 +309,7 @@ int main(void) {
             fflush(stdout);
         }
         
-        usleep(100); 
+        usleep(50); 
     }
 
     if (!node.running) {

@@ -143,7 +143,13 @@ bool hdlc_is_connected(hdlc_context_t *ctx) {
  */
 void hdlc_tick(hdlc_context_t *ctx, hdlc_u32 delta_ms) {
     if (ctx == NULL) return;
-    
+
+    // Delayed ACK: Flush pending acknowledgement
+    if (ctx->ack_pending) {
+        hdlc_send_rr(ctx, 0);
+        ctx->ack_pending = false;
+    }
+
     // Retransmission Timer (only if frames are outstanding)
     if (ctx->va != ctx->vs) {
         if (ctx->retransmit_timer_ms > 0) {
