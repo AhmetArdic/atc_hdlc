@@ -487,7 +487,6 @@ static uint32_t send_data(physical_node_t *node,
 
 /** @brief Wait for echo replies up to timeout. */
 static void wait_for_echoes(physical_node_t *node, uint32_t expected, int timeout_ms)
-static void wait_for_echoes(physical_node_t *node, uint32_t expected, int timeout_ms)
 {
     while (node->bytes_received < expected && timeout_ms > 0 && node->running) {
         sleep_ms(10);
