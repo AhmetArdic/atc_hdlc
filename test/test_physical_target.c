@@ -89,8 +89,8 @@
 #endif
 
 #define BAUD_RATE     921600
-#define CHUNK_SIZE    355
-#define BUFFER_SIZE   4096
+#define CHUNK_SIZE    512
+#define BUFFER_SIZE   16384
 #define PDF_PATH      TEST_DATA_DIR "/test.pdf"
 
 /* ================================================================
@@ -345,7 +345,7 @@ static void node_state_cb(hdlc_protocol_state_t state, void *user_data)
  * ================================================================ */
 static void rx_thread_body(physical_node_t *node)
 {
-    uint8_t buf[2048];
+    uint8_t buf[8192];
     double last = get_time_s();
 
     while (node->running) {
@@ -360,7 +360,7 @@ static void rx_thread_body(physical_node_t *node)
             hdlc_input_bytes(&node->ctx, buf, (hdlc_u32)n);
         }
 
-        if (elapsed_ms >= 10) {
+        if (elapsed_ms >= 2) {
             for (long t = 0; t < elapsed_ms; t++)
                 hdlc_tick(&node->ctx);
             last = now;
@@ -487,12 +487,19 @@ static uint32_t send_data(physical_node_t *node,
 
 /** @brief Wait for echo replies up to timeout. */
 static void wait_for_echoes(physical_node_t *node, uint32_t expected, int timeout_ms)
+static void wait_for_echoes(physical_node_t *node, uint32_t expected, int timeout_ms)
 {
     while (node->bytes_received < expected && timeout_ms > 0 && node->running) {
-        sleep_ms(100);
-        timeout_ms -= 100;
+        sleep_ms(10);
+        timeout_ms -= 10; /* Fixed from 100 to 10 */
     }
-    if (timeout_ms <= 0) {
+    
+    /* Give it an extra moment to finish printing/processing the absolute last frames */
+    if (node->bytes_received == expected) {
+        sleep_ms(100);
+    }
+
+    if (timeout_ms <= 0 && node->bytes_received < expected) {
         printf("\n[Warning] Timeout waiting for final echoes.\n");
         printf("  -> Stats: RX Frames parsed=%u, CRC Errors=%u\n",
                node->ctx.stats_input_frames, node->ctx.stats_crc_errors);
@@ -504,7 +511,21 @@ static bool verify_results(physical_node_t *node,
                            const uint8_t *original, uint32_t data_len,
                            uint32_t sent_bytes, double duration, double *out_kbps)
 {
-    double kbps = (data_len * 8) / (duration * 1000.0);
+    /* Calculate physical throughput with HDLC overhead.
+     * For each chunk, HDLC adds:
+     * - 2 bytes Flags (0x7E)
+     * - 1 byte Address
+     * - 1 byte Control
+     * - 2 bytes FCS (CRC16)
+     * = 6 bytes of basic overhead per frame.
+     * *Note: Does not perfectly account for byte-stuffing which varies by payload. */
+    uint32_t num_frames_sent = (data_len + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    uint32_t total_overhead = num_frames_sent * 6; /* 6 bytes generic framing overhead per frame */
+    
+    /* Since the target echoes the data back, the total bytes physically moving across the wire
+       is (Payload + Overhead) sent * 2 (Tx and Rx). We only calculate the ONE-WAY throughput. */
+    double physical_bytes_sent = data_len + total_overhead;
+    double kbps = (physical_bytes_sent * 8) / (duration * 1000.0);
     if (out_kbps) *out_kbps = kbps;
 
     printf("\n\n--- Test Results (Window %u) ---\n", node->ctx.window_size);

@@ -34,15 +34,15 @@
 /* USER CODE BEGIN PD */
 
 /* ---- Ring Buffer (RX) ---- */
-#define RX_RING_SIZE       2048u    /* must be power of 2 */
+#define RX_RING_SIZE       8192u    /* must be power of 2 */
 #define RX_RING_MASK       (RX_RING_SIZE - 1u)
 
 /* ---- TX Buffer ---- */
-#define TX_BUF_SIZE        4096u
+#define TX_BUF_SIZE        8192u
 
 /* ---- HDLC Buffers ---- */
-#define HDLC_INPUT_BUF_SIZE   (4096u)
-#define HDLC_RETX_BUF_SIZE   (4096u)
+#define HDLC_INPUT_BUF_SIZE   (8192u)
+#define HDLC_RETX_BUF_SIZE   (8192u)
 
 /* USER CODE END PD */
 
@@ -64,7 +64,7 @@ static volatile uint16_t rx_head = 0;   /* written by ISR  */
 static uint16_t rx_tail = 0;            /* read by main    */
 
 /* ---------- TX Buffer (DMA) ---------- */
-#define TX_RING_SIZE       4096u    /* must be power of 2 */
+#define TX_RING_SIZE       8192u    /* must be power of 2 */
 #define TX_RING_MASK       (TX_RING_SIZE - 1u)
 static uint8_t  tx_ring[TX_RING_SIZE];
 static volatile uint16_t tx_head = 0;   /* written by hdlc   */
@@ -132,11 +132,17 @@ static void hdlc_output_cb(hdlc_u8 byte, hdlc_bool flush, void *user_data)
 {
   (void)user_data;
 
+  /* Block if TX buffer is full to prevent byte dropping during high-load tests */
   uint16_t next_head = (tx_head + 1u) & TX_RING_MASK;
-  if (next_head != tx_tail) {
-    tx_ring[tx_head] = byte;
-    tx_head = next_head;
+  while (next_head == tx_tail) {
+    /* If we are full, we MUST flush any pending DMA and wait.
+       This is critical for physical throughput tests at high baud rates. */
+    tx_flush_dma();
+    /* Small delay or yield could go here if using RTOS, otherwise just wait */
   }
+
+  tx_ring[tx_head] = byte;
+  tx_head = next_head;
 
   if (flush) {
     tx_flush_dma();
@@ -233,6 +239,11 @@ int main(void)
   MX_DMA_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+
+  /* Enable I-Cache, D-Cache and Prefetch Buffer for performance */
+  __HAL_FLASH_INSTRUCTION_CACHE_ENABLE();
+  __HAL_FLASH_DATA_CACHE_ENABLE();
+  __HAL_FLASH_PREFETCH_BUFFER_ENABLE();
 
   /* ---- Initialize HDLC ---- */
   hdlc_init(&hdlc_ctx,
