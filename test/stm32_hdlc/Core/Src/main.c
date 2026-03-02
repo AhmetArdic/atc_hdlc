@@ -72,7 +72,7 @@ static volatile uint16_t tx_tail = 0;   /* read by DMA       */
 static volatile uint8_t  tx_dma_busy = 0;
 
 /* ---------- HDLC ---------- */
-static hdlc_context_t hdlc_ctx;
+static atc_hdlc_context_t hdlc_ctx;
 static uint8_t hdlc_input_buf[HDLC_INPUT_BUF_SIZE];
 static uint8_t hdlc_retx_buf[HDLC_RETX_BUF_SIZE];
 
@@ -84,9 +84,9 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-static void hdlc_output_cb(hdlc_u8 byte, hdlc_bool flush, void *user_data);
-static void hdlc_on_frame_cb(const hdlc_frame_t *frame, void *user_data);
-static void hdlc_state_cb(hdlc_protocol_state_t state, void *user_data);
+static void hdlc_output_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data);
+static void hdlc_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data);
+static void hdlc_state_cb(atc_hdlc_protocol_state_t state, void *user_data);
 static void tx_flush_dma(void);
 /* USER CODE END PFP */
 
@@ -128,7 +128,7 @@ static void tx_flush_dma(void)
 /**
  * @brief Output byte callback — appends to TX ring buffer and flushes on demand.
  */
-static void hdlc_output_cb(hdlc_u8 byte, hdlc_bool flush, void *user_data)
+static void hdlc_output_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data)
 {
   (void)user_data;
 
@@ -155,13 +155,13 @@ static void hdlc_output_cb(hdlc_u8 byte, hdlc_bool flush, void *user_data)
  *        - ACK (RR) generation for I-frames is handled automatically
  *          by the HDLC library.
  */
-static void hdlc_on_frame_cb(const hdlc_frame_t *frame, void *user_data)
+static void hdlc_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data)
 {
   (void)user_data;
 
-  if (frame->type == HDLC_FRAME_I) {
+  if (frame->type == ATC_HDLC_FRAME_I) {
     /* Echo payload back as UI */
-    hdlc_output_frame_ui(&hdlc_ctx, frame->information, frame->information_len);
+    atc_hdlc_output_frame_ui(&hdlc_ctx, frame->information, frame->information_len);
   }
   /* U-frames (SABM, DISC, etc.) and S-frames are handled by the library
      internally — no user action needed. */
@@ -170,7 +170,7 @@ static void hdlc_on_frame_cb(const hdlc_frame_t *frame, void *user_data)
 /**
  * @brief Connection state change callback (informational).
  */
-static void hdlc_state_cb(hdlc_protocol_state_t state, void *user_data)
+static void hdlc_state_cb(atc_hdlc_protocol_state_t state, void *user_data)
 {
   (void)user_data;
   (void)state;
@@ -246,7 +246,7 @@ int main(void)
   __HAL_FLASH_PREFETCH_BUFFER_ENABLE();
 
   /* ---- Initialize HDLC ---- */
-  hdlc_init(&hdlc_ctx,
+  atc_hdlc_init(&hdlc_ctx,
             hdlc_input_buf, sizeof(hdlc_input_buf),
             hdlc_retx_buf,  sizeof(hdlc_retx_buf),
             500,   	/* retransmit timeout (ticks) */
@@ -259,7 +259,7 @@ int main(void)
             NULL);
 
   /* Target is address 0x02, peer (PC) is 0x01 */
-  hdlc_configure_addresses(&hdlc_ctx, 0x02, 0x01);
+  atc_hdlc_configure_addresses(&hdlc_ctx, 0x02, 0x01);
 
   /* Start receiving via DMA (Circular mode) */
   HAL_UART_Receive_DMA(&huart2, rx_ring, RX_RING_SIZE);
@@ -279,7 +279,7 @@ int main(void)
     }
 
     while (rx_tail != rx_head) {
-      hdlc_input_byte(&hdlc_ctx, rx_ring[rx_tail]);
+      atc_hdlc_input_byte(&hdlc_ctx, rx_ring[rx_tail]);
       rx_tail = (rx_tail + 1u) & RX_RING_MASK;
     }
 
@@ -288,7 +288,7 @@ int main(void)
     if (now != last_tick) {
       uint32_t elapsed = now - last_tick;
       for (uint32_t t = 0; t < elapsed; t++) {
-        hdlc_tick(&hdlc_ctx);
+        atc_hdlc_tick(&hdlc_ctx);
       }
       last_tick = now;
     }

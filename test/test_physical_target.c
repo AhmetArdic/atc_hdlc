@@ -99,9 +99,9 @@
 typedef struct {
     serial_handle_t port;
     mutex_t         ctx_lock;
-    hdlc_context_t  ctx;
-    hdlc_u8         input_buffer[BUFFER_SIZE * 2];
-    hdlc_u8         retransmit_buffer[BUFFER_SIZE * 2 * 8];
+    atc_hdlc_context_t  ctx;
+    atc_hdlc_u8         input_buffer[BUFFER_SIZE * 2];
+    atc_hdlc_u8         retransmit_buffer[BUFFER_SIZE * 2 * 8];
     thread_handle_t rx_thread;
     volatile bool   running;
 
@@ -286,10 +286,10 @@ static void thread_join(thread_handle_t t)
  *  HDLC Callbacks
  * ================================================================ */
 static uint8_t  tx_buffer[BUFFER_SIZE];
-static hdlc_u32 tx_index = 0;
+static atc_hdlc_u32 tx_index = 0;
 
 /** @brief Output callback — buffers bytes and writes to serial on flush. */
-static void node_output_cb(hdlc_u8 byte, hdlc_bool flush, void *user_data)
+static void node_output_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data)
 {
     physical_node_t *node = (physical_node_t *)user_data;
 
@@ -305,13 +305,13 @@ static void node_output_cb(hdlc_u8 byte, hdlc_bool flush, void *user_data)
 }
 
 /** @brief Frame callback — accumulates echoed UI frames for integrity check. */
-static void node_on_frame_cb(const hdlc_frame_t *frame, void *user_data)
+static void node_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data)
 {
     physical_node_t *node = (physical_node_t *)user_data;
     node->frames_received++;
 
-    if (frame->type == HDLC_FRAME_U &&
-        hdlc_get_u_frame_sub_type(&frame->control) == HDLC_U_FRAME_TYPE_UI) {
+    if (frame->type == ATC_HDLC_FRAME_U &&
+        atc_hdlc_get_u_frame_sub_type(&frame->control) == ATC_HDLC_U_FRAME_TYPE_UI) {
         /* Copy payload into verification buffer */
         if (node->recv_buffer && frame->information_len > 0) {
             uint32_t space = node->recv_buffer_len - node->bytes_received;
@@ -331,17 +331,17 @@ static void node_on_frame_cb(const hdlc_frame_t *frame, void *user_data)
 }
 
 /** @brief Connection state change callback. */
-static void node_state_cb(hdlc_protocol_state_t state, void *user_data)
+static void node_state_cb(atc_hdlc_protocol_state_t state, void *user_data)
 {
     (void)user_data;
-    if (state == HDLC_PROTOCOL_STATE_CONNECTED)
+    if (state == ATC_HDLC_PROTOCOL_STATE_CONNECTED)
         printf("\nLogical connection established!\n");
-    else if (state == HDLC_PROTOCOL_STATE_DISCONNECTED)
+    else if (state == ATC_HDLC_PROTOCOL_STATE_DISCONNECTED)
         printf("\n[Error] Logical connection dropped!\n");
 }
 
 /* ================================================================
- *  RX Thread — reads serial + drives hdlc_tick
+ *  RX Thread — reads serial + drives atc_hdlc_tick
  * ================================================================ */
 static void rx_thread_body(physical_node_t *node)
 {
@@ -357,12 +357,12 @@ static void rx_thread_body(physical_node_t *node)
         mutex_lock(&node->ctx_lock);
 
         if (n > 0) {
-            hdlc_input_bytes(&node->ctx, buf, (hdlc_u32)n);
+            atc_hdlc_input_bytes(&node->ctx, buf, (atc_hdlc_u32)n);
         }
 
         if (elapsed_ms >= 2) {
             for (long t = 0; t < elapsed_ms; t++)
-                hdlc_tick(&node->ctx);
+                atc_hdlc_tick(&node->ctx);
             last = now;
         }
 
@@ -421,20 +421,20 @@ static uint8_t *load_file(const char *path, uint32_t *out_size)
 static bool wait_for_connection(physical_node_t *node, int timeout_ms)
 {
     mutex_lock(&node->ctx_lock);
-    hdlc_connect(&node->ctx);
+    atc_hdlc_connect(&node->ctx);
     mutex_unlock(&node->ctx_lock);
 
     int retries = timeout_ms;
-    while (node->ctx.current_state != HDLC_PROTOCOL_STATE_CONNECTED && retries > 0) {
+    while (node->ctx.current_state != ATC_HDLC_PROTOCOL_STATE_CONNECTED && retries > 0) {
         sleep_ms(1);
         if (retries % 1000 == 0) {
             mutex_lock(&node->ctx_lock);
-            for (int t = 0; t < 1000; t++) hdlc_tick(&node->ctx);
+            for (int t = 0; t < 1000; t++) atc_hdlc_tick(&node->ctx);
             mutex_unlock(&node->ctx_lock);
         }
         retries--;
     }
-    return node->ctx.current_state == HDLC_PROTOCOL_STATE_CONNECTED;
+    return node->ctx.current_state == ATC_HDLC_PROTOCOL_STATE_CONNECTED;
 }
 
 /** @brief Send the entire payload as I-frames in CHUNK_SIZE pieces. */
@@ -453,8 +453,8 @@ static uint32_t send_data(physical_node_t *node,
         /* Retry until the I-frame is accepted (window open) */
         while (!sent_ok && node->running) {
             mutex_lock(&node->ctx_lock);
-            if (node->ctx.current_state == HDLC_PROTOCOL_STATE_CONNECTED) {
-                sent_ok = hdlc_output_frame_i(&node->ctx, data + sent, chunk);
+            if (node->ctx.current_state == ATC_HDLC_PROTOCOL_STATE_CONNECTED) {
+                sent_ok = atc_hdlc_output_frame_i(&node->ctx, data + sent, chunk);
             } else {
                 stuck_count++;
                 if (stuck_count % 1000 == 0) {
@@ -581,13 +581,13 @@ static bool node_init(physical_node_t *node, uint32_t recv_len, uint8_t window_s
     mutex_init(&node->ctx_lock);
     node->running = true;
 
-    hdlc_init(&node->ctx,
+    atc_hdlc_init(&node->ctx,
               node->input_buffer, sizeof(node->input_buffer),
               node->retransmit_buffer, sizeof(node->retransmit_buffer),
-              HDLC_DEFAULT_RETRANSMIT_TIMEOUT, HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
+              ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
               window_size, 10,  /* dynamic window size, retries=10 */
               node_output_cb, node_on_frame_cb, node_state_cb, node);
-    hdlc_configure_addresses(&node->ctx, 0x01, 0x02);
+    atc_hdlc_configure_addresses(&node->ctx, 0x01, 0x02);
 
     node->rx_thread = thread_create(node);
     return true;

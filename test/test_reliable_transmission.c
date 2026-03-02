@@ -119,7 +119,7 @@ void test_sequence_rollover(void) {
         rr_frame.control = atc_hdlc_create_s_ctrl(0, expected_vs, 0); // RR, NR=VS
         rr_frame.information = NULL;
         rr_frame.information_len = 0;
-        rr_frame.type = HDLC_FRAME_S;
+        rr_frame.type = ATC_HDLC_FRAME_S;
         
         atc_hdlc_u32 len = 0;
         atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
@@ -282,7 +282,7 @@ void test_window_size_2_basic(void) {
     // We use mock buffers from common where possible, but context needs its own pointers if we don't use setup_test_context
     // We can use mock_rx_buffer for rx
     atc_hdlc_u8 retx_buf[128];
-    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), retx_buf, sizeof(retx_buf), HDLC_DEFAULT_RETRANSMIT_TIMEOUT, HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 2, 3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), retx_buf, sizeof(retx_buf), ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 2, 3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
 
@@ -334,7 +334,7 @@ void test_gobackn_retransmit(void) {
     atc_hdlc_context_t ctx;
     atc_hdlc_u8 retx_buf[192];
     // Manual init for custom window size 3 and timeout 500
-    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), retx_buf, sizeof(retx_buf), 500, HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 3, 3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), retx_buf, sizeof(retx_buf), 500, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 3, 3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
 
@@ -411,7 +411,7 @@ void test_window7_mid_rej(void) {
     atc_hdlc_u8 retx_buf[512];
     atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer),
                   retx_buf, sizeof(retx_buf),
-                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT, HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 7,
+                  ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 7,
                   3,
                   mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
@@ -462,7 +462,7 @@ void test_window7_mid_rej(void) {
         .control = atc_hdlc_create_s_ctrl(0x02, 3, 0), // REJ, N(R)=3, F=0
         .information = NULL,
         .information_len = 0,
-        .type = HDLC_FRAME_S
+        .type = ATC_HDLC_FRAME_S
     };
 
     atc_hdlc_u32 rej_len = 0;
@@ -504,7 +504,7 @@ void test_window7_mid_rej(void) {
         .control = atc_hdlc_create_s_ctrl(0x00, 7, 0), // RR, N(R)=7, F=0
         .information = NULL,
         .information_len = 0,
-        .type = HDLC_FRAME_S
+        .type = ATC_HDLC_FRAME_S
     };
 
     atc_hdlc_u32 rr_len = 0;
@@ -554,7 +554,7 @@ static bench_result_t run_throughput_bench(int window_size) {
     atc_hdlc_u8 retx_buf[4096];
     atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer),
                   retx_buf, sizeof(retx_buf),
-                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT, HDLC_DEFAULT_ACK_DELAY_TIMEOUT, (atc_hdlc_u8)window_size,
+                  ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, (atc_hdlc_u8)window_size,
                   3,
                   mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
@@ -589,7 +589,7 @@ static bench_result_t run_throughput_bench(int window_size) {
             .control = atc_hdlc_create_s_ctrl(0x00, ctx.vs, 0), // RR, N(R)=VS
             .information = NULL,
             .information_len = 0,
-            .type = HDLC_FRAME_S
+            .type = ATC_HDLC_FRAME_S
         };
 
         atc_hdlc_u32 rr_len = 0;
@@ -724,7 +724,7 @@ void test_process_tx_task_simulation(void) {
     // We use window size 2 so the task hits a "Window Full" state and returns TX_SENDING
     atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), 
                   retx_buf, sizeof(retx_buf), 
-                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT, HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 2, 
+                  ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 2, 
                   3,
                   mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
@@ -747,7 +747,7 @@ void test_process_tx_task_simulation(void) {
                 .control = atc_hdlc_create_s_ctrl(0x00, ctx.vs, 0), // RR, N(R)=VS 
                 .information = NULL,
                 .information_len = 0,
-                .type = HDLC_FRAME_S
+                .type = ATC_HDLC_FRAME_S
             };
             atc_hdlc_u32 rr_len = 0;
             atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &rr_len);
@@ -778,7 +778,7 @@ void test_nr_modulo_validation(void) {
     atc_hdlc_u8 retx_buf[256];
     atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), 
                   retx_buf, sizeof(retx_buf), 
-                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT, HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 7, 
+                  ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 7, 
                   3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
@@ -830,7 +830,7 @@ void test_nr_edge_cases(void) {
     atc_hdlc_u8 retx_buf[256];
     atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), 
                   retx_buf, sizeof(retx_buf), 
-                  1000, HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 7, 
+                  1000, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 7, 
                   3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;

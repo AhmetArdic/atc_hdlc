@@ -18,7 +18,7 @@
  * for delimiters, handles byte-unstuffing, and buffers data.
  * @see hdlc.h for detailed ISR usage warnings.
  */
-void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
+void atc_hdlc_input_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
   if (ctx == NULL) {
     return;
   }
@@ -27,28 +27,28 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
   if (byte == HDLC_FLAG) {
     if (ctx->input_state != HDLC_INPUT_STATE_HUNT) {
       // Minimum size: Addr(1) + Ctrl(1) + FCS(2) = 4 bytes
-      if (ctx->input_index >= HDLC_MIN_FRAME_LEN) {
+      if (ctx->input_index >= ATC_HDLC_MIN_FRAME_LEN) {
         // --- CRC Verification Strategy ---
         // 1. Re-calculate CRC over the "Data" portion (Addr..Payload).
         // 2. Compare calculated CRC with the received FCS bytes (last 2
         // bytes).
 
-        hdlc_u16 calced_crc = HDLC_FCS_INIT_VALUE;
-        hdlc_u32 data_len = ctx->input_index - HDLC_FCS_LEN; // Exclude FCS bytes
+        atc_hdlc_u16 calced_crc = ATC_HDLC_FCS_INIT_VALUE;
+        atc_hdlc_u32 data_len = ctx->input_index - ATC_HDLC_FCS_LEN; // Exclude FCS bytes
 
-        for (hdlc_u32 i = 0; i < data_len; i++) {
+        for (atc_hdlc_u32 i = 0; i < data_len; i++) {
           calced_crc =
-              hdlc_crc_ccitt_update(calced_crc, ctx->input_buffer[i]);
+              atc_hdlc_crc_ccitt_update(calced_crc, ctx->input_buffer[i]);
         }
 
         // Extract Received FCS (Assuming MSB first order on wire -> Buffered as
         // Hi, Lo)
-        hdlc_fcs_t *fcs = (hdlc_fcs_t *)&ctx->input_buffer[ctx->input_index - HDLC_FCS_LEN];
-        hdlc_u16 rx_fcs = (fcs->fcs[0] << 8) | fcs->fcs[1];
+        atc_hdlc_fcs_t *fcs = (atc_hdlc_fcs_t *)&ctx->input_buffer[ctx->input_index - ATC_HDLC_FCS_LEN];
+        atc_hdlc_u16 rx_fcs = (fcs->fcs[0] << 8) | fcs->fcs[1];
 
         if (calced_crc == rx_fcs) {
           // Valid Frame!
-          HDLC_LOG_DEBUG("rx: Valid frame (Addr: 0x%02X, Ctrl: 0x%02X, Len: %lu)",
+          ATC_HDLC_LOG_DEBUG("rx: Valid frame (Addr: 0x%02X, Ctrl: 0x%02X, Len: %lu)",
                          ctx->input_buffer[0], ctx->input_buffer[1], data_len);
 
           /* Construct the temporary frame descriptor (Zero-Copy) */
@@ -58,9 +58,9 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
           // Information starts after Header (Addr+Ctrl), length is Total - (Header+FCS) = Total - 4
           // But only if total >= 4 (checked above)
           // Header Len = Address(1) + Control(1) = 2
-          if (data_len > HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN) {
-             ctx->input_frame_buffer.information = &ctx->input_buffer[HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN];
-             ctx->input_frame_buffer.information_len = (hdlc_u16)(data_len - (HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN));
+          if (data_len > ATC_HDLC_ADDRESS_LEN + ATC_HDLC_CONTROL_LEN) {
+             ctx->input_frame_buffer.information = &ctx->input_buffer[ATC_HDLC_ADDRESS_LEN + ATC_HDLC_CONTROL_LEN];
+             ctx->input_frame_buffer.information_len = (atc_hdlc_u16)(data_len - (ATC_HDLC_ADDRESS_LEN + ATC_HDLC_CONTROL_LEN));
           } else {
              ctx->input_frame_buffer.information = NULL;
              ctx->input_frame_buffer.information_len = 0;
@@ -69,7 +69,7 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
           process_complete_frame(ctx);
         } else {
           // CRC Error: Frame discarded silently (or logged)
-          HDLC_LOG_WARN("rx: CRC Error! Calc: 0x%04X, RX: 0x%04X", calced_crc, rx_fcs);
+          ATC_HDLC_LOG_WARN("rx: CRC Error! Calc: 0x%04X, RX: 0x%04X", calced_crc, rx_fcs);
           ctx->stats_crc_errors++;
         }
       }
@@ -80,7 +80,7 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
     // immediately catch it and drop the state to HUNT.
     ctx->input_state = HDLC_INPUT_STATE_ADDRESS;
     ctx->input_index = 0;
-    ctx->input_crc = HDLC_FCS_INIT_VALUE;
+    ctx->input_crc = ATC_HDLC_FCS_INIT_VALUE;
     return;
   }
 
@@ -104,7 +104,7 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
 
   if (ctx->input_index >= ctx->input_buffer_len) {
     // Overflow protection: Drop invalid large frame and hunt for next flag
-    HDLC_LOG_WARN("rx: Buffer overflow! Max %lu bytes. Discarding.", (unsigned long)ctx->input_buffer_len);
+    ATC_HDLC_LOG_WARN("rx: Buffer overflow! Max %lu bytes. Discarding.", (unsigned long)ctx->input_buffer_len);
     ctx->input_state = HDLC_INPUT_STATE_HUNT;
     return;
   }
@@ -117,8 +117,8 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
 
   // Early abort if Address byte is invalid
   if (ctx->input_index == 1) {
-    if (byte != ctx->my_address && byte != ctx->peer_address && byte != HDLC_BROADCAST_ADDRESS) {
-      HDLC_LOG_WARN("rx: Invalid Address 0x%02X. Frame discarded, returning to HUNT.", byte);
+    if (byte != ctx->my_address && byte != ctx->peer_address && byte != ATC_HDLC_BROADCAST_ADDRESS) {
+      ATC_HDLC_LOG_WARN("rx: Invalid Address 0x%02X. Frame discarded, returning to HUNT.", byte);
       ctx->input_state = HDLC_INPUT_STATE_HUNT;
       ctx->input_index = 0;
       return;
@@ -130,12 +130,12 @@ void hdlc_input_byte(hdlc_context_t *ctx, hdlc_u8 byte) {
  * @brief Input multiple received bytes into the HDLC Parser.
  * @see hdlc.h
  */
-void hdlc_input_bytes(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
+void atc_hdlc_input_bytes(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
   if (ctx == NULL || data == NULL) {
     return;
   }
 
-  for (hdlc_u32 i = 0; i < len; ++i) {
-    hdlc_input_byte(ctx, data[i]);
+  for (atc_hdlc_u32 i = 0; i < len; ++i) {
+    atc_hdlc_input_byte(ctx, data[i]);
   }
 }

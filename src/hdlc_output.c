@@ -25,7 +25,7 @@
  * @param ctx  HDLC Context.
  * @param byte Raw byte to transmit.
  */
-static inline void output_byte_raw(hdlc_context_t *ctx, hdlc_u8 byte, hdlc_bool flush) {
+static inline void output_byte_raw(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush) {
   if (ctx->output_byte_cb != NULL) {
     ctx->output_byte_cb(byte, flush, ctx->user_data);
   }
@@ -37,7 +37,7 @@ static inline void output_byte_raw(hdlc_context_t *ctx, hdlc_u8 byte, hdlc_bool 
  * @param ctx  HDLC Context.
  * @param byte Data byte to send.
  */
-static void output_escaped(hdlc_context_t *ctx, hdlc_u8 byte) {
+static void output_escaped(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
   if (byte == HDLC_FLAG || byte == HDLC_ESCAPE) {
     output_byte_raw(ctx, HDLC_ESCAPE, false);
     output_byte_raw(ctx, byte ^ HDLC_XOR_MASK, false);
@@ -56,8 +56,8 @@ static void output_escaped(hdlc_context_t *ctx, hdlc_u8 byte) {
  * @param byte Data byte to send.
  * @param crc  Pointer to the running CRC to update.
  */
-static void output_escaped_crc_update(hdlc_context_t *ctx, hdlc_u8 byte, hdlc_u16 *crc) {
-  *crc = hdlc_crc_ccitt_update(*crc, byte);
+static void output_escaped_crc_update(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte, atc_hdlc_u16 *crc) {
+  *crc = atc_hdlc_crc_ccitt_update(*crc, byte);
 
   output_escaped(ctx, byte);
 }
@@ -72,7 +72,7 @@ static void output_escaped_crc_update(hdlc_context_t *ctx, hdlc_u8 byte, hdlc_u1
  * @brief Output a complete HDLC Frame.
  * @see hdlc.h
  */
-void hdlc_output_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+void atc_hdlc_output_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
   if (ctx == NULL || frame == NULL) {
     return;
   }
@@ -91,15 +91,15 @@ void hdlc_output_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
  * @brief Start a Frame Transmission.
  * @see hdlc.h
  */
-void hdlc_output_frame_start(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 control) {
+void atc_hdlc_output_frame_start(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 control) {
   if (ctx == NULL) {
     return;
   }
 
   // Initializing CRC
-  ctx->output_crc = HDLC_FCS_INIT_VALUE;
+  ctx->output_crc = ATC_HDLC_FCS_INIT_VALUE;
   
-  HDLC_LOG_DEBUG("tx: Frame start (Addr: 0x%02X, Ctrl: 0x%02X)", address, control);
+  ATC_HDLC_LOG_DEBUG("tx: Frame start (Addr: 0x%02X, Ctrl: 0x%02X)", address, control);
 
   // Send Start Flag
   output_byte_raw(ctx, HDLC_FLAG, false);
@@ -117,7 +117,7 @@ void hdlc_output_frame_start(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 contr
  * @brief Output a Information Byte.
  * @see hdlc.h
  */
-void hdlc_output_frame_information_byte(hdlc_context_t *ctx, hdlc_u8 information_byte) {
+void atc_hdlc_output_frame_information_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 information_byte) {
   if (ctx == NULL) {
     return;
   }
@@ -130,13 +130,13 @@ void hdlc_output_frame_information_byte(hdlc_context_t *ctx, hdlc_u8 information
  * @brief Output a Information Bytes Array.
  * @see hdlc.h
  */
-void hdlc_output_frame_information_bytes(
-    hdlc_context_t *ctx, const hdlc_u8 *information_bytes, hdlc_u32 len) {
+void atc_hdlc_output_frame_information_bytes(
+    atc_hdlc_context_t *ctx, const atc_hdlc_u8 *information_bytes, atc_hdlc_u32 len) {
   if (ctx == NULL || (information_bytes == NULL && len > 0)) {
     return;
   }
 
-  for (hdlc_u32 i = 0; i < len; ++i) {
+  for (atc_hdlc_u32 i = 0; i < len; ++i) {
     // Update CRC and Send Escaped
     output_escaped_crc_update(ctx, information_bytes[i], &ctx->output_crc);
   }
@@ -146,16 +146,16 @@ void hdlc_output_frame_information_bytes(
  * @brief Finalize Frame Output.
  * @see hdlc.h
  */
-void hdlc_output_frame_end(hdlc_context_t *ctx) {
+void atc_hdlc_output_frame_end(atc_hdlc_context_t *ctx) {
   if (ctx == NULL) {
     return;
   }
 
   // Finalize CRC
-  hdlc_u16 crc = ctx->output_crc;
+  atc_hdlc_u16 crc = ctx->output_crc;
 
-  hdlc_u8 fcs_hi = (crc >> 8) & 0xFF;
-  hdlc_u8 fcs_lo = crc & 0xFF;
+  atc_hdlc_u8 fcs_hi = (crc >> 8) & 0xFF;
+  atc_hdlc_u8 fcs_lo = crc & 0xFF;
 
   // Send FCS High
   output_escaped(ctx, fcs_hi);
@@ -179,46 +179,46 @@ void hdlc_output_frame_end(hdlc_context_t *ctx) {
  * @brief Start a UI Frame Output.
  * @see hdlc.h
  */
-void hdlc_output_frame_start_ui(hdlc_context_t *ctx) {
+void atc_hdlc_output_frame_start_ui(atc_hdlc_context_t *ctx) {
   if (ctx == NULL) {
     return;
   }
   
   // UI Frame Control: 11 00 P 000 (Val=0x03 if P=0, 0x13 if P=1)
   // M_LO=0, M_HI=0
-  hdlc_control_t ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_UI, HDLC_U_MODIFIER_HI_UI, 0); // P=0 usually
+  atc_hdlc_control_t ctrl = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_UI, HDLC_U_MODIFIER_HI_UI, 0); // P=0 usually
   
-  hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
+  atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
 }
 
 /**
  * @brief Start a TEST Frame Output.
  * @see hdlc.h
  */
-void hdlc_output_frame_start_test(hdlc_context_t *ctx) {
+void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx) {
   if (ctx == NULL) {
     return;
   }
   
   // TEST Frame: m_lo=0, m_hi=7, P=1
-  hdlc_control_t ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST, 1);
+  atc_hdlc_control_t ctrl = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST, 1);
   
-  hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
+  atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
 }
 
 /**
  * @brief Start an Information (I) Frame Output (Streaming).
  * @see hdlc.h
  */
-void hdlc_output_frame_start_i(hdlc_context_t *ctx) {
+void atc_hdlc_output_frame_start_i(atc_hdlc_context_t *ctx) {
   if (ctx == NULL) {
     return;
   }
   
   // I-Frame: N(S)=VS, N(R)=VR, P=0 (Default)
-  hdlc_control_t ctrl = hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
+  atc_hdlc_control_t ctrl = atc_hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
   
-  hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
+  atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
 }
 
 /*
@@ -227,35 +227,35 @@ void hdlc_output_frame_start_i(hdlc_context_t *ctx) {
  * --------------------------------------------------------------------------
  */
 
-bool hdlc_output_frame_ui(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
+bool atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
   if (ctx == NULL) return false;
 
   // Start Frame
-  hdlc_output_frame_start_ui(ctx);
+  atc_hdlc_output_frame_start_ui(ctx);
   
   // Send Data
   if (data != NULL && len > 0) {
-      hdlc_output_frame_information_bytes(ctx, data, len);
+      atc_hdlc_output_frame_information_bytes(ctx, data, len);
   }
 
   // End Frame
-  hdlc_output_frame_end(ctx);
+  atc_hdlc_output_frame_end(ctx);
   return true;
 }
 
-bool hdlc_output_frame_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
+bool atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
   if (ctx == NULL) return false;
 
   // Start Frame
-  hdlc_output_frame_start_test(ctx);
+  atc_hdlc_output_frame_start_test(ctx);
 
   // Send Data
   if (data != NULL && len > 0) {
-      hdlc_output_frame_information_bytes(ctx, data, len);
+      atc_hdlc_output_frame_information_bytes(ctx, data, len);
   }
 
   // End Frame
-  hdlc_output_frame_end(ctx);
+  atc_hdlc_output_frame_end(ctx);
   return true;
 }
 
@@ -263,18 +263,18 @@ bool hdlc_output_frame_test(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 l
  * @brief Output an Information (I) frame (Reliable).
  * @see hdlc.h
  */
-bool hdlc_output_frame_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len) {
+bool atc_hdlc_output_frame_i(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
   if (ctx == NULL) return false;
 
   // Window Check (Go-Back-N)
-  hdlc_u8 outstanding = (ctx->vs - ctx->va + HDLC_SEQUENCE_MODULUS) % HDLC_SEQUENCE_MODULUS;
+  atc_hdlc_u8 outstanding = (ctx->vs - ctx->va + HDLC_SEQUENCE_MODULUS) % HDLC_SEQUENCE_MODULUS;
   if (outstanding >= ctx->window_size) {
       return false; // Window full
   }
   
   // Buffer for Retransmission using dynamic slot allocation
   if (ctx->retransmit_buffer != NULL && ctx->retransmit_slot_size > 0) {
-      hdlc_u8 slot = ctx->next_tx_slot;
+      atc_hdlc_u8 slot = ctx->next_tx_slot;
       ctx->tx_seq_to_slot[ctx->vs] = slot;
       ctx->next_tx_slot = (ctx->next_tx_slot + 1) % ctx->window_size;
       
@@ -288,16 +288,16 @@ bool hdlc_output_frame_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len)
   }
 
   // Start Frame
-  HDLC_LOG_DEBUG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
-  hdlc_output_frame_start_i(ctx);
+  ATC_HDLC_LOG_DEBUG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
+  atc_hdlc_output_frame_start_i(ctx);
   
   // Send Data
   if (data != NULL && len > 0) {
-      hdlc_output_frame_information_bytes(ctx, data, len);
+      atc_hdlc_output_frame_information_bytes(ctx, data, len);
   }
 
   // End Frame
-  hdlc_output_frame_end(ctx);
+  atc_hdlc_output_frame_end(ctx);
   
   // Update State
   ctx->vs = (ctx->vs + 1) % HDLC_SEQUENCE_MODULUS;

@@ -47,9 +47,9 @@ void setup_context(void) {
     // We call init manually to inject on_state_change, but use shared buffers/callbacks for the rest
     atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer),
                   static_retx_buf, sizeof(static_retx_buf),
-                  HDLC_DEFAULT_RETRANSMIT_TIMEOUT,
-                  HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
-                  HDLC_DEFAULT_WINDOW_SIZE, 3, mock_output_byte_cb, mock_on_frame_cb, on_state_change, NULL);
+                  ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT,
+                  ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
+                  ATC_HDLC_DEFAULT_WINDOW_SIZE, 3, mock_output_byte_cb, mock_on_frame_cb, on_state_change, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02); // Me=0x01, Peer=0x02
     
     // Reset shared state
@@ -128,7 +128,7 @@ void test_connect_complete_on_ua(void) {
     ua_frame.control.value = 0x73; // UA with F=1
     ua_frame.information = NULL;
     ua_frame.information_len = 0;
-    ua_frame.type = HDLC_FRAME_U;
+    ua_frame.type = ATC_HDLC_FRAME_U;
 
     uint8_t packed[32];
     uint32_t packed_len = 0;
@@ -251,7 +251,7 @@ void test_frmr_reception(void) {
     frmr_frame.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_FRMR, HDLC_U_MODIFIER_HI_FRMR, 0); // F=0
     frmr_frame.information = frmr_payload;
     frmr_frame.information_len = sizeof(frmr_payload);
-    frmr_frame.type = HDLC_FRAME_U;
+    frmr_frame.type = ATC_HDLC_FRAME_U;
 
     uint8_t packed[32];
     uint32_t packed_len = 0;
@@ -282,7 +282,7 @@ void test_mode_rejection(void) {
     params_frame.control = atc_hdlc_create_u_ctrl(0, 4, 1); // SNRM, P=1, Hi=4, Lo=0
     params_frame.information = NULL;
     params_frame.information_len = 0;
-    params_frame.type = HDLC_FRAME_U;
+    params_frame.type = ATC_HDLC_FRAME_U;
 
     uint8_t packed[32];
     uint32_t packed_len = 0;
@@ -325,7 +325,7 @@ void test_extended_mode_rejection(void) {
         frame_in.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SABME, HDLC_U_MODIFIER_HI_SABME, 1);
         frame_in.information = NULL;
         frame_in.information_len = 0;
-        frame_in.type = HDLC_FRAME_U;
+        frame_in.type = ATC_HDLC_FRAME_U;
 
         uint8_t packed[32];
         uint32_t packed_len = 0;
@@ -349,7 +349,7 @@ void test_extended_mode_rejection(void) {
         frame_in.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SNRME, HDLC_U_MODIFIER_HI_SNRME, 1);
         frame_in.information = NULL;
         frame_in.information_len = 0;
-        frame_in.type = HDLC_FRAME_U;
+        frame_in.type = ATC_HDLC_FRAME_U;
 
         uint8_t packed[32];
         uint32_t packed_len = 0;
@@ -373,7 +373,7 @@ void test_extended_mode_rejection(void) {
         frame_in.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SARME, HDLC_U_MODIFIER_HI_SARME, 1);
         frame_in.information = NULL;
         frame_in.information_len = 0;
-        frame_in.type = HDLC_FRAME_U;
+        frame_in.type = ATC_HDLC_FRAME_U;
 
         uint8_t packed[32];
         uint32_t packed_len = 0;
