@@ -32,6 +32,7 @@
 void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *input_buffer, hdlc_u32 input_buffer_len,
                       hdlc_u8 *retransmit_buffer, hdlc_u32 retransmit_buffer_len,
                       hdlc_u32 retransmit_timeout,
+                      hdlc_u32 ack_delay_timeout,
                       hdlc_u8 window_size,
                       hdlc_u8 max_retry_count,
                       hdlc_output_byte_cb_t output_cb,
@@ -75,13 +76,17 @@ void hdlc_init(hdlc_context_t *ctx, hdlc_u8 *input_buffer, hdlc_u32 input_buffer
   ctx->vs = 0;
   ctx->vr = 0;
   ctx->va = 0;
-  ctx->ack_pending = false;
+  ctx->ack_timer = 0;
+  ctx->ack_delay_timeout = ack_delay_timeout;
   ctx->rej_exception = false;
   ctx->retransmit_timeout = retransmit_timeout;
   ctx->max_retry_count = max_retry_count;
   ctx->retry_count = 0;
   ctx->next_tx_slot = 0;
   memset(ctx->tx_seq_to_slot, 0, sizeof(ctx->tx_seq_to_slot));
+  
+  // Connection Management State
+  ctx->contention_timer = 0;
 }
 
 /**
@@ -144,10 +149,23 @@ bool hdlc_is_connected(hdlc_context_t *ctx) {
 void hdlc_tick(hdlc_context_t *ctx) {
     if (ctx == NULL) return;
 
-    // Delayed ACK: Flush pending acknowledgement
-    if (ctx->ack_pending) {
-        hdlc_send_rr(ctx, 0);
-        ctx->ack_pending = false;
+    // Contention Timer for SABM collision resolution
+    if (ctx->current_state == HDLC_PROTOCOL_STATE_CONNECTING) {
+        if (ctx->contention_timer > 0) {
+            ctx->contention_timer--;
+            if (ctx->contention_timer == 0) {
+                HDLC_LOG_DEBUG("tx: Contention resolved (timer expired). Retrying SABM.");
+                hdlc_connect(ctx);
+            }
+        }
+    }
+
+    // Delayed ACK: Flush pending acknowledgement after T2 expires
+    if (ctx->ack_timer > 0) {
+        ctx->ack_timer--;
+        if (ctx->ack_timer == 0) {
+            hdlc_send_rr(ctx, 0);
+        }
     }
 
     // Retransmission Timer (only if frames are outstanding)
@@ -169,7 +187,7 @@ void hdlc_tick(hdlc_context_t *ctx) {
                     ctx->vs = 0;
                     ctx->vr = 0;
                     ctx->va = 0;
-                    ctx->ack_pending = false;
+                    ctx->ack_timer = 0;
                     ctx->retry_count = 0;
                     
                     /* 3. Tamponda (Buffer) bekleyen paketler iptal edilmeli */

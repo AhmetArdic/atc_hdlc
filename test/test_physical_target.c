@@ -584,7 +584,8 @@ static bool node_init(physical_node_t *node, uint32_t recv_len, uint8_t window_s
     hdlc_init(&node->ctx,
               node->input_buffer, sizeof(node->input_buffer),
               node->retransmit_buffer, sizeof(node->retransmit_buffer),
-              500, window_size, 10,  /* timeout=500, dynamic window size, retries=10 */
+              HDLC_DEFAULT_RETRANSMIT_TIMEOUT, HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
+              window_size, 10,  /* dynamic window size, retries=10 */
               node_output_cb, node_on_frame_cb, node_state_cb, node);
     hdlc_configure_addresses(&node->ctx, 0x01, 0x02);
 
@@ -634,12 +635,27 @@ int main(void)
         physical_node_t node;
         if (!node_init(&node, pdf_size, w)) {
             printf("[FAIL] Cannot initialize serial / buffers for window %u\n", w);
+            results[w-1].window = w;
+            results[w-1].pass = false;
+            results[w-1].time_s = 0.0;
+            results[w-1].kbps = 0.0;
+            
+            // Note: Cannot node_cleanup because node_init failed meaning resources weren't allocated
+            sleep_ms(500);
             continue;
         }
 
         printf("Connecting to target...\n");
-        if (!wait_for_connection(&node, 10000))
-            printf("Warning: Failed to establish HDLC connection. Proceeding anyway...\n");
+        if (!wait_for_connection(&node, 10000)) {
+            printf("[FAIL] Failed to establish HDLC connection for window %u\n", w);
+            results[w-1].window = w;
+            results[w-1].pass = false;
+            results[w-1].time_s = 0.0;
+            results[w-1].kbps = 0.0;
+            node_cleanup(&node);
+            sleep_ms(500);
+            continue;
+        }
 
         printf("Connected! Sending %u bytes in %d-byte chunks...\n", pdf_size, CHUNK_SIZE);
 
@@ -687,5 +703,16 @@ int main(void)
     }
     printf("=================================================================\n\n");
 
+    int total_fails = 0;
+    for (int i = 0; i < 7; i++) {
+        if (!results[i].pass) total_fails++;
+    }
+
+    if (total_fails > 0) {
+        printf("\n[ERROR] %d/%d window size tests FAILED.\n", total_fails, 7);
+        return 1;
+    }
+    
+    printf("\n[SUCCESS] All %d window size tests PASSED.\n", 7);
     return 0;
 }

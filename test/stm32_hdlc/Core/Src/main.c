@@ -249,9 +249,10 @@ int main(void)
   hdlc_init(&hdlc_ctx,
             hdlc_input_buf, sizeof(hdlc_input_buf),
             hdlc_retx_buf,  sizeof(hdlc_retx_buf),
-            500,   /* retransmit timeout (ticks) */
-            7,     /* window size */
-            10,    /* max retry count */
+            500,   	/* retransmit timeout (ticks) */
+			1,   	/* ack timtout (ticks)*/
+            7,     	/* window size */
+            10,    	/* max retry count */
             hdlc_output_cb,
             hdlc_on_frame_cb,
             hdlc_state_cb,

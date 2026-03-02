@@ -291,8 +291,12 @@ typedef struct {
     hdlc_u8 vr;                 /**< Receive State Variable V(R). Sequence number of next expected I-frame. */
     hdlc_u8 va;                 /**< Acknowledge State Variable V(A). Oldest unacknowledged sequence number. */
     hdlc_u8 window_size;        /**< Transmit window size (1..7). */
-    hdlc_bool ack_pending;      /**< Flag indicating an acknowledgement is pending. */
+    hdlc_u32 ack_timer;         /**< Timer for delayed ACK (counts down in ticks). 0 means no ACK pending. */
+    hdlc_u32 ack_delay_timeout; /**< Configurable ACK delay timeout period in ticks. */
     hdlc_bool rej_exception;    /**< REJ exception condition. Prevents duplicate REJ retransmission. */
+    
+    /* Connection Management State */
+    hdlc_u32 contention_timer;  /**< Timer for SABM contention resolution delay. */
     
     /* Retransmission Buffer (Go-Back-N, slotted) */
     hdlc_u8 *retransmit_buffer; /**< User-supplied buffer, divided into window_size equal slots. */

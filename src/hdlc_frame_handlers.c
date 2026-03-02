@@ -63,7 +63,7 @@ static bool handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
 
   if (msg_ns == ctx->vr) {
       ctx->vr = (ctx->vr + 1) % HDLC_SEQUENCE_MODULUS;
-      ctx->ack_pending = true;
+      ctx->ack_timer = ctx->ack_delay_timeout;
   } else {
       HDLC_LOG_WARN("rx: Out of sequence I-Frame (Exp %u, got %u). Sending REJ.", ctx->vr, msg_ns);
       hdlc_send_rej(ctx, msg_p);
@@ -74,7 +74,7 @@ static bool handle_i_frame(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
   
   if (msg_p) {
       hdlc_send_rr(ctx, 1);
-      ctx->ack_pending = false;
+      ctx->ack_timer = 0;
   }
   
   return true; // Frame accepted and in-sequence
@@ -175,13 +175,27 @@ static void hdlc_reset_connection_state(hdlc_context_t *ctx) {
         memset(ctx->retransmit_lens, 0, sizeof(ctx->retransmit_lens));
     }
     ctx->next_tx_slot = 0;
-    ctx->ack_pending = false;
+    ctx->ack_timer = 0;
     ctx->rej_exception = false;
     ctx->retransmit_timer = 0;
     ctx->retry_count = 0;
+    ctx->contention_timer = 0;
 }
 
 static void hdlc_process_sabm(hdlc_context_t *ctx, const hdlc_frame_t *frame) {
+    if (ctx->current_state == HDLC_PROTOCOL_STATE_CONNECTING) {
+        // Contention Resolution: Both sides sent SABM simultaneously.
+        // Higher address wins and sends UA. Lower address backs off.
+        if (ctx->peer_address > ctx->my_address) {
+            HDLC_LOG_WARN("state: SABM collision. I lost (addr %u < %u). Backing off.", ctx->my_address, ctx->peer_address);
+            ctx->contention_timer = HDLC_DEFAULT_CONTENTION_DELAY_TIMEOUT;
+            return; // Stay in CONNECTING, but wait before retrying SABM
+        } else {
+            HDLC_LOG_WARN("state: SABM collision. I won (addr %u > %u). Answering UA.", ctx->my_address, ctx->peer_address);
+            // I won. Proceed to send UA and establish connection.
+        }
+    }
+
     hdlc_reset_connection_state(ctx);
     hdlc_set_protocol_state(ctx, HDLC_PROTOCOL_STATE_CONNECTED);
     hdlc_send_ua(ctx, frame->control.u_frame.pf);

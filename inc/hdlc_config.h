@@ -148,6 +148,26 @@ extern "C" {
 #define HDLC_DEFAULT_RETRANSMIT_TIMEOUT  1000
 #endif
 
+/**
+ * @brief Default ACK delay (T2) timeout in ticks.
+ *
+ * Used as the default value for the ack_delay_timeout parameter
+ * in hdlc_init(). Prevents immediate RR transmission, allowing
+ * piggybacking on outgoing I-frames.
+ */
+#ifndef HDLC_DEFAULT_ACK_DELAY_TIMEOUT
+#define HDLC_DEFAULT_ACK_DELAY_TIMEOUT  10
+#endif
+
+/**
+ * @brief Default Contention delay timeout in ticks.
+ *
+ * Used for backoff when two peers send SABM concurrently to prevent deadlocks.
+ */
+#ifndef HDLC_DEFAULT_CONTENTION_DELAY_TIMEOUT
+#define HDLC_DEFAULT_CONTENTION_DELAY_TIMEOUT  100
+#endif
+
 /*
  * --------------------------------------------------------------------------
  * RETRY COUNT DEFAULTS

@@ -138,13 +138,17 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     
     hdlc_init(&node1->ctx, node1->input_buffer, sizeof(node1->input_buffer),
               node1->retransmit_buffer, sizeof(node1->retransmit_buffer),
-              20, window_size, // 20ms timeout instead of 500ms for fast PC simulation
-              25, // max_retry_count (allow up to 500ms total delay before link drop)
+              HDLC_DEFAULT_RETRANSMIT_TIMEOUT, /* Timeout in ticks */
+              HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
+              window_size,
+              2, /* Max retries (N2) */ /* (allow up to 500ms total delay before link drop) */
               node_output_cb, node_on_frame_cb, node_state_cb, node1);
 
     hdlc_init(&node2->ctx, node2->input_buffer, sizeof(node2->input_buffer),
               node2->retransmit_buffer, sizeof(node2->retransmit_buffer),
-              20, window_size,
+              HDLC_DEFAULT_RETRANSMIT_TIMEOUT,
+              HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
+              window_size,
               25, // max_retry_count
               node_output_cb, node_on_frame_cb, node_state_cb, node2);
               

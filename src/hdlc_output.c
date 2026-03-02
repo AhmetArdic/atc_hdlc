@@ -301,7 +301,7 @@ bool hdlc_output_frame_i(hdlc_context_t *ctx, const hdlc_u8 *data, hdlc_u32 len)
   
   // Update State
   ctx->vs = (ctx->vs + 1) % HDLC_SEQUENCE_MODULUS;
-  ctx->ack_pending = false; // Piggybacked ACK sent via N(R) in I-frame
+  ctx->ack_timer = 0; // Piggybacked ACK sent via N(R) in I-frame
   
   // Start Timer (only if this is the first outstanding frame)
   if (outstanding == 0) {
