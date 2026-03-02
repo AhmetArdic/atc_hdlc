@@ -2,7 +2,32 @@
 
 A lightweight, portable HDLC (High-Level Data Link Control) protocol implementation designed for embedded systems with UART (Asynchronous) communication.
 
-## 🚀 Features
+## 🎯 What We've Built So Far (HDLC Protocol Features)
+
+This library implements a highly capable subset of the ISO/IEC 13239 HDLC standard, specifically tailored for asynchronous serial communication:
+
+*   **Framing & Transparency**: Standard `0x7E` flag boundaries with `0x7D` byte-stuffing inversion for binary-transparent links.
+*   **Data Integrity**: 16-bit CRC-CCITT verification discarding corrupted frames instantly.
+*   **Asynchronous Balanced Mode (ABM)**: Full connection lifecycle management using `SABM`, `UA`, `DISC`, and `DM` frames. Peer-to-peer topology where either side can initiate or disconnect.
+*   **Reliable Data Transfer (Go-Back-N)**: Sliding window protocol (Modulo-8) with up to 7 outstanding I-frames. Uses `REJ` frames for swift error recovery.
+*   **Piggybacked & Cumulative ACKs**: Information (I) frames carry receive sequence numbers `N(R)`. `RR` frames are only sent when delayed ACK (T2) times out, reducing overhead.
+*   **Connectionless Data**: Unnumbered Information (`UI`) frames for broadcast or unacknowledged low-latency messages.
+*   **Link Verification**: Automatic `TEST` frame responding with optional payload echoing to measure link health dynamically.
+*   **Collision Avoidance**: SABM contention resolution delay via address prioritization if both stations try to connect simultaneously.
+
+## 🗺️ Roadmap (Upcoming HDLC Standard Features)
+
+To make this stack fully compliant with broader HDLC specifications, the following features are planned:
+
+*   **[TODO] Flow Control (RNR)**: Implementation of Receive Not Ready (`RNR`) to signal busy conditions and temporarily halt peer transmissions without dropping the link.
+*   **[TODO] Selective Reject (SREJ)**: Upgrading from Go-Back-N to Selective Repeat for higher efficiency on lossy links, retransmitting only the dropped frames.
+*   **[TODO] Extended Sequence Numbers (Modulo-128)**: Supporting extended control fields for `SABME`/I-frames to allow up to 127 outstanding frames for high-bandwidth/high-latency links.
+*   **[TODO] Extended Addressing**: Expanding beyond the 1-byte 0-254 space to support multi-byte station addresses for large networks.
+*   **[TODO] Unbalanced Modes (NRM/ARM)**: Adding Normal Response Mode (Polled/Primary-Secondary) and Asynchronous Response Mode for legacy multi-drop serial buses.
+*   **[TODO] Parameter Negotiation (XID)**: Exchange Identification frames to automatically negotiate Window Size, Modulus, Retransmission Timers, and Max Frame Length dynamically during link setup.
+*   **[TODO] Frame Reject (FRMR) Handling**: Full generation and parsing of FRMR payload to gracefully report irrecoverable protocol violations (e.g., invalid control field).
+
+## 🚀 Features (General Library Capabilities)
 
 *   **Robust Framing**:
     *   Unambiguous Flag delimiting (`0x7E`).
