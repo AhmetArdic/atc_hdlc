@@ -43,8 +43,13 @@ void on_state_change(atc_hdlc_protocol_state_t state, void *user_data) {
 
 // Helper to reset test state (Custom for this file to include state change)
 void setup_context(void) {
+    static atc_hdlc_u8 static_retx_buf[1024];
     // We call init manually to inject on_state_change, but use shared buffers/callbacks for the rest
-    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), NULL, 0, HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS, HDLC_DEFAULT_WINDOW_SIZE, mock_output_byte_cb, mock_on_frame_cb, on_state_change, NULL);
+    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer),
+                  static_retx_buf, sizeof(static_retx_buf),
+                  ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT,
+                  ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
+                  ATC_HDLC_DEFAULT_WINDOW_SIZE, 3, mock_output_byte_cb, mock_on_frame_cb, on_state_change, NULL);
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02); // Me=0x01, Peer=0x02
     
     // Reset shared state
@@ -123,7 +128,7 @@ void test_connect_complete_on_ua(void) {
     ua_frame.control.value = 0x73; // UA with F=1
     ua_frame.information = NULL;
     ua_frame.information_len = 0;
-    ua_frame.type = HDLC_FRAME_U;
+    ua_frame.type = ATC_HDLC_FRAME_U;
 
     uint8_t packed[32];
     uint32_t packed_len = 0;
@@ -246,7 +251,7 @@ void test_frmr_reception(void) {
     frmr_frame.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_FRMR, HDLC_U_MODIFIER_HI_FRMR, 0); // F=0
     frmr_frame.information = frmr_payload;
     frmr_frame.information_len = sizeof(frmr_payload);
-    frmr_frame.type = HDLC_FRAME_U;
+    frmr_frame.type = ATC_HDLC_FRAME_U;
 
     uint8_t packed[32];
     uint32_t packed_len = 0;
@@ -277,7 +282,7 @@ void test_mode_rejection(void) {
     params_frame.control = atc_hdlc_create_u_ctrl(0, 4, 1); // SNRM, P=1, Hi=4, Lo=0
     params_frame.information = NULL;
     params_frame.information_len = 0;
-    params_frame.type = HDLC_FRAME_U;
+    params_frame.type = ATC_HDLC_FRAME_U;
 
     uint8_t packed[32];
     uint32_t packed_len = 0;
@@ -320,7 +325,7 @@ void test_extended_mode_rejection(void) {
         frame_in.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SABME, HDLC_U_MODIFIER_HI_SABME, 1);
         frame_in.information = NULL;
         frame_in.information_len = 0;
-        frame_in.type = HDLC_FRAME_U;
+        frame_in.type = ATC_HDLC_FRAME_U;
 
         uint8_t packed[32];
         uint32_t packed_len = 0;
@@ -344,7 +349,7 @@ void test_extended_mode_rejection(void) {
         frame_in.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SNRME, HDLC_U_MODIFIER_HI_SNRME, 1);
         frame_in.information = NULL;
         frame_in.information_len = 0;
-        frame_in.type = HDLC_FRAME_U;
+        frame_in.type = ATC_HDLC_FRAME_U;
 
         uint8_t packed[32];
         uint32_t packed_len = 0;
@@ -368,7 +373,7 @@ void test_extended_mode_rejection(void) {
         frame_in.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SARME, HDLC_U_MODIFIER_HI_SARME, 1);
         frame_in.information = NULL;
         frame_in.information_len = 0;
-        frame_in.type = HDLC_FRAME_U;
+        frame_in.type = ATC_HDLC_FRAME_U;
 
         uint8_t packed[32];
         uint32_t packed_len = 0;
@@ -388,6 +393,116 @@ void test_extended_mode_rejection(void) {
     test_pass("Extended Mode Rejection");
 }
 
+void test_contention_resolution_winner(void) {
+    printf("TEST: Contention Resolution (Winner)\n");
+    setup_context();
+    
+    // We are 0x01, peer is 0x02. Wait, the rule is higher address wins. 
+    // Let's reconfigure so we are higher.
+    atc_hdlc_configure_addresses(&ctx, 0x02, 0x01); // Me=0x02, Peer=0x01
+    
+    // 1. We initiate connection (SABM sent)
+    atc_hdlc_connect(&ctx);
+    if (ctx.current_state != ATC_HDLC_PROTOCOL_STATE_CONNECTING)
+         test_fail("Contention Winner", "State not CONNECTING");
+         
+    mock_output_len = 0; // Clear the SABM we just sent from mock tx buffer
+    
+    // 2. Peer also initiated connection, so we receive their SABM
+    atc_hdlc_frame_t sabm_frame;
+    sabm_frame.address = 0x02; // Addressed to us
+    sabm_frame.control.value = 0x3F; // SABM (P=1)
+    sabm_frame.information = NULL;
+    sabm_frame.information_len = 0;
+
+    uint8_t packed[32];
+    uint32_t packed_len = 0;
+    atc_hdlc_frame_pack(&sabm_frame, packed, sizeof(packed), &packed_len);
+    
+    atc_hdlc_input_bytes(&ctx, packed, packed_len);
+    
+    // We are higher address (2 > 1), so we WIN.
+    // Winner behaviour: Immediately reply with UA, and transition to CONNECTED.
+    if (ctx.current_state != ATC_HDLC_PROTOCOL_STATE_CONNECTED)
+         test_fail("Contention Winner", "State should transition to CONNECTED after winning");
+         
+    atc_hdlc_frame_t frame_out;
+    uint8_t flat[32];
+    decode_last_tx(&frame_out, flat, sizeof(flat));
+
+    if (frame_out.address != 0x02) test_fail("Contention Winner", "UA wrong address");
+    if (frame_out.control.value != 0x73) test_fail("Contention Winner", "Did not send UA(F=1)"); // UA(F=1)
+    
+    // Check timer was NOT set
+    if (ctx.contention_timer != 0) test_fail("Contention Winner", "Timer should not be set for winner");
+    
+    test_pass("Contention Resolution (Winner)");
+}
+
+void test_contention_resolution_loser(void) {
+    printf("TEST: Contention Resolution (Loser)\n");
+    setup_context();
+    
+    // We are 0x01, peer is 0x02. Lower address loses.
+    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02); // Me=0x01, Peer=0x02
+    
+    // 1. We initiate connection (SABM sent)
+    atc_hdlc_connect(&ctx);
+    mock_output_len = 0;
+    
+    // 2. Peer also initiated connection, so we receive their SABM
+    atc_hdlc_frame_t sabm_frame;
+    sabm_frame.address = 0x01; // Addressed to us
+    sabm_frame.control.value = 0x3F; // SABM (P=1)
+    sabm_frame.information = NULL;
+    sabm_frame.information_len = 0;
+
+    uint8_t packed[32];
+    uint32_t packed_len = 0;
+    atc_hdlc_frame_pack(&sabm_frame, packed, sizeof(packed), &packed_len);
+    
+    atc_hdlc_input_bytes(&ctx, packed, packed_len);
+    
+    // We are lower address (1 < 2), so we LOSE.
+    // Loser behaviour: Do NOT send UA. Set contention timer. State remains CONNECTING.
+    if (ctx.current_state != ATC_HDLC_PROTOCOL_STATE_CONNECTING)
+         test_fail("Contention Loser", "State changed from CONNECTING");
+         
+    if (mock_output_len != 0)
+         test_fail("Contention Loser", "Sent a frame instead of backing off");
+         
+    if (ctx.contention_timer == 0)
+         test_fail("Contention Loser", "Contention timer was not set");
+         
+    // 3. Tick the timer until it expires to verify SABM retransmission
+    uint32_t ticks_to_wait = ctx.contention_timer;
+    for (uint32_t i = 0; i < ticks_to_wait - 1; i++) {
+        atc_hdlc_tick(&ctx);
+        if (mock_output_len != 0) {
+            test_fail("Contention Loser", "Transmitted eagerly before timer expired");
+            return;
+        }
+    }
+    
+    // 4. One final tick should expire the timer and retransmit the SABM
+    atc_hdlc_tick(&ctx);
+    
+    if (mock_output_len == 0) {
+        test_fail("Contention Loser", "Timer expired but SABM was not retransmitted");
+        return;
+    }
+    
+    atc_hdlc_frame_t retx_frame;
+    uint8_t retx_flat[32];
+    decode_last_tx(&retx_frame, retx_flat, sizeof(retx_flat));
+    
+    if (retx_frame.control.value != 0x3F) {
+        test_fail("Contention Loser", "Timer expired but output was not SABM");
+    }
+         
+    test_pass("Contention Resolution (Loser + Timer)");
+}
+
 int main(void) {
     printf("\n%sSTARTING CONNECTION MANAGEMENT TESTS%s\n", COL_YELLOW, COL_RESET);
     printf("----------------------------------------\n\n");
@@ -400,6 +515,8 @@ int main(void) {
     test_frmr_reception();
     test_mode_rejection();
     test_extended_mode_rejection();
+    test_contention_resolution_winner();
+    test_contention_resolution_loser();
     
     printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
     return 0;

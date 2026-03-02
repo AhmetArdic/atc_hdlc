@@ -8,8 +8,8 @@
  * shared across HDLC implementation modules but not part of the public API.
  */
 
-#ifndef HDLC_PRIVATE_H
-#define HDLC_PRIVATE_H
+#ifndef ATC_HDLC_PRIVATE_H
+#define ATC_HDLC_PRIVATE_H
 
 #include "../inc/hdlc_types.h"
 
@@ -133,15 +133,15 @@ typedef enum {
 
 /** @brief Encoding context used by frame serialization. */
 typedef struct {
-  hdlc_context_t *ctx;  /**< For callback-based TX. */
-  hdlc_u8 *buffer;      /**< For buffer-based TX. */
-  hdlc_u32 buffer_len;  /**< Max buffer length. */
-  hdlc_u32 current_len; /**< Current bytes written to buffer. */
-  hdlc_bool success;    /**< Used for buffer overflow check. */
+  atc_hdlc_context_t *ctx;  /**< For callback-based TX. */
+  atc_hdlc_u8 *buffer;      /**< For buffer-based TX. */
+  atc_hdlc_u32 buffer_len;  /**< Max buffer length. */
+  atc_hdlc_u32 current_len; /**< Current bytes written to buffer. */
+  atc_hdlc_bool success;    /**< Used for buffer overflow check. */
 } hdlc_encode_ctx_t;
 
 /** @brief Function pointer for writing a byte during encoding. */
-typedef void (*hdlc_put_byte_fn)(hdlc_encode_ctx_t *enc_ctx, hdlc_u8 byte, hdlc_bool flush);
+typedef void (*hdlc_put_byte_fn)(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush);
 
 /*
  * --------------------------------------------------------------------------
@@ -150,18 +150,56 @@ typedef void (*hdlc_put_byte_fn)(hdlc_encode_ctx_t *enc_ctx, hdlc_u8 byte, hdlc_
  */
 
 /* hdlc.c — State management */
-void hdlc_set_protocol_state(hdlc_context_t *ctx, hdlc_protocol_state_t new_state);
+void hdlc_set_protocol_state(atc_hdlc_context_t *ctx, atc_hdlc_protocol_state_t new_state);
 
 /* hdlc_output.c — Output helpers used by multiple modules */
-void hdlc_output_frame_start(hdlc_context_t *ctx, hdlc_u8 address, hdlc_u8 control);
-void hdlc_output_frame_information_bytes(hdlc_context_t *ctx, const hdlc_u8 *information_bytes, hdlc_u32 len);
-void hdlc_output_frame_end(hdlc_context_t *ctx);
+void atc_hdlc_output_frame_start(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 control);
+void atc_hdlc_output_frame_information_bytes(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *information_bytes, atc_hdlc_u32 len);
+void atc_hdlc_output_frame_end(atc_hdlc_context_t *ctx);
 
 /* hdlc_frame.c — Encoding helpers used by hdlc_output.c */
-void output_byte_to_callback(hdlc_encode_ctx_t *enc_ctx, hdlc_u8 byte, hdlc_bool flush);
-hdlc_bool frame_pack_core(const hdlc_frame_t *frame, hdlc_put_byte_fn put_fn, hdlc_encode_ctx_t *enc_ctx);
+void output_byte_to_callback(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush);
+atc_hdlc_bool frame_pack_core(const atc_hdlc_frame_t *frame, hdlc_put_byte_fn put_fn, hdlc_encode_ctx_t *enc_ctx);
 
 /* hdlc_input.c — Process complete frame (called from input parser) */
-void process_complete_frame(hdlc_context_t *ctx);
+void process_complete_frame(atc_hdlc_context_t *ctx);
 
-#endif // HDLC_PRIVATE_H
+/*
+ * --------------------------------------------------------------------------
+ * INTERNAL FRAME SEND HELPERS
+ * --------------------------------------------------------------------------
+ */
+
+static inline void hdlc_send_u_frame(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf) {
+    atc_hdlc_control_t ctrl = atc_hdlc_create_u_ctrl(m_lo, m_hi, pf);
+    atc_hdlc_output_frame_start(ctx, address, ctrl.value);
+    atc_hdlc_output_frame_end(ctx);
+}
+
+static inline void hdlc_send_ua(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
+    hdlc_send_u_frame(ctx, ctx->my_address, HDLC_U_MODIFIER_LO_UA, HDLC_U_MODIFIER_HI_UA, pf);
+}
+
+static inline void hdlc_send_dm(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
+    hdlc_send_u_frame(ctx, ctx->my_address, HDLC_U_MODIFIER_LO_DM, HDLC_U_MODIFIER_HI_DM, pf);
+}
+
+static inline void hdlc_send_s_frame(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
+    atc_hdlc_control_t ctrl = atc_hdlc_create_s_ctrl(s_bits, nr, pf);
+    atc_hdlc_output_frame_start(ctx, address, ctrl.value);
+    atc_hdlc_output_frame_end(ctx);
+}
+
+static inline void hdlc_send_rr(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
+    hdlc_send_s_frame(ctx, ctx->peer_address, HDLC_S_RR, ctx->vr, pf); // Command
+}
+
+static inline void hdlc_send_response_rr(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
+    hdlc_send_s_frame(ctx, ctx->my_address, HDLC_S_RR, ctx->vr, pf); // Response (Address = Sender's own address)
+}
+
+static inline void hdlc_send_rej(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
+    hdlc_send_s_frame(ctx, ctx->peer_address, HDLC_S_REJ, ctx->vr, pf);
+}
+
+#endif // ATC_HDLC_PRIVATE_H

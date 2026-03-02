@@ -19,9 +19,9 @@ typedef struct {
     
     mutex_t ctx_lock;
     
-    hdlc_context_t ctx;
-    hdlc_u8 input_buffer[BUFFER_SIZE * 2];
-    hdlc_u8 retransmit_buffer[BUFFER_SIZE * 2 * 8];    
+    atc_hdlc_context_t ctx;
+    atc_hdlc_u8 input_buffer[BUFFER_SIZE * 2];
+    atc_hdlc_u8 retransmit_buffer[BUFFER_SIZE * 2 * 8];    
     thread_t thread;
     volatile bool running;
     
@@ -40,7 +40,7 @@ typedef struct {
 } virtual_node_t;
 
 // Callbacks
-static void node_output_cb(hdlc_u8 byte, hdlc_bool flush, void *user_data) {
+static void node_output_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data) {
     (void)flush;
     virtual_node_t *node = (virtual_node_t *)user_data;
     
@@ -62,9 +62,9 @@ static void node_output_cb(hdlc_u8 byte, hdlc_bool flush, void *user_data) {
     pipe_write(node->tx_pipe, &byte, 1);
 }
 
-static void node_on_frame_cb(const hdlc_frame_t *frame, void *user_data) {
+static void node_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data) {
     virtual_node_t *node = (virtual_node_t *)user_data;
-    if (frame->type == HDLC_FRAME_I) {
+    if (frame->type == ATC_HDLC_FRAME_I) {
         if (node->rx_data && (node->bytes_received + frame->information_len) <= node->rx_data_capacity) {
             memcpy(node->rx_data + node->bytes_received, frame->information, frame->information_len);
         }
@@ -73,9 +73,9 @@ static void node_on_frame_cb(const hdlc_frame_t *frame, void *user_data) {
     }
 }
 
-static void node_state_cb(hdlc_protocol_state_t state, void *user_data) {
+static void node_state_cb(atc_hdlc_protocol_state_t state, void *user_data) {
     virtual_node_t *node = (virtual_node_t *)user_data;
-    if (state == HDLC_PROTOCOL_STATE_CONNECTED) {
+    if (state == ATC_HDLC_PROTOCOL_STATE_CONNECTED) {
         node->connected = true;
     } else {
         node->connected = false;
@@ -93,7 +93,7 @@ void* node_thread_func(void* arg) {
         
         MUTEX_LOCK(&node->ctx_lock);
         if (n > 0) {
-            hdlc_input_bytes(&node->ctx, buf, n);
+            atc_hdlc_input_bytes(&node->ctx, buf, n);
         }
         
         double now = get_time_s();
@@ -101,10 +101,10 @@ void* node_thread_func(void* arg) {
         
         if (elapsed_ms >= 1.0) {
             uint32_t ticks = (uint32_t)elapsed_ms;
-            hdlc_tick(&node->ctx, ticks);
+            for(uint32_t _t=0; _t<ticks; _t++) atc_hdlc_tick(&node->ctx);
             last_time += (double)ticks / 1000.0; // Preserve fractional ms
         } else {
-            hdlc_tick(&node->ctx, 0);
+            atc_hdlc_tick(&node->ctx);
         }
         MUTEX_UNLOCK(&node->ctx_lock);
         
@@ -136,18 +136,24 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     node1->running = true;
     node2->running = true;
     
-    hdlc_init(&node1->ctx, node1->input_buffer, sizeof(node1->input_buffer),
+    atc_hdlc_init(&node1->ctx, node1->input_buffer, sizeof(node1->input_buffer),
               node1->retransmit_buffer, sizeof(node1->retransmit_buffer),
-              20, window_size, // 20ms timeout instead of 500ms for fast PC simulation
+              ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, /* Timeout in ticks */
+              ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
+              window_size,
+              2, /* Max retries (N2) */ /* (allow up to 500ms total delay before link drop) */
               node_output_cb, node_on_frame_cb, node_state_cb, node1);
 
-    hdlc_init(&node2->ctx, node2->input_buffer, sizeof(node2->input_buffer),
+    atc_hdlc_init(&node2->ctx, node2->input_buffer, sizeof(node2->input_buffer),
               node2->retransmit_buffer, sizeof(node2->retransmit_buffer),
-              20, window_size,
+              ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT,
+              ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
+              window_size,
+              25, // max_retry_count
               node_output_cb, node_on_frame_cb, node_state_cb, node2);
               
-    hdlc_configure_addresses(&node1->ctx, 0x01, 0x02);
-    hdlc_configure_addresses(&node2->ctx, 0x02, 0x01);
+    atc_hdlc_configure_addresses(&node1->ctx, 0x01, 0x02);
+    atc_hdlc_configure_addresses(&node2->ctx, 0x02, 0x01);
 }
 
 static void node_pair_start(virtual_node_t *node1, virtual_node_t *node2) {
@@ -169,12 +175,12 @@ static void node_pair_cleanup(virtual_node_t *node1, virtual_node_t *node2, pipe
 static bool hdlc_test_connect(virtual_node_t *node, int timeout_ms) {
     int retries = timeout_ms;
     MUTEX_LOCK(&node->ctx_lock);
-    hdlc_connect(&node->ctx);
+    atc_hdlc_connect(&node->ctx);
     MUTEX_UNLOCK(&node->ctx_lock);
     while((!node->connected) && retries > 0) {
         if (retries % 1000 == 0) {
             MUTEX_LOCK(&node->ctx_lock);
-            hdlc_connect(&node->ctx);
+            atc_hdlc_connect(&node->ctx);
             MUTEX_UNLOCK(&node->ctx_lock);
         }
         SLEEP_MS(1);
@@ -189,10 +195,11 @@ static bool hdlc_test_send_data(virtual_node_t *node, const uint8_t *payload, ui
     double timeout_s = (double)timeout_ms / 1000.0;
     
     while(sent < payload_len && (get_time_s() - start) < timeout_s) {
+        if (!node->connected) break;
         uint32_t to_send = (payload_len - sent) > CHUNK_SIZE ? CHUNK_SIZE : (payload_len - sent);
         
         MUTEX_LOCK(&node->ctx_lock);
-        bool sent_ok = hdlc_output_frame_i(&node->ctx, payload + sent, to_send);
+        bool sent_ok = atc_hdlc_output_frame_i(&node->ctx, payload + sent, to_send);
         MUTEX_UNLOCK(&node->ctx_lock);
         
         if (sent_ok) {
@@ -209,6 +216,7 @@ static bool hdlc_test_wait_rx(volatile uint32_t *bytes_received, uint32_t expect
     double start = get_time_s();
     double timeout_s = (double)timeout_ms / 1000.0;
     while(*bytes_received < expected_bytes && (get_time_s() - start) < timeout_s) {
+        // If the receiver node's context indicates it's disconnected, there's no point in waiting
         YIELD_THREAD();
     }
     return *bytes_received == expected_bytes;
@@ -217,12 +225,12 @@ static bool hdlc_test_wait_rx(volatile uint32_t *bytes_received, uint32_t expect
 static void hdlc_test_disconnect(virtual_node_t *node, int timeout_ms) {
     int retries = timeout_ms;
     MUTEX_LOCK(&node->ctx_lock);
-    hdlc_disconnect(&node->ctx);
+    atc_hdlc_disconnect(&node->ctx);
     MUTEX_UNLOCK(&node->ctx_lock);
     while((node->connected) && retries > 0) {
         if (retries % 1000 == 0) {
             MUTEX_LOCK(&node->ctx_lock);
-            hdlc_disconnect(&node->ctx);
+            atc_hdlc_disconnect(&node->ctx);
             MUTEX_UNLOCK(&node->ctx_lock);
         }
         SLEEP_MS(1);
@@ -367,6 +375,7 @@ void run_go_back_n_test(int window_size) {
     double timeout_s = 5.0; // 5 seconds
     
     while(sent < bytes_to_send && (get_time_s() - start) < timeout_s) {
+        if (!node1.connected) break;
         uint32_t to_send = CHUNK_SIZE;
         if (bytes_to_send - sent < CHUNK_SIZE) to_send = bytes_to_send - sent;
         
@@ -375,7 +384,7 @@ void run_go_back_n_test(int window_size) {
         }
         
         MUTEX_LOCK(&node1.ctx_lock);
-        bool sent_ok = hdlc_output_frame_i(&node1.ctx, payload, to_send);
+        bool sent_ok = atc_hdlc_output_frame_i(&node1.ctx, payload, to_send);
         MUTEX_UNLOCK(&node1.ctx_lock);
         
         if (sent_ok) {
@@ -394,6 +403,7 @@ void run_go_back_n_test(int window_size) {
     
     double rx_start = get_time_s();
     while(node2.bytes_received < bytes_to_send && (get_time_s() - rx_start) < 10.0) {
+        if (!node2.connected) break;
         YIELD_THREAD();
     }
     

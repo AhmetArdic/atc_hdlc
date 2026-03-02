@@ -15,14 +15,17 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
     *   **Packet Mode**:
         *   **Buffered**: Construct a full `atc_hdlc_frame_t` and send it in one call using the context.
         *   **Zero-Copy**: Send frames byte-by-byte (`start` → `data` → `end`) for ultra-low memory environments.
-    *   **Stateless Mode**: Pack/Unpack frames directly into memory buffers without using the `hdlc_context_t` or callbacks. Ideal for purely functional usage.
+    *   **Stateless Mode**: Pack/Unpack frames directly into memory buffers without using the `atc_hdlc_context_t` or callbacks. Ideal for purely functional usage.
 *   **Reliable Data Transfer (Go-Back-N)**:
     *   **Parametric Window Size** (1..7, configurable at init). Window=1 is Stop-and-Wait.
-    *   **Cumulative Acknowledgment**: N(R) in any received frame acknowledges all frames with N(S) < N(R).
-    *   **Automatic Retransmission**: On timeout, all outstanding frames from V(A) to V(S)-1 are retransmitted (Go-Back-N).
-    *   **REJ (Reject) Handling**: Peer can request retransmission from a specific sequence number.
+    *   **Cumulative Acknowledgment**: N(R) in any received frame acknowledges all frames with N(S) < N(R). `atc_hdlc_tick` integration ensures periodic polling to send RR when needed.
+    *   **Automatic Retransmission**: On timeout, all outstanding frames from V(A) to V(S)-1 are retransmitted (Go-Back-N). Safely handles Enquiry (P=1) and P/F bit handshake to prevent blind retransmission.
+    *   **REJ (Reject) Handling**: Peer can request retransmission from a specific sequence number. Correctly unwinds Go-Back-N window without deadlocks.
     *   **Piggyback ACK**: Outgoing I-frames carry N(R) to acknowledge received frames without a separate RR.
-    *   **Configurable Retransmission Timeout**: Runtime-configurable T1 timer (default 1000ms).
+    *   **Configurable Timers**: 
+        *   T1 (Retransmission timeout, default 1000ms).
+        *   T2 (ACK delay timeout, default 10ms) to allow piggybacking.
+    *   **Connection Retry Limits**: Drops connection if peers don't respond after a set number of MAX_RETRY attempts.
     *   Zero-allocation slotted retransmit buffer — user provides a single contiguous buffer, library divides into `window_size` equal slots.
 *   **Protocol Infrastructure**:
     *   Built-in support for I-Frames, S-Frames, and U-Frames with bit-field accessors.
@@ -31,6 +34,7 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
         *   Full Connection Management (`SABM`, `UA`, `DISC`, `DM`).
         *   Explicit rejection of unsupported modes (`SNRM`, `SARM`) with `DM`.
         *   Connection State Machine (`DISCONNECTED` ↔ `CONNECTING` ↔ `CONNECTED` ↔ `DISCONNECTING`).
+        *   **Contention Resolution**: Resolves SABM collisions (both sides connecting simultaneously) via a back-off contention timer using address prioritization.
     *   **TEST Frame**: Send and auto-echo TEST frames with optional data payload for link verification.
     *   **Multi-Slave / Broadcast Support**:
         *   Broadcast Address (`0xFF`) support for UI frames.
@@ -39,8 +43,8 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
     *   Frame Type dispatcher.
 *   **Developer Experience**:
     *   Modern **CMake** build system (C99).
-    *   **Unit tests** covering edge cases (byte stuffing, CRC errors, overflow, fragmentation, control field loopback, reliable transmission, Go-Back-N, TEST frames, Virtual COM port simulation, and multi-platform pipe mechanisms).
-    *   **Configurable Symbol Prefix**: All public symbols are prefixed (default `atc_`) to avoid collisions. Changeable at compile time via `ATC_HDLC_PREFIX`.
+    *   **Unit tests** covering edge cases (byte stuffing, CRC errors, overflow, fragmentation, control field loopback, reliable transmission, Go-Back-N, TEST frames, Virtual COM port simulation, modulo-8 arithmetic, and multi-platform pipe mechanisms). Works on **Linux & Windows**.
+    *   **STM32 Target Example**: Example project and physical target tests to run directly on microcontrollers.
     *   **C++ compatible** (`extern "C"` wrappers).
 
 ## 📂 Project Structure
@@ -65,8 +69,9 @@ A lightweight, portable HDLC (High-Level Data Link Control) protocol implementat
 │   ├── CMakeLists.txt                # Test build configuration
 │   ├── test_hdlc.c                   # Core protocol unit tests
 │   ├── test_reliable_transmission.c  # Reliable TX, Go-Back-N, retransmission tests
-│   ├── test_connection_management.c  # State machine & connection tests
+│   ├── test_connection_management.c  # State machine, collision & connection tests
 │   ├── test_virtual_com.c            # Virtual COM port integration and file transfer tests
+│   ├── test_physical_target.c        # Physical target throughput test over actual UART
 │   ├── test_virtual_pipe.c           # Generic multi-platform pipe mechanism for testing
 │   ├── test_virtual_pipe.h           # Pipe module header
 │   ├── test_common.c                 # Shared test utilities (colors, assertions)
@@ -182,8 +187,10 @@ To use this library in your own project:
     atc_hdlc_init(&ctx,
         rx_buffer, sizeof(rx_buffer),           // Input buffer
         retransmit_buffer, sizeof(retransmit_buffer), // Retransmit buffer
-        HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS,     // T1 timeout (1000ms default)
-        HDLC_DEFAULT_WINDOW_SIZE,               // Window size (1 = Stop-and-Wait)
+        ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT,        // T1 timeout (default 1000)
+        ATC_HDLC_DEFAULT_WINDOW_SIZE,               // Window size (1 = Stop-and-Wait)
+        ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,         // T2 timeout for cumulative ACK (default 10)
+        ATC_HDLC_DEFAULT_MAX_RETRY_COUNT,           // N2 Retry limit (default 3)
         my_output_byte, my_on_frame, my_on_state, NULL);
     
     // Configure Addresses (My Address, Peer Address)
@@ -280,8 +287,11 @@ Configuration is done in `inc/hdlc_config.h`:
 |---|---|---|
 | `ATC_HDLC_PREFIX_LOWERCASE` | `atc_` | Lowercase prefix for public API functions and types |
 | `ATC_HDLC_PREFIX_UPPERCASE` | `ATC_` | Uppercase prefix for enums and constants |
-| `HDLC_DEFAULT_RETRANSMIT_TIMEOUT_MS` | `1000` | Default retransmission (T1) timeout in milliseconds |
-| `HDLC_DEFAULT_WINDOW_SIZE` | `1` | Default transmit window size for Go-Back-N (1..7) |
+| `ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT` | `1000` | Default T1 retransmission timeout in ticks |
+| `ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT` | `10` | Default T2 ACK delay timeout in ticks for cumulative ACK |
+| `ATC_HDLC_DEFAULT_CONTENTION_DELAY_TIMEOUT`| `100` | Default contention timer back-off in ticks upon SABM collision |
+| `ATC_HDLC_DEFAULT_WINDOW_SIZE` | `1` | Default transmit window size for Go-Back-N (1..7) |
+| `ATC_HDLC_DEFAULT_MAX_RETRY_COUNT` | `3` | Default N2 retry limit before link disconnects |
 
 ## 📖 API Reference
 

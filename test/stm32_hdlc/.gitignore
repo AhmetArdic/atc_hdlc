@@ -1,0 +1,19 @@
+# Build directories
+Debug/
+Release/
+build/
+
+# IDE specific
+*.launch
+.metadata/
+
+# Object and dependency files
+*.o
+*.d
+*.su
+
+# Executables, binaries and map files
+*.elf
+*.hex
+*.bin
+*.map
