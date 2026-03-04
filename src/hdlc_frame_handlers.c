@@ -197,7 +197,7 @@ static void hdlc_process_sabm(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *f
     }
 
     hdlc_reset_connection_state(ctx);
-    hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_CONNECTED);
+    hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_CONNECTED, ATC_HDLC_EVENT_INCOMING_CONNECT);
     hdlc_send_ua(ctx, frame->control.u_frame.pf);
 }
 
@@ -222,7 +222,7 @@ static void hdlc_process_sarme(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *
 }
 
 static void hdlc_process_disc(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED);
+    hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED, ATC_HDLC_EVENT_PEER_DISCONNECT);
     hdlc_send_ua(ctx, frame->control.u_frame.pf);
 }
 
@@ -230,15 +230,15 @@ static void hdlc_process_ua(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *fra
     (void)frame;
     if (ctx->current_state == ATC_HDLC_PROTOCOL_STATE_CONNECTING) {
         hdlc_reset_connection_state(ctx);
-        hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_CONNECTED);
+        hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_CONNECTED, ATC_HDLC_EVENT_CONNECT_ACCEPTED);
     } else if (ctx->current_state == ATC_HDLC_PROTOCOL_STATE_DISCONNECTING) {
-        hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED);
+        hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED, ATC_HDLC_EVENT_DISCONNECT_COMPLETE);
     }
 }
 
 static void hdlc_process_dm(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
     (void)frame;
-    hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED);
+    hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED, ATC_HDLC_EVENT_PEER_REJECT);
 }
 
 static void hdlc_process_frmr(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
@@ -268,7 +268,7 @@ static void hdlc_process_frmr(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *f
    }
 
    ATC_HDLC_LOG_DEBUG("state: FRMR caused disconnect");
-   hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED);
+   hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED, ATC_HDLC_EVENT_PROTOCOL_ERROR);
 }
 
 static void hdlc_process_ui(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {

@@ -190,15 +190,19 @@ To use this library in your own project:
     }
 
     // On State Change: Called when the connection state changes
-    void my_on_state(atc_hdlc_protocol_state_t state, void *user_data) {
-        switch(state) {
-            case ATC_HDLC_PROTOCOL_STATE_CONNECTED:
-                printf("Connected!\n");
-                break;
-            case ATC_HDLC_PROTOCOL_STATE_DISCONNECTED:
-                printf("Disconnected!\n");
-                break;
-             // ...
+    void my_on_state(atc_hdlc_protocol_state_t state, atc_hdlc_event_t event, void *user_data) {
+        (void)user_data;
+        if (state == ATC_HDLC_PROTOCOL_STATE_CONNECTED) {
+            printf("Connected! (event=%d)\n", event);
+        } else if (state == ATC_HDLC_PROTOCOL_STATE_DISCONNECTED) {
+            if (event == ATC_HDLC_EVENT_LINK_FAILURE)
+                printf("Link failure! Reconnecting...\n");
+            else if (event == ATC_HDLC_EVENT_PEER_DISCONNECT)
+                printf("Peer disconnected.\n");
+            else
+                printf("Disconnected! (event=%d)\n", event);
+        } else {
+            printf("State changed to %d (event=%d)\n", state, event);
         }
     }
     ```
@@ -374,7 +378,7 @@ Configuration is done in `inc/hdlc_config.h`:
 ```c
 typedef void (*atc_hdlc_output_byte_cb_t)(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data);
 typedef void (*atc_hdlc_on_frame_cb_t)(const atc_hdlc_frame_t *frame, void *user_data);
-typedef void (*atc_hdlc_on_state_change_cb_t)(atc_hdlc_protocol_state_t state, void *user_data);
+typedef void (*atc_hdlc_on_state_change_cb_t)(atc_hdlc_protocol_state_t state, atc_hdlc_event_t event, void *user_data);
 ```
 
 ## 📄 License

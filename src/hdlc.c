@@ -113,7 +113,7 @@ atc_hdlc_bool atc_hdlc_connect(atc_hdlc_context_t *ctx) {
   atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
   atc_hdlc_output_frame_end(ctx);
 
-  hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_CONNECTING);
+  hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_CONNECTING, ATC_HDLC_EVENT_CONNECT_REQUEST);
   return true;
 }
 
@@ -130,7 +130,7 @@ atc_hdlc_bool atc_hdlc_disconnect(atc_hdlc_context_t *ctx) {
   atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
   atc_hdlc_output_frame_end(ctx);
 
-  hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTING);
+  hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTING, ATC_HDLC_EVENT_DISCONNECT_REQUEST);
   return true;
 }
 
@@ -181,7 +181,7 @@ void atc_hdlc_tick(atc_hdlc_context_t *ctx) {
                     ATC_HDLC_LOG_DEBUG("tx: State before reset -> V(S)=%u, V(R)=%u, V(A)=%u", ctx->vs, ctx->vr, ctx->va);
                     
                     /* 1. Veri aktarimi durumu durdurulmali */
-                    hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED);
+                    hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED, ATC_HDLC_EVENT_LINK_FAILURE);
                     
                     /* 2. Gonderim ve alim degiskenleri sifirlanmali */
                     ctx->vs = 0;
@@ -218,12 +218,16 @@ void atc_hdlc_tick(atc_hdlc_context_t *ctx) {
  * @param ctx       HDLC Context.
  * @param new_state New Protocol State to transition to.
  */
-void hdlc_set_protocol_state(atc_hdlc_context_t *ctx, atc_hdlc_protocol_state_t new_state) {
-  if (ctx->current_state != new_state) {
-    ATC_HDLC_LOG_DEBUG("state: changed %d -> %d", ctx->current_state, new_state);
+void hdlc_set_protocol_state(atc_hdlc_context_t *ctx, atc_hdlc_protocol_state_t new_state, atc_hdlc_event_t event) {
+  bool state_changed = (ctx->current_state != new_state);
+  
+  /* Always notify if the state actually changes, OR if the link is being reset 
+     while already connected (e.g., peer restarted and sent a new SABM). */
+  if (state_changed || event == ATC_HDLC_EVENT_INCOMING_CONNECT) {
+    ATC_HDLC_LOG_DEBUG("state: changed %d -> %d (event: %d)", ctx->current_state, new_state, event);
     ctx->current_state = new_state;
     if (ctx->on_state_change_cb != NULL) {
-      ctx->on_state_change_cb(new_state, ctx->user_data);
+      ctx->on_state_change_cb(new_state, event, ctx->user_data);
     }
   }
 }

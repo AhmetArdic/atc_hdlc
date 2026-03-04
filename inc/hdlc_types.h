@@ -224,6 +224,28 @@ typedef enum {
     ATC_HDLC_PROTOCOL_STATE_DISCONNECTING /**< DISC sent, waiting for UA. */
 } atc_hdlc_protocol_state_t;
 
+/**
+ * @brief HDLC State Change Event Types.
+ *
+ * Provides the reason/cause for a protocol state transition,
+ * allowing the application to distinguish between different
+ * scenarios that lead to the same state.
+ */
+typedef enum {
+    /* Connection Events */
+    ATC_HDLC_EVENT_CONNECT_REQUEST,    /**< Local: atc_hdlc_connect() was called. */
+    ATC_HDLC_EVENT_CONNECT_ACCEPTED,   /**< UA received in response to our SABM. */
+    ATC_HDLC_EVENT_INCOMING_CONNECT,   /**< Peer sent SABM — passive open. */
+
+    /* Disconnection Events */
+    ATC_HDLC_EVENT_DISCONNECT_REQUEST, /**< Local: atc_hdlc_disconnect() was called. */
+    ATC_HDLC_EVENT_DISCONNECT_COMPLETE,/**< UA received in response to our DISC. */
+    ATC_HDLC_EVENT_PEER_DISCONNECT,    /**< Peer sent DISC. */
+    ATC_HDLC_EVENT_PEER_REJECT,        /**< Peer sent DM — connection rejected. */
+    ATC_HDLC_EVENT_PROTOCOL_ERROR,     /**< Peer sent FRMR — irrecoverable protocol violation. */
+    ATC_HDLC_EVENT_LINK_FAILURE,       /**< Max retry count (N2) exceeded — link timeout. */
+} atc_hdlc_event_t;
+
 /*
  * --------------------------------------------------------------------------
  * CALLBACK DEFINITIONS
@@ -255,12 +277,14 @@ typedef void (*atc_hdlc_on_frame_cb_t)(const atc_hdlc_frame_t* frame, void *user
  * @brief Connection State Change Callback.
  *
  * Notifies the application when the logical connection state changes
- * (e.g., Connected, Disconnected).
+ * (e.g., Connected, Disconnected) along with the event that caused
+ * the transition.
  *
  * @param state     The new state of the connection.
+ * @param event     The event/reason that triggered this state change.
  * @param user_data Pointer to user-defined context data.
  */
-typedef void (*atc_hdlc_on_state_change_cb_t)(atc_hdlc_protocol_state_t state, void *user_data);
+typedef void (*atc_hdlc_on_state_change_cb_t)(atc_hdlc_protocol_state_t state, atc_hdlc_event_t event, void *user_data);
 
 /*
  * --------------------------------------------------------------------------

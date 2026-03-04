@@ -17,11 +17,11 @@ static atc_hdlc_context_t ctx;
 static atc_hdlc_protocol_state_t last_state_change = (atc_hdlc_protocol_state_t)-1;
 static int state_change_call_count = 0;
 
-void on_state_change(atc_hdlc_protocol_state_t state, void *user_data) {
+void on_state_change(atc_hdlc_protocol_state_t state, atc_hdlc_event_t event, void *user_data) {
     (void)user_data;
     last_state_change = state;
     state_change_call_count++;
-    printf("   %s[STATE CHANGE] New State: %d%s\n", COL_YELLOW, state, COL_RESET);
+    printf("   %s[STATE CHANGE] New State: %d (Event: %d)%s\n", COL_YELLOW, state, event, COL_RESET);
     switch(state) {
         case ATC_HDLC_PROTOCOL_STATE_CONNECTED:
             printf("   %sConnected!%s\n", COL_GREEN, COL_RESET);

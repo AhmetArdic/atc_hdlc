@@ -331,9 +331,10 @@ static void node_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data)
 }
 
 /** @brief Connection state change callback. */
-static void node_state_cb(atc_hdlc_protocol_state_t state, void *user_data)
+static void node_state_cb(atc_hdlc_protocol_state_t state, atc_hdlc_event_t event, void *user_data)
 {
     (void)user_data;
+    (void)event;
     if (state == ATC_HDLC_PROTOCOL_STATE_CONNECTED)
         printf("\nLogical connection established!\n");
     else if (state == ATC_HDLC_PROTOCOL_STATE_DISCONNECTED)
