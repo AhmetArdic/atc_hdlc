@@ -257,12 +257,13 @@ To use this library in your own project:
 6.  **Packet Mode (Buffered)**:
     Construct a frame structure and let the library handle transmission via the `output_cb`.
     ```c
+    atc_hdlc_u8 payload[] = "TEST";
     atc_hdlc_frame_t frame = {
         .address = 0xFF,
         .control.value = 0x00,      // I-Frame
+        .information = payload,
         .information_len = 4
     };
-    memcpy(frame.information, "TEST", 4);
     atc_hdlc_output_frame(&ctx, &frame);
     ```
 
