@@ -123,6 +123,7 @@ void atc_hdlc_input_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
       ctx->input_index = 0;
       return;
     }
+    ctx->input_state = HDLC_INPUT_STATE_DATA; // Address validated, transition to DATA state
   }
 }
 

@@ -104,7 +104,7 @@ void atc_hdlc_configure_addresses(atc_hdlc_context_t *ctx, atc_hdlc_u8 my_addr, 
  * @brief Initiate a Logical Connection (SABM).
  * @see hdlc.h
  */
-bool atc_hdlc_connect(atc_hdlc_context_t *ctx) {
+atc_hdlc_bool atc_hdlc_connect(atc_hdlc_context_t *ctx) {
   if (ctx == NULL) return false;
 
   // Send SABM
@@ -121,7 +121,7 @@ bool atc_hdlc_connect(atc_hdlc_context_t *ctx) {
  * @brief Terminate a Logical Connection (DISC).
  * @see hdlc.h
  */
-bool atc_hdlc_disconnect(atc_hdlc_context_t *ctx) {
+atc_hdlc_bool atc_hdlc_disconnect(atc_hdlc_context_t *ctx) {
   if (ctx == NULL) return false;
 
   // Send DISC
@@ -138,7 +138,7 @@ bool atc_hdlc_disconnect(atc_hdlc_context_t *ctx) {
  * @brief Check if Connected.
  * @see hdlc.h
  */
-bool atc_hdlc_is_connected(atc_hdlc_context_t *ctx) {
+atc_hdlc_bool atc_hdlc_is_connected(atc_hdlc_context_t *ctx) {
   return (ctx != NULL && ctx->current_state == ATC_HDLC_PROTOCOL_STATE_CONNECTED);
 }
 

@@ -103,8 +103,6 @@ void* node_thread_func(void* arg) {
             uint32_t ticks = (uint32_t)elapsed_ms;
             for(uint32_t _t=0; _t<ticks; _t++) atc_hdlc_tick(&node->ctx);
             last_time += (double)ticks / 1000.0; // Preserve fractional ms
-        } else {
-            atc_hdlc_tick(&node->ctx);
         }
         MUTEX_UNLOCK(&node->ctx_lock);
         
@@ -138,16 +136,16 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     
     atc_hdlc_init(&node1->ctx, node1->input_buffer, sizeof(node1->input_buffer),
               node1->retransmit_buffer, sizeof(node1->retransmit_buffer),
-              ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, /* Timeout in ticks */
-              ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
+              100, /* T1: Retransmit timeout — low for pipe (no real link latency) */
+              1,   /* T2: ACK delay — minimal for pipe speed */
               window_size,
-              2, /* Max retries (N2) */ /* (allow up to 500ms total delay before link drop) */
+              3, /* Max retries (N2) */
               node_output_cb, node_on_frame_cb, node_state_cb, node1);
 
     atc_hdlc_init(&node2->ctx, node2->input_buffer, sizeof(node2->input_buffer),
               node2->retransmit_buffer, sizeof(node2->retransmit_buffer),
-              ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT,
-              ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
+              100, /* T1: Retransmit timeout — low for pipe */
+              1,   /* T2: ACK delay — minimal for pipe speed */
               window_size,
               25, // max_retry_count
               node_output_cb, node_on_frame_cb, node_state_cb, node2);

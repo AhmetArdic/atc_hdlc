@@ -76,7 +76,7 @@ void atc_hdlc_configure_addresses(atc_hdlc_context_t *ctx, atc_hdlc_u8 my_addr, 
  * @param ctx Pointer to the initialized HDLC context.
  * @return true if command sent successfully (does not mean connected yet).
  */
-bool atc_hdlc_connect(atc_hdlc_context_t *ctx);
+atc_hdlc_bool atc_hdlc_connect(atc_hdlc_context_t *ctx);
 
 /**
  * @brief Terminate a Logical Connection (DISC).
@@ -87,7 +87,7 @@ bool atc_hdlc_connect(atc_hdlc_context_t *ctx);
  * @param ctx Pointer to the initialized HDLC context.
  * @return true if command sent successfully.
  */
-bool atc_hdlc_disconnect(atc_hdlc_context_t *ctx);
+atc_hdlc_bool atc_hdlc_disconnect(atc_hdlc_context_t *ctx);
 
 /**
  * @brief Check if Connected.
@@ -95,7 +95,7 @@ bool atc_hdlc_disconnect(atc_hdlc_context_t *ctx);
  * @param ctx Pointer to the initialized HDLC context.
  * @return true if state is ATC_HDLC_PROTOCOL_STATE_CONNECTED, false otherwise.
  */
-bool atc_hdlc_is_connected(atc_hdlc_context_t *ctx);
+atc_hdlc_bool atc_hdlc_is_connected(atc_hdlc_context_t *ctx);
 
 /**
  * @brief Periodic Tick for Timers.
@@ -168,7 +168,7 @@ void atc_hdlc_output_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *fram
  * @param encoded_len Output pointer for the actual packed length.
  * @return true if successful, false if buffer is too small.
  */
-bool atc_hdlc_frame_pack(const atc_hdlc_frame_t *frame, atc_hdlc_u8 *buffer, atc_hdlc_u32 buffer_len, atc_hdlc_u32 *encoded_len);
+atc_hdlc_bool atc_hdlc_frame_pack(const atc_hdlc_frame_t *frame, atc_hdlc_u8 *buffer, atc_hdlc_u32 buffer_len, atc_hdlc_u32 *encoded_len);
 
 /**
  * @brief Unpack (Deserialize) a raw HDLC frame from a buffer.
@@ -183,7 +183,7 @@ bool atc_hdlc_frame_pack(const atc_hdlc_frame_t *frame, atc_hdlc_u8 *buffer, atc
  * @param flat_buffer_len Length of the destination buffer.
  * @return true if frame is valid (CRC match, correct formatting), false otherwise.
  */
-bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer, atc_hdlc_u32 buffer_len, atc_hdlc_frame_t *frame, atc_hdlc_u8 *flat_buffer, atc_hdlc_u32 flat_buffer_len);
+atc_hdlc_bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer, atc_hdlc_u32 buffer_len, atc_hdlc_frame_t *frame, atc_hdlc_u8 *flat_buffer, atc_hdlc_u32 flat_buffer_len);
 
 /**
  * @brief Output an Unnumbered Information (UI) frame.
@@ -196,7 +196,7 @@ bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer, atc_hdlc_u32 buffer_len, a
  * @param len  Length of the data payload.
  * @return true if the frame was output successfully, false otherwise.
  */
-bool atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
+atc_hdlc_bool atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
 
 /**
  * @brief Output a TEST command frame.
@@ -210,7 +210,7 @@ bool atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, 
  * @param len  Length of the test data payload.
  * @return true if the frame was output successfully, false otherwise.
  */
-bool atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
+atc_hdlc_bool atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
 
 /**
  * @brief Output an Information (I) frame (Reliable).
@@ -228,7 +228,7 @@ bool atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data
  * @param len  Length of the data payload.
  * @return true if the frame was accepted (window open), false otherwise.
  */
-bool atc_hdlc_output_frame_i(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
+atc_hdlc_bool atc_hdlc_output_frame_i(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
 
 /**
  * @brief Start a Frame Output.

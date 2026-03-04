@@ -83,7 +83,7 @@ void atc_hdlc_output_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *fram
                                .current_len = 0,
                                .success = true};
 
-  frame_pack_core(frame, output_byte_to_callback, &enc_ctx);
+  (void)frame_pack_core(frame, output_byte_to_callback, &enc_ctx);
   ctx->stats_output_frames++;
 }
 
@@ -227,7 +227,7 @@ void atc_hdlc_output_frame_start_i(atc_hdlc_context_t *ctx) {
  * --------------------------------------------------------------------------
  */
 
-bool atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
+atc_hdlc_bool atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
   if (ctx == NULL) return false;
 
   // Start Frame
@@ -243,7 +243,7 @@ bool atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, 
   return true;
 }
 
-bool atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
+atc_hdlc_bool atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
   if (ctx == NULL) return false;
 
   // Start Frame
@@ -263,7 +263,7 @@ bool atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data
  * @brief Output an Information (I) frame (Reliable).
  * @see hdlc.h
  */
-bool atc_hdlc_output_frame_i(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
+atc_hdlc_bool atc_hdlc_output_frame_i(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
   if (ctx == NULL) return false;
 
   // Window Check (Go-Back-N)

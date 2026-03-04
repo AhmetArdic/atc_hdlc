@@ -80,7 +80,7 @@ atc_hdlc_bool frame_pack_core(const atc_hdlc_frame_t *frame, hdlc_put_byte_fn pu
 
 /* --- Public API --- */
 
-bool atc_hdlc_frame_pack(const atc_hdlc_frame_t *frame, atc_hdlc_u8 *buffer, atc_hdlc_u32 buffer_len, atc_hdlc_u32 *encoded_len) {
+atc_hdlc_bool atc_hdlc_frame_pack(const atc_hdlc_frame_t *frame, atc_hdlc_u8 *buffer, atc_hdlc_u32 buffer_len, atc_hdlc_u32 *encoded_len) {
   if (frame == NULL || buffer == NULL || encoded_len == NULL) return false;
 
   hdlc_encode_ctx_t enc_ctx = {.ctx = NULL, .buffer = buffer, .buffer_len = buffer_len, .current_len = 0, .success = true};
@@ -94,7 +94,7 @@ bool atc_hdlc_frame_pack(const atc_hdlc_frame_t *frame, atc_hdlc_u8 *buffer, atc
   return false;
 }
 
-bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer, atc_hdlc_u32 buffer_len, atc_hdlc_frame_t *frame, atc_hdlc_u8 *flat_buffer, atc_hdlc_u32 flat_buffer_len) {
+atc_hdlc_bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer, atc_hdlc_u32 buffer_len, atc_hdlc_frame_t *frame, atc_hdlc_u8 *flat_buffer, atc_hdlc_u32 flat_buffer_len) {
   if (buffer == NULL || frame == NULL || flat_buffer == NULL) return false;
 
   if (buffer_len < ATC_HDLC_MIN_FRAME_LEN + 2 * ATC_HDLC_FLAG_LEN) {

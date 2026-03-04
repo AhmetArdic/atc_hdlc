@@ -48,8 +48,8 @@ To make this stack fully compliant with broader HDLC specifications, the followi
     *   **REJ (Reject) Handling**: Peer can request retransmission from a specific sequence number. Correctly unwinds Go-Back-N window without deadlocks.
     *   **Piggyback ACK**: Outgoing I-frames carry N(R) to acknowledge received frames without a separate RR.
     *   **Configurable Timers**: 
-        *   T1 (Retransmission timeout, default 1000ms).
-        *   T2 (ACK delay timeout, default 10ms) to allow piggybacking.
+        *   T1 (Retransmission timeout, default 1000 ticks).
+        *   T2 (ACK delay timeout, default 10 ticks) to allow piggybacking.
     *   **Connection Retry Limits**: Drops connection if peers don't respond after a set number of MAX_RETRY attempts.
     *   Zero-allocation slotted retransmit buffer — user provides a single contiguous buffer, library divides into `window_size` equal slots.
 *   **Protocol Infrastructure**:
@@ -212,9 +212,9 @@ To use this library in your own project:
     atc_hdlc_init(&ctx,
         rx_buffer, sizeof(rx_buffer),           // Input buffer
         retransmit_buffer, sizeof(retransmit_buffer), // Retransmit buffer
-        ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT,        // T1 timeout (default 1000)
+        ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT,        // T1 timeout (default 1000 ticks)
+        ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,         // T2 timeout for cumulative ACK (default 10 ticks)
         ATC_HDLC_DEFAULT_WINDOW_SIZE,               // Window size (1 = Stop-and-Wait)
-        ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,         // T2 timeout for cumulative ACK (default 10)
         ATC_HDLC_DEFAULT_MAX_RETRY_COUNT,           // N2 Retry limit (default 3)
         my_output_byte, my_on_frame, my_on_state, NULL);
     
@@ -310,8 +310,6 @@ Configuration is done in `inc/hdlc_config.h`:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `ATC_HDLC_PREFIX_LOWERCASE` | `atc_` | Lowercase prefix for public API functions and types |
-| `ATC_HDLC_PREFIX_UPPERCASE` | `ATC_` | Uppercase prefix for enums and constants |
 | `ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT` | `1000` | Default T1 retransmission timeout in ticks |
 | `ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT` | `10` | Default T2 ACK delay timeout in ticks for cumulative ACK |
 | `ATC_HDLC_DEFAULT_CONTENTION_DELAY_TIMEOUT`| `100` | Default contention timer back-off in ticks upon SABM collision |
@@ -343,7 +341,7 @@ Configuration is done in `inc/hdlc_config.h`:
 | Function | Description |
 |---|---|
 | `atc_hdlc_output_frame_i()` | Send a reliable I-frame (queued in the send window) |
-| `atc_hdlc_tick(ctx, delta_ms)` | Periodic timer tick — drives retransmission and connection timeouts |
+| `atc_hdlc_tick(ctx)` | Periodic timer tick — drives retransmission and connection timeouts. Each call = 1 tick. |
 
 ### Connection Management
 
