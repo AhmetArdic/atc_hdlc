@@ -177,20 +177,7 @@ void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx) {
   atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
 }
 
-/**
- * @brief Start an Information (I) Frame Output (Streaming).
- * @see hdlc.h
- */
-void atc_hdlc_output_frame_start_i(atc_hdlc_context_t *ctx) {
-  if (ctx == NULL) {
-    return;
-  }
-  
-  // I-Frame: N(S)=VS, N(R)=VR, P=0 (Default)
-  atc_hdlc_control_t ctrl = atc_hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
-  
-  atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
-}
+
 
 /*
  * --------------------------------------------------------------------------
@@ -260,7 +247,8 @@ atc_hdlc_bool atc_hdlc_output_frame_i(atc_hdlc_context_t *ctx, const atc_hdlc_u8
 
   // Start Frame
   ATC_HDLC_LOG_DEBUG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
-  atc_hdlc_output_frame_start_i(ctx);
+  atc_hdlc_control_t ctrl = atc_hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
+  atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
   
   // Send Data
   if (data != NULL && len > 0) {

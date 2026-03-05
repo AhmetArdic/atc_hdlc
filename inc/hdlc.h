@@ -317,22 +317,7 @@ void atc_hdlc_output_frame_start_ui(atc_hdlc_context_t *ctx);
  */
 void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx);
 
-/**
- * @brief Start an Information (I) Frame Output (Streaming).
- *
- * Begins a new I-frame transmission.
- *
- * @warning **RETRANSMISSION CAVEAT**: When using this streaming API, the library
- * CANNOT automatically buffer the full frame for retransmission because it
- * never sees the full frame in one go.
- * 
- * Usage of this function implies that either:
- * 1. The user application handles retransmission if an ACK is not received.
- * 2. Or reliability is not strictly required for this stream (unlikely for I-frames).
- * 
- * @param ctx Pointer to the initialized HDLC context.
- */
-void atc_hdlc_output_frame_start_i(atc_hdlc_context_t *ctx);
+
 
 /**
  * @brief Create an I-Frame Control Field.

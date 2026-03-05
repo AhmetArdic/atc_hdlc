@@ -339,7 +339,6 @@ Configuration is done in `inc/hdlc_config.h`:
 | `atc_hdlc_output_frame_test()` | Send a TEST frame with optional data payload |
 | `atc_hdlc_output_frame_start_ui()` | Begin UI frame TX (streaming) |
 | `atc_hdlc_output_frame_start_test()` | Begin TEST frame TX (streaming) |
-| `atc_hdlc_output_frame_start_i()` | Begin I-frame TX (streaming, user-managed retransmission) |
 
 ### Reliable Transmission (Go-Back-N)
 
