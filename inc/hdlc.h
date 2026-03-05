@@ -238,7 +238,7 @@ atc_hdlc_bool atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx, const atc_hdlc
  *
  * @note Requires a retransmission buffer configured via atc_hdlc_init().
  * The data is copied into the retransmit buffer for automatic retransmission
- * if the peer does not acknowledge within the timeout period (Window Size = 1).
+ * if the peer does not acknowledge within the timeout period.
  *
  * @param ctx  Pointer to the initialized HDLC context.
  * @param data Pointer to the data payload.

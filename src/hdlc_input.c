@@ -45,8 +45,8 @@ void atc_hdlc_input_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
     if (ctx->input_state != HDLC_INPUT_STATE_HUNT) {
       // Minimum size: Addr(1) + Ctrl(1) + FCS(2) = 4 bytes
       if (ctx->input_index >= ATC_HDLC_MIN_FRAME_LEN) {
-        // --- CRC Verification Strategy ---
-        // 1. Re-calculate CRC over the "Data" portion (Addr..Payload).
+        // --- CRC Verification ---
+        // 1. Calculate CRC over the "Data" portion (Addr..Payload).
         // 2. Compare calculated CRC with the received FCS bytes (last 2
         // bytes).
 
@@ -126,8 +126,7 @@ void atc_hdlc_input_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
     return;
   }
 
-  // Note: We don't update running RX CRC here anymore because we use
-  // the "Recalculate over buffer" method on Frame End for robustness.
+
 
   // Store byte in buffer
   ctx->input_buffer[ctx->input_index++] = byte;

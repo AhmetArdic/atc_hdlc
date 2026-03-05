@@ -192,7 +192,7 @@ void hdlc_reset_connection_state(atc_hdlc_context_t *ctx);
  * --------------------------------------------------------------------------
  */
 
-/* R2: Shared frame type resolver */
+/* Shared frame type resolver */
 static inline atc_hdlc_frame_type_t hdlc_resolve_frame_type(atc_hdlc_u8 ctrl) {
     if ((ctrl & ATC_HDLC_FRAME_TYPE_MASK_I) == ATC_HDLC_FRAME_TYPE_VAL_I) return ATC_HDLC_FRAME_I;
     if ((ctrl & ATC_HDLC_FRAME_TYPE_MASK_S) == ATC_HDLC_FRAME_TYPE_VAL_S) return ATC_HDLC_FRAME_S;

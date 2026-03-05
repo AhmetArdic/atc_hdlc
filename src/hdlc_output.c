@@ -21,9 +21,8 @@
  * @date 02.02.2026
  * @brief HDLC Frame Output (Streaming & Convenience API).
  *
- * Contains the streaming frame output API (start/data/end), convenience
- * wrappers for UI/TEST/I frames, control field constructors, and the
- * low-level output helpers (escaping, CRC update).
+ * Contains the streaming frame output API (start/data/end) and convenience
+ * wrappers for UI/TEST/I frames.
  */
 
 #include "../inc/hdlc.h"
