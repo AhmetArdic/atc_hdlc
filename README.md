@@ -79,7 +79,7 @@ To make this stack fully compliant with broader HDLC specifications, the followi
 ├── inc/
 │   ├── hdlc.h                # Public API (init, send, receive, packet processing)
 │   ├── hdlc_types.h          # Public types (frame, context, callbacks, control field)
-│   └── hdlc_config.h         # Configuration (prefix, timer defaults, window size)
+│   └── hdlc_config.h         # Configuration (timer defaults, window size)
 ├── src/
 │   ├── CMakeLists.txt        # Library build configuration
 │   ├── hdlc.c                # Core state management (init, tick, addresses)
