@@ -176,16 +176,29 @@ void atc_hdlc_output_frame_end(atc_hdlc_context_t *ctx);
 
 /* hdlc_frame.c — Encoding helpers used by hdlc_output.c */
 void output_byte_to_callback(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush);
+void pack_escaped(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hdlc_u8 byte);
+void pack_escaped_crc_update(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hdlc_u8 byte, atc_hdlc_u16 *crc);
 atc_hdlc_bool frame_pack_core(const atc_hdlc_frame_t *frame, hdlc_put_byte_fn put_fn, hdlc_encode_ctx_t *enc_ctx);
 
 /* hdlc_input.c — Process complete frame (called from input parser) */
 void process_complete_frame(atc_hdlc_context_t *ctx);
+
+/* hdlc_frame_handlers.c — Connection state reset */
+void hdlc_reset_connection_state(atc_hdlc_context_t *ctx);
 
 /*
  * --------------------------------------------------------------------------
  * INTERNAL FRAME SEND HELPERS
  * --------------------------------------------------------------------------
  */
+
+/* R2: Shared frame type resolver */
+static inline atc_hdlc_frame_type_t hdlc_resolve_frame_type(atc_hdlc_u8 ctrl) {
+    if ((ctrl & ATC_HDLC_FRAME_TYPE_MASK_I) == ATC_HDLC_FRAME_TYPE_VAL_I) return ATC_HDLC_FRAME_I;
+    if ((ctrl & ATC_HDLC_FRAME_TYPE_MASK_S) == ATC_HDLC_FRAME_TYPE_VAL_S) return ATC_HDLC_FRAME_S;
+    if ((ctrl & ATC_HDLC_FRAME_TYPE_MASK_U) == ATC_HDLC_FRAME_TYPE_VAL_U) return ATC_HDLC_FRAME_U;
+    return ATC_HDLC_FRAME_INVALID;
+}
 
 static inline void hdlc_send_u_frame(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf) {
     atc_hdlc_control_t ctrl = atc_hdlc_create_u_ctrl(m_lo, m_hi, pf);

@@ -45,17 +45,20 @@ void process_complete_frame(atc_hdlc_context_t *ctx) {
   atc_hdlc_u8 ctrl = ctx->input_frame_buffer.control.value;
   bool pass_to_user = false;
 
-  if ((ctrl & ATC_HDLC_FRAME_TYPE_MASK_I) == ATC_HDLC_FRAME_TYPE_VAL_I) {
-    ctx->input_frame_buffer.type = ATC_HDLC_FRAME_I;
-    pass_to_user = handle_i_frame(ctx, &ctx->input_frame_buffer);
-  } else if ((ctrl & ATC_HDLC_FRAME_TYPE_MASK_S) == ATC_HDLC_FRAME_TYPE_VAL_S) {
-    ctx->input_frame_buffer.type = ATC_HDLC_FRAME_S;
-    pass_to_user = handle_s_frame(ctx, &ctx->input_frame_buffer);
-  } else if ((ctrl & ATC_HDLC_FRAME_TYPE_MASK_U) == ATC_HDLC_FRAME_TYPE_VAL_U) {
-    ctx->input_frame_buffer.type = ATC_HDLC_FRAME_U;
-    pass_to_user = handle_u_frame(ctx, &ctx->input_frame_buffer);
-  } else {
-    ctx->input_frame_buffer.type = ATC_HDLC_FRAME_INVALID;
+  ctx->input_frame_buffer.type = hdlc_resolve_frame_type(ctrl);
+
+  switch (ctx->input_frame_buffer.type) {
+    case ATC_HDLC_FRAME_I:
+      pass_to_user = handle_i_frame(ctx, &ctx->input_frame_buffer);
+      break;
+    case ATC_HDLC_FRAME_S:
+      pass_to_user = handle_s_frame(ctx, &ctx->input_frame_buffer);
+      break;
+    case ATC_HDLC_FRAME_U:
+      pass_to_user = handle_u_frame(ctx, &ctx->input_frame_buffer);
+      break;
+    default:
+      break;
   }
 
   if (pass_to_user && ctx->on_frame_cb != NULL) {
@@ -184,7 +187,7 @@ static bool handle_s_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *fram
  */
 
 /* U-Frame sub-handlers */
-static void hdlc_reset_connection_state(atc_hdlc_context_t *ctx) {
+void hdlc_reset_connection_state(atc_hdlc_context_t *ctx) {
     ctx->vs = 0;
     ctx->vr = 0;
     ctx->va = 0;

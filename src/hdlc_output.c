@@ -33,54 +33,6 @@
 
 /*
  * --------------------------------------------------------------------------
- * INTERNAL OUTPUT HELPERS
- * --------------------------------------------------------------------------
- */
-
-/**
- * @brief Internal helper to send a single raw byte to hardware.
- * @param ctx  HDLC Context.
- * @param byte Raw byte to transmit.
- */
-static inline void output_byte_raw(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush) {
-  if (ctx->output_byte_cb != NULL) {
-    ctx->output_byte_cb(byte, flush, ctx->user_data);
-  }
-}
-
-/**
- * @brief Internal helper to send a data byte with automatic escaping.
- *
- * @param ctx  HDLC Context.
- * @param byte Data byte to send.
- */
-static void output_escaped(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
-  if (byte == HDLC_FLAG || byte == HDLC_ESCAPE) {
-    output_byte_raw(ctx, HDLC_ESCAPE, false);
-    output_byte_raw(ctx, byte ^ HDLC_XOR_MASK, false);
-  } else {
-    output_byte_raw(ctx, byte, false);
-  }
-}
-
-/**
- * @brief Internal helper to send a data byte with automatic escaping.
- *
- * Updates the running CRC and checks if the byte needs escaping
- * (i.e. if it looks like a FLAG or ESCAPE).
- *
- * @param ctx  HDLC Context.
- * @param byte Data byte to send.
- * @param crc  Pointer to the running CRC to update.
- */
-static void output_escaped_crc_update(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte, atc_hdlc_u16 *crc) {
-  *crc = atc_hdlc_crc_ccitt_update(*crc, byte);
-
-  output_escaped(ctx, byte);
-}
-
-/*
- * --------------------------------------------------------------------------
  * STREAMING OUTPUT API
  * --------------------------------------------------------------------------
  */
@@ -101,6 +53,9 @@ void atc_hdlc_output_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *fram
                                .success = true};
 
   (void)frame_pack_core(frame, output_byte_to_callback, &enc_ctx);
+
+  /* Stats: This path uses frame_pack_core which does NOT call
+     atc_hdlc_output_frame_end(), so we increment here. */
   ctx->stats_output_frames++;
 }
 
@@ -115,19 +70,17 @@ void atc_hdlc_output_frame_start(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, a
 
   // Initializing CRC
   ctx->output_crc = ATC_HDLC_FCS_INIT_VALUE;
+
+  hdlc_encode_ctx_t enc = {.ctx = ctx, .success = true};
   
   ATC_HDLC_LOG_DEBUG("tx: Frame start (Addr: 0x%02X, Ctrl: 0x%02X)", address, control);
 
-  // Send Start Flag
-  output_byte_raw(ctx, HDLC_FLAG, false);
+  // Send Start Flag (raw, no escaping)
+  output_byte_to_callback(&enc, HDLC_FLAG, false);
 
-  // Send Address
-  // Update CRC and Send Escaped
-  output_escaped_crc_update(ctx, address, &ctx->output_crc);
-
-  // Send Control
-  // Update CRC and Send Escaped
-  output_escaped_crc_update(ctx, control, &ctx->output_crc);
+  // Send Address & Control (escaped + CRC update)
+  pack_escaped_crc_update(&enc, output_byte_to_callback, address, &ctx->output_crc);
+  pack_escaped_crc_update(&enc, output_byte_to_callback, control, &ctx->output_crc);
 }
 
 /**
@@ -139,8 +92,8 @@ void atc_hdlc_output_frame_information_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8
     return;
   }
 
-  // Update CRC and Send Escaped
-  output_escaped_crc_update(ctx, information_byte, &ctx->output_crc);
+  hdlc_encode_ctx_t enc = {.ctx = ctx, .success = true};
+  pack_escaped_crc_update(&enc, output_byte_to_callback, information_byte, &ctx->output_crc);
 }
 
 /**
@@ -153,9 +106,9 @@ void atc_hdlc_output_frame_information_bytes(
     return;
   }
 
+  hdlc_encode_ctx_t enc = {.ctx = ctx, .success = true};
   for (atc_hdlc_u32 i = 0; i < len; ++i) {
-    // Update CRC and Send Escaped
-    output_escaped_crc_update(ctx, information_bytes[i], &ctx->output_crc);
+    pack_escaped_crc_update(&enc, output_byte_to_callback, information_bytes[i], &ctx->output_crc);
   }
 }
 
@@ -168,21 +121,23 @@ void atc_hdlc_output_frame_end(atc_hdlc_context_t *ctx) {
     return;
   }
 
+  hdlc_encode_ctx_t enc = {.ctx = ctx, .success = true};
+
   // Finalize CRC
   atc_hdlc_u16 crc = ctx->output_crc;
 
   atc_hdlc_u8 fcs_hi = (crc >> 8) & 0xFF;
   atc_hdlc_u8 fcs_lo = crc & 0xFF;
 
-  // Send FCS High
-  output_escaped(ctx, fcs_hi);
+  // Send FCS (escaped, no CRC update)
+  pack_escaped(&enc, output_byte_to_callback, fcs_hi);
+  pack_escaped(&enc, output_byte_to_callback, fcs_lo);
 
-  // Send FCS Low
-  output_escaped(ctx, fcs_lo);
+  // End Flag (raw)
+  output_byte_to_callback(&enc, HDLC_FLAG, true);
 
-  // End Flag
-  output_byte_raw(ctx, HDLC_FLAG, true);
-
+  /* Stats: This path is for streaming API (start/data/end).
+     atc_hdlc_output_frame() has its own separate increment. */
   ctx->stats_output_frames++;
 }
 

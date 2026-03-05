@@ -126,9 +126,7 @@ atc_hdlc_bool atc_hdlc_connect(atc_hdlc_context_t *ctx) {
 
   // Send SABM
   ATC_HDLC_LOG_DEBUG("tx: Sending SABM to peer 0x%02X", ctx->peer_address);
-  atc_hdlc_control_t ctrl = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1); // P=1
-  atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
-  atc_hdlc_output_frame_end(ctx);
+  hdlc_send_u_frame(ctx, ctx->peer_address, HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1); // P=1
 
   hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_CONNECTING, ATC_HDLC_EVENT_CONNECT_REQUEST);
   return true;
@@ -143,9 +141,7 @@ atc_hdlc_bool atc_hdlc_disconnect(atc_hdlc_context_t *ctx) {
 
   // Send DISC
   ATC_HDLC_LOG_DEBUG("tx: Sending DISC to peer 0x%02X", ctx->peer_address);
-  atc_hdlc_control_t ctrl = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_DISC, HDLC_U_MODIFIER_HI_DISC, 1); // P=1
-  atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
-  atc_hdlc_output_frame_end(ctx);
+  hdlc_send_u_frame(ctx, ctx->peer_address, HDLC_U_MODIFIER_LO_DISC, HDLC_U_MODIFIER_HI_DISC, 1); // P=1
 
   hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTING, ATC_HDLC_EVENT_DISCONNECT_REQUEST);
   return true;
@@ -200,16 +196,8 @@ void atc_hdlc_tick(atc_hdlc_context_t *ctx) {
                     /* 1. Veri aktarimi durumu durdurulmali */
                     hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED, ATC_HDLC_EVENT_LINK_FAILURE);
                     
-                    /* 2. Gonderim ve alim degiskenleri sifirlanmali */
-                    ctx->vs = 0;
-                    ctx->vr = 0;
-                    ctx->va = 0;
-                    ctx->ack_timer = 0;
-                    ctx->retry_count = 0;
-                    
-                    /* 3. Tamponda (Buffer) bekleyen paketler iptal edilmeli */
-                    ctx->next_tx_slot = 0;
-                    memset(ctx->tx_seq_to_slot, 0, sizeof(ctx->tx_seq_to_slot));
+                    /* 2. Gonderim, alim degiskenleri ve tamponlar sifirlanmali */
+                    hdlc_reset_connection_state(ctx);
                 } else {
                     /* Timeout! Send Enquiry (RR with P=1) to poll receiver status */
                     ATC_HDLC_LOG_WARN("tx: Retransmit Timeout! Sending Enquiry RR(P=1) (Retry %u/%u)", ctx->retry_count, ctx->max_retry_count);

@@ -47,7 +47,7 @@ static inline void pack_byte(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, at
   put_fn(ctx, byte, flush);
 }
 
-static void pack_escaped(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hdlc_u8 byte) {
+void pack_escaped(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hdlc_u8 byte) {
   if (byte == HDLC_FLAG || byte == HDLC_ESCAPE) {
     pack_byte(ctx, put_fn, HDLC_ESCAPE, false);
     pack_byte(ctx, put_fn, byte ^ HDLC_XOR_MASK, false);
@@ -56,7 +56,7 @@ static void pack_escaped(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hd
   }
 }
 
-static void pack_escaped_crc_update(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hdlc_u8 byte, atc_hdlc_u16 *crc) {
+void pack_escaped_crc_update(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hdlc_u8 byte, atc_hdlc_u16 *crc) {
   *crc = atc_hdlc_crc_ccitt_update(*crc, byte);
   pack_escaped(ctx, put_fn, byte);
 }
@@ -173,15 +173,7 @@ atc_hdlc_bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer, atc_hdlc_u32 buff
     frame->information_len = 0;
   }
 
-  if ((frame->control.value & ATC_HDLC_FRAME_TYPE_MASK_I) == ATC_HDLC_FRAME_TYPE_VAL_I) {
-      frame->type = ATC_HDLC_FRAME_I;
-  } else if ((frame->control.value & ATC_HDLC_FRAME_TYPE_MASK_S) == ATC_HDLC_FRAME_TYPE_VAL_S) {
-      frame->type = ATC_HDLC_FRAME_S;
-  } else if ((frame->control.value & ATC_HDLC_FRAME_TYPE_MASK_U) == ATC_HDLC_FRAME_TYPE_VAL_U) {
-      frame->type = ATC_HDLC_FRAME_U;
-  } else {
-      frame->type = ATC_HDLC_FRAME_INVALID;
-  }
+  frame->type = hdlc_resolve_frame_type(frame->control.value);
 
   return true;
 }
