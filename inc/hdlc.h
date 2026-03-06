@@ -74,26 +74,28 @@ void atc_hdlc_init(atc_hdlc_context_t *ctx,
                       void *user_data);
 
 /**
- * @brief Configure Station Addresses.
- *
- * Sets the logical address for this station and the expected peer address.
- *
- * @param ctx       Pointer to the initialized HDLC context.
- * @param my_addr   Address of this station (used for RX filtering).
- * @param peer_addr Address of the remote station (used for TX frames).
+ * @brief Configure the operational mode, role, and addresses for the HDLC node.
+ * 
+ * Must be called before `atc_hdlc_link_setup()`.
+ * 
+ * @param ctx   Pointer to the initialized HDLC context.
+ * @param role  The operational role (e.g., COMBINED, PRIMARY, SECONDARY).
+ * @param mode  The operational mode (e.g., ABM, NRM, ARM).
+ * @param my_addr  Local node address.
+ * @param peer_addr Remote node address to communicate with.
  */
-void atc_hdlc_configure_addresses(atc_hdlc_context_t *ctx, atc_hdlc_u8 my_addr, atc_hdlc_u8 peer_addr);
+void atc_hdlc_configure_station(atc_hdlc_context_t *ctx, atc_hdlc_station_role_t role, atc_hdlc_link_mode_t mode, atc_hdlc_u8 my_addr, atc_hdlc_u8 peer_addr);
 
 /**
- * @brief Initiate a Logical Connection (SABM).
- *
- * Sends a Set Asynchronous Balanced Mode (SABM) frame to the peer
- * and transitions to the ATC_HDLC_PROTOCOL_STATE_CONNECTING state.
- *
+ * @brief Initiate a connection with the peer node (Link Setup).
+ * 
+ * Based on the configured `mode`, this function sends the appropriate
+ * setup command (e.g., SABM for ABM). Retries automatically on timeout.
+ * 
  * @param ctx Pointer to the initialized HDLC context.
- * @return true if command sent successfully (does not mean connected yet).
+ * @return true if the connection process successfully started.
  */
-atc_hdlc_bool atc_hdlc_connect(atc_hdlc_context_t *ctx);
+atc_hdlc_bool atc_hdlc_link_setup(atc_hdlc_context_t *ctx);
 
 /**
  * @brief Terminate a Logical Connection (DISC).
@@ -212,7 +214,7 @@ atc_hdlc_bool atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 addr
  * Used for link integrity verification.
  *
  * @param ctx  Pointer to the initialized HDLC context.
- * @param address Destination address.
+ * @param address Destination address (e.g., `ATC_HDLC_BROADCAST_ADDRESS`).
  * @param data Pointer to the test data payload (can be NULL).
  * @param len  Length of the test data payload.
  * @return true if the frame was output successfully, false otherwise.
@@ -305,7 +307,7 @@ void atc_hdlc_output_frame_start_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address
  * `atc_hdlc_output_frame_information_byte(s)` and finally `atc_hdlc_output_frame_end()`.
  * 
  * @param ctx Pointer to the initialized HDLC context.
- * @param address Destination address.
+ * @param address Destination address (e.g., `ATC_HDLC_BROADCAST_ADDRESS`).
  */
 void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx, atc_hdlc_u8 address);
 

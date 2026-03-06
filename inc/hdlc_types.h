@@ -218,7 +218,7 @@ typedef enum {
  */
 typedef enum {
     /* Connection Events */
-    ATC_HDLC_EVENT_CONNECT_REQUEST,    /**< Local: atc_hdlc_connect() was called. */
+    ATC_HDLC_EVENT_LINK_SETUP_REQUEST, /**< Local: atc_hdlc_link_setup() was called. */
     ATC_HDLC_EVENT_CONNECT_ACCEPTED,   /**< UA received in response to our SABM. */
     ATC_HDLC_EVENT_INCOMING_CONNECT,   /**< Peer sent SABM — passive open. */
 
@@ -230,6 +230,32 @@ typedef enum {
     ATC_HDLC_EVENT_PROTOCOL_ERROR,     /**< Peer sent FRMR — irrecoverable protocol violation. */
     ATC_HDLC_EVENT_LINK_FAILURE,       /**< Max retry count (N2) exceeded — link timeout. */
 } atc_hdlc_event_t;
+
+/*
+ * --------------------------------------------------------------------------
+ * LINK MODES & STATION ROLES (HDLC Operational Models)
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief HDLC Operational Link Modes.
+ * Specifies the connection and polling behavior.
+ */
+typedef enum {
+    ATC_HDLC_MODE_ABM = 0, /**< Asynchronous Balanced Mode (SABM). Combined stations. */
+    ATC_HDLC_MODE_NRM = 1, /**< Normal Response Mode (SNRM). Primary polls Secondary. */
+    ATC_HDLC_MODE_ARM = 2  /**< Asynchronous Response Mode (SARM). */
+} atc_hdlc_link_mode_t;
+
+/**
+ * @brief HDLC Station Roles.
+ * Dictates command/response behavior and contention priorities.
+ */
+typedef enum {
+    ATC_HDLC_ROLE_COMBINED = 0, /**< Equal rights (used in ABM). */
+    ATC_HDLC_ROLE_PRIMARY  = 1, /**< Master node (sends Commands, receives Responses). */
+    ATC_HDLC_ROLE_SECONDARY= 2  /**< Slave node (receives Commands, sends Responses). */
+} atc_hdlc_station_role_t;
 
 /*
  * --------------------------------------------------------------------------
@@ -292,6 +318,10 @@ typedef struct {
 
     /* Protocol Logic State */
     volatile atc_hdlc_protocol_state_t current_state; /**< Current connection state. */
+
+    /* Configuration */
+    atc_hdlc_link_mode_t mode;
+    atc_hdlc_station_role_t role;
     atc_hdlc_u8 my_address;                           /**< Local station address. */
     atc_hdlc_u8 peer_address;                         /**< Remote station address. */
 

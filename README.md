@@ -222,10 +222,10 @@ To use this library in your own project:
         my_output_byte, my_on_frame, my_on_state, NULL);
     
     // Configure Addresses (My Address, Peer Address)
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
 
     // Initiate Connection
-    atc_hdlc_connect(&ctx);
+    atc_hdlc_link_setup(&ctx);
     ```
 
 5.  **Feed received bytes into the parser**:
@@ -262,7 +262,7 @@ To use this library in your own project:
     atc_hdlc_output_frame_i(&ctx, payload, sizeof(payload) - 1);
     
     // Or Unacknowledged broadcast (UI-Frame)
-    // atc_hdlc_output_frame_ui(&ctx, payload, sizeof(payload) - 1);
+    // atc_hdlc_output_frame_ui(&ctx, ATC_HDLC_BROADCAST_ADDRESS, payload, sizeof(payload) - 1);
     ```
 
 7.  **Low-Level Streaming**:
@@ -349,8 +349,8 @@ Configuration is done in `inc/hdlc_config.h`:
 
 | Function | Description |
 |---|---|
-| `atc_hdlc_configure_addresses()` | Set source and destination addresses |
-| `atc_hdlc_connect()` | Initiate connection (sends SABM) |
+| `atc_hdlc_configure_station()` | Set source and destination addresses |
+| `atc_hdlc_link_setup()` | Initiate connection (sends SABM) |
 | `atc_hdlc_disconnect()` | Terminate connection (sends DISC) |
 | `atc_hdlc_is_connected()` | Check if currently connected |
 

@@ -50,7 +50,7 @@ void setup_context(void) {
                   ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT,
                   ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
                   ATC_HDLC_DEFAULT_WINDOW_SIZE, 3, mock_output_byte_cb, mock_on_frame_cb, on_state_change, NULL);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02); // Me=0x01, Peer=0x02
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02); // Me=0x01, Peer=0x02
     
     // Reset shared state
     reset_test_state();
@@ -91,7 +91,7 @@ void test_connect_sends_sabm(void) {
     setup_context();
     
     // 1. Trigger Connect
-    bool res = atc_hdlc_connect(&ctx);
+    bool res = atc_hdlc_link_setup(&ctx);
     if (!res) test_fail("Connect Sends SABM", "Connect returned false");
     
     // State Check
@@ -118,7 +118,7 @@ void test_connect_sends_sabm(void) {
 void test_connect_complete_on_ua(void) {
     printf("TEST: Connect Complete on UA\n");
     setup_context();
-    atc_hdlc_connect(&ctx); // Go to CONNECTING
+    atc_hdlc_link_setup(&ctx); // Go to CONNECTING
     mock_output_len = 0; // Clear TX buffer
     state_change_call_count = 0; // Clear counters
 
@@ -233,7 +233,7 @@ void test_passive_open(void) {
 void test_frmr_reception(void) {
     printf("TEST: FRMR Reception\n");
     setup_context();
-    atc_hdlc_connect(&ctx); // Connect first
+    atc_hdlc_link_setup(&ctx); // Connect first
     // Force Connected state for testing
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
     state_change_call_count = 0; // Clear counters
@@ -399,10 +399,10 @@ void test_contention_resolution_winner(void) {
     
     // We are 0x01, peer is 0x02. Wait, the rule is higher address wins. 
     // Let's reconfigure so we are higher.
-    atc_hdlc_configure_addresses(&ctx, 0x02, 0x01); // Me=0x02, Peer=0x01
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x02, 0x01); // Me=0x02, Peer=0x01
     
     // 1. We initiate connection (SABM sent)
-    atc_hdlc_connect(&ctx);
+    atc_hdlc_link_setup(&ctx);
     if (ctx.current_state != ATC_HDLC_PROTOCOL_STATE_CONNECTING)
          test_fail("Contention Winner", "State not CONNECTING");
          
@@ -444,10 +444,10 @@ void test_contention_resolution_loser(void) {
     setup_context();
     
     // We are 0x01, peer is 0x02. Lower address loses.
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02); // Me=0x01, Peer=0x02
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02); // Me=0x01, Peer=0x02
     
     // 1. We initiate connection (SABM sent)
-    atc_hdlc_connect(&ctx);
+    atc_hdlc_link_setup(&ctx);
     mock_output_len = 0;
     
     // 2. Peer also initiated connection, so we receive their SABM

@@ -96,25 +96,32 @@ void atc_hdlc_init(atc_hdlc_context_t *ctx, atc_hdlc_u8 *input_buffer, atc_hdlc_
  * @brief Configure the local and peer addresses.
  * @see hdlc.h
  */
-void atc_hdlc_configure_addresses(atc_hdlc_context_t *ctx, atc_hdlc_u8 my_addr, atc_hdlc_u8 peer_addr) {
-  if (ctx) {
-    ctx->my_address = my_addr;
-    ctx->peer_address = peer_addr;
-  }
+void atc_hdlc_configure_station(atc_hdlc_context_t *ctx, atc_hdlc_station_role_t role, atc_hdlc_link_mode_t mode, atc_hdlc_u8 my_addr, atc_hdlc_u8 peer_addr) {
+    if (ctx) {
+        ctx->role = role;
+        ctx->mode = mode;
+        ctx->my_address = my_addr;
+        ctx->peer_address = peer_addr;
+    }
 }
 
 /**
  * @brief Initiate a Logical Connection (SABM).
  * @see hdlc.h
  */
-atc_hdlc_bool atc_hdlc_connect(atc_hdlc_context_t *ctx) {
+atc_hdlc_bool atc_hdlc_link_setup(atc_hdlc_context_t *ctx) {
   if (ctx == NULL) return false;
+
+  // Currently, we only support ABM (Asynchronous Balanced Mode) via SABM
+  if (ctx->mode != ATC_HDLC_MODE_ABM) {
+      return false; // NRM/ARM not yet implemented
+  }
 
   // Send SABM
   ATC_HDLC_LOG_DEBUG("tx: Sending SABM to peer 0x%02X", ctx->peer_address);
   hdlc_send_u_frame(ctx, ctx->peer_address, HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1); // P=1
 
-  hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_CONNECTING, ATC_HDLC_EVENT_CONNECT_REQUEST);
+  hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_CONNECTING, ATC_HDLC_EVENT_LINK_SETUP_REQUEST);
   return true;
 }
 
@@ -154,7 +161,7 @@ void atc_hdlc_tick(atc_hdlc_context_t *ctx) {
             ctx->contention_timer--;
             if (ctx->contention_timer == 0) {
                 ATC_HDLC_LOG_DEBUG("tx: Contention resolved (timer expired). Retrying SABM.");
-                atc_hdlc_connect(ctx);
+                atc_hdlc_link_setup(ctx);
             }
         }
     }

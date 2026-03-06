@@ -151,8 +151,8 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
               25, // max_retry_count
               node_output_cb, node_on_frame_cb, node_state_cb, node2);
               
-    atc_hdlc_configure_addresses(&node1->ctx, 0x01, 0x02);
-    atc_hdlc_configure_addresses(&node2->ctx, 0x02, 0x01);
+    atc_hdlc_configure_station(&node1->ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
+    atc_hdlc_configure_station(&node2->ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x02, 0x01);
 }
 
 static void node_pair_start(virtual_node_t *node1, virtual_node_t *node2) {
@@ -174,12 +174,12 @@ static void node_pair_cleanup(virtual_node_t *node1, virtual_node_t *node2, pipe
 static bool hdlc_test_connect(virtual_node_t *node, int timeout_ms) {
     int retries = timeout_ms;
     MUTEX_LOCK(&node->ctx_lock);
-    atc_hdlc_connect(&node->ctx);
+    atc_hdlc_link_setup(&node->ctx);
     MUTEX_UNLOCK(&node->ctx_lock);
     while((!node->connected) && retries > 0) {
         if (retries % 1000 == 0) {
             MUTEX_LOCK(&node->ctx_lock);
-            atc_hdlc_connect(&node->ctx);
+            atc_hdlc_link_setup(&node->ctx);
             MUTEX_UNLOCK(&node->ctx_lock);
         }
         SLEEP_MS(1);

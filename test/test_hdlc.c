@@ -466,7 +466,7 @@ void test_ui_frame_transmission(void) {
     
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02); // My=0x01, Peer=0x02
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02); // My=0x01, Peer=0x02
 
     const char *payload = "HELLO";
     bool res = atc_hdlc_output_frame_ui(&ctx, ATC_HDLC_BROADCAST_ADDRESS, (const atc_hdlc_u8*)payload, 5);
@@ -490,7 +490,7 @@ void test_ui_frame_reception(void) {
     
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02); // My=0x01, Peer=0x02
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02); // My=0x01, Peer=0x02
 
     // Construct a valid UI frame addressed to ME (0x01)
     // Addr=0x01, Ctrl=0x03 (UI, P=0), Data="WORLD"
@@ -522,7 +522,7 @@ void test_test_frame(void) {
     reset_test_state();
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
 
     // --- 1. Send TEST command ---
     atc_hdlc_u8 test_data[] = "LOOPBACK";

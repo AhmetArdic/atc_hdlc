@@ -25,7 +25,7 @@ void test_reliable_transmission(void) {
     setup_test_context(&ctx);
     
     // Connect (simulate connected state)
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02); // Me=1, Peer=2
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02); // Me=1, Peer=2
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
     
     // Send I-Frame
@@ -71,7 +71,7 @@ void test_reliable_retransmission(void) {
     
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
     
     // Send I-Frame
@@ -97,7 +97,7 @@ void test_sequence_rollover(void) {
     
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
     
     atc_hdlc_u8 data[] = {0x00};
@@ -140,7 +140,7 @@ void test_duplicate_ack_ignored(void) {
     
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
     
     // Send I-Frame (VS becomes 1)
@@ -169,7 +169,7 @@ void test_rej_retransmit(void) {
     
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
     
     // Send I-Frame [VS=0] -> VS becomes 1
@@ -196,7 +196,7 @@ void test_piggyback_ack(void) {
     
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
 
     // --- Phase 1: Outgoing Piggyback ---
@@ -284,7 +284,7 @@ void test_window_size_2_basic(void) {
     // We can use mock_rx_buffer for rx
     atc_hdlc_u8 retx_buf[128];
     atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), retx_buf, sizeof(retx_buf), ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 2, 3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
 
     // 1. Send first I-frame (N(S)=0)
@@ -336,7 +336,7 @@ void test_gobackn_retransmit(void) {
     atc_hdlc_u8 retx_buf[192];
     // Manual init for custom window size 3 and timeout 500
     atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), retx_buf, sizeof(retx_buf), 500, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 3, 3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
 
     // Send 3 I-frames
@@ -415,7 +415,7 @@ void test_window7_mid_rej(void) {
                   ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 7,
                   3,
                   mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
 
     // --- Phase 1: Send 7 I-frames (fill the entire window) ---
@@ -558,7 +558,7 @@ static bench_result_t run_throughput_bench(int window_size) {
                   ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, (atc_hdlc_u8)window_size,
                   3,
                   mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
 
     // Prepare chunk payload (repeating pattern)
@@ -728,7 +728,7 @@ void test_process_tx_task_simulation(void) {
                   ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 2, 
                   3,
                   mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
 
     // We have 100 bytes. Chunk size is 32. It should take 4 chunks (32, 32, 32, 4)
@@ -781,7 +781,7 @@ void test_nr_modulo_validation(void) {
                   retx_buf, sizeof(retx_buf), 
                   ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 7, 
                   3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
 
     // 1. Send 6 frames (0 to 5)
@@ -833,7 +833,7 @@ void test_nr_edge_cases(void) {
                   retx_buf, sizeof(retx_buf), 
                   1000, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 7, 
                   3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
 
     typedef struct {
@@ -911,7 +911,7 @@ void test_state_initialization(void) {
 
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
+    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
     ctx.current_state = ATC_HDLC_PROTOCOL_STATE_CONNECTED;
 
     // 1. Send an I-frame so that V(S) increments to 1

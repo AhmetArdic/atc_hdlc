@@ -259,7 +259,7 @@ int main(void)
             NULL);
 
   /* Target is address 0x02, peer (PC) is 0x01 */
-  atc_hdlc_configure_addresses(&hdlc_ctx, 0x02, 0x01);
+  atc_hdlc_configure_station(&hdlc_ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x02, 0x01);
 
   /* Start receiving via DMA (Circular mode) */
   HAL_UART_Receive_DMA(&huart2, rx_ring, RX_RING_SIZE);

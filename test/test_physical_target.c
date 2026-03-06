@@ -422,7 +422,7 @@ static uint8_t *load_file(const char *path, uint32_t *out_size)
 static bool wait_for_connection(physical_node_t *node, int timeout_ms)
 {
     mutex_lock(&node->ctx_lock);
-    atc_hdlc_connect(&node->ctx);
+    atc_hdlc_link_setup(&node->ctx);
     mutex_unlock(&node->ctx_lock);
 
     int retries = timeout_ms;
@@ -588,7 +588,7 @@ static bool node_init(physical_node_t *node, uint32_t recv_len, uint8_t window_s
               ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
               window_size, 10,  /* dynamic window size, retries=10 */
               node_output_cb, node_on_frame_cb, node_state_cb, node);
-    atc_hdlc_configure_addresses(&node->ctx, 0x01, 0x02);
+    atc_hdlc_configure_station(&node->ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
 
     node->rx_thread = thread_create(node);
     return true;
