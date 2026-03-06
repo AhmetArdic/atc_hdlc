@@ -37,9 +37,8 @@ To make this stack fully compliant with broader HDLC specifications, the followi
     *   Recalculate & Compare verification strategy on the receiver side.
     *   **Early Address Verification**: Discards misaddressed frames before costly CRC computation, saving CPU cycles on noisy lines.
 *   **Flexible Transmission**:
-    *   **Packet Mode**:
-        *   **Buffered**: Construct a full `atc_hdlc_frame_t` and send it in one call using the context.
-        *   **Zero-Copy**: Send frames byte-by-byte (`start` → `data` → `end`) for ultra-low memory environments.
+    *   **High-Level Transfer**: Send complete payloads in one call (e.g., `atc_hdlc_output_frame_i`, `_ui`, `_test`). The library automatically constructs the headers, sequence numbers, calculates CRC, and streams the encoded bytes via `output_cb`.
+    *   **Low-Level Streaming**: Send frames byte-by-byte or chunk-by-chunk using `start` → `data` → `end` functions for ultra-low memory environments.
     *   **Stateless Mode**: Pack/Unpack frames directly into memory buffers without using the `atc_hdlc_context_t` or callbacks. Ideal for purely functional usage.
 *   **Reliable Data Transfer (Go-Back-N)**:
     *   **Parametric Window Size** (1..7, configurable at init). Window=1 is Stop-and-Wait.
@@ -254,20 +253,19 @@ To use this library in your own project:
     }
     ```
 
-6.  **Packet Mode (Buffered)**:
-    Construct a frame structure and let the library handle transmission via the `output_cb`.
+6.  **High-Level Data Transfer**:
+    Simply pass your payload to the library, and it will handle frame construction, sequencing, CRC, and transmission via `output_cb`.
     ```c
     atc_hdlc_u8 payload[] = "TEST";
-    atc_hdlc_frame_t frame = {
-        .address = 0xFF,
-        .control.value = 0x00,      // I-Frame
-        .information = payload,
-        .information_len = 4
-    };
-    atc_hdlc_output_frame(&ctx, &frame);
+    
+    // Reliable transmission (I-Frame, requires retransmit buffer configured)
+    atc_hdlc_output_frame_i(&ctx, payload, sizeof(payload) - 1);
+    
+    // Or Unacknowledged broadcast (UI-Frame)
+    // atc_hdlc_output_frame_ui(&ctx, payload, sizeof(payload) - 1);
     ```
 
-7.  **Packet Mode (Zero-Copy)**:
+7.  **Low-Level Streaming**:
     For memory-constrained devices where allocating a full frame buffer is not feasible:
     ```c
     // Start: sends Flag + Address + Control (with CRC init)
@@ -330,7 +328,7 @@ Configuration is done in `inc/hdlc_config.h`:
 | `atc_hdlc_init()` | Initialize context and bind callbacks |
 | `atc_hdlc_input_byte()` | Feed a single received byte into the parser |
 | `atc_hdlc_input_bytes()` | Feed a byte array into the parser (bulk) |
-| `atc_hdlc_output_frame()` | Send a complete frame (buffered) |
+
 | `atc_hdlc_output_frame_start()` | Begin packet TX (Flag + Address + Control) |
 | `atc_hdlc_output_frame_information_byte()` | Send a single data byte (with stuffing) |
 | `atc_hdlc_output_frame_information_bytes()` | Send a data array (with stuffing) |
@@ -367,9 +365,7 @@ Configuration is done in `inc/hdlc_config.h`:
 
 | Function | Description |
 |---|---|
-| `atc_hdlc_create_i_ctrl(ns, nr, pf)` | Create I-Frame control byte |
-| `atc_hdlc_create_s_ctrl(s_bits, nr, pf)` | Create S-Frame control byte |
-| `atc_hdlc_create_u_ctrl(m_lo, m_hi, pf)` | Create U-Frame control byte |
+
 | `atc_hdlc_get_s_frame_sub_type(control)` | Get S-Frame sub-type from a control field |
 | `atc_hdlc_get_u_frame_sub_type(control)` | Get U-Frame sub-type from a control field |
 

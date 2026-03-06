@@ -52,23 +52,9 @@ extern "C" {
 #define ATC_HDLC_BROADCAST_ADDRESS 0xFF
 #endif
 
-#define ATC_HDLC_FLAG_LEN               (1)     /**< Flag. */
-#define ATC_HDLC_ADDRESS_LEN            (1)     /**< Address Field. */
-#define ATC_HDLC_CONTROL_LEN            (1)     /**< Control Field. */
-#define ATC_HDLC_FCS_LEN                (2)     /**< FCS Field. */
 
-/** Minimum frame length: Address(1) + Control(1) + FCS(2). */
-#define ATC_HDLC_MIN_FRAME_LEN          (ATC_HDLC_ADDRESS_LEN + ATC_HDLC_CONTROL_LEN + ATC_HDLC_FCS_LEN)
 
-/* Frame Type Masks & Values */
-#define ATC_HDLC_FRAME_TYPE_MASK_I      (0x01)
-#define ATC_HDLC_FRAME_TYPE_VAL_I       (0x00)
 
-#define ATC_HDLC_FRAME_TYPE_MASK_S      (0x03)
-#define ATC_HDLC_FRAME_TYPE_VAL_S       (0x01)
-
-#define ATC_HDLC_FRAME_TYPE_MASK_U      (0x03)
-#define ATC_HDLC_FRAME_TYPE_VAL_U       (0x03)
 
 
 /*

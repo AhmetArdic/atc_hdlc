@@ -1,4 +1,5 @@
 #include "../inc/hdlc.h"
+#include "../src/hdlc_private.h"
 #include "test_common.h"
 #include <stdint.h>
 #include <ctype.h>

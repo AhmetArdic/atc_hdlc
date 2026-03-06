@@ -30,6 +30,29 @@
 
 #include "../inc/hdlc_types.h"
 
+/*
+ * --------------------------------------------------------------------------
+ * FRAME LENGTH CONSTANTS (Internal)
+ * --------------------------------------------------------------------------
+ */
+#define ATC_HDLC_FLAG_LEN               (1)     /**< Flag. */
+#define ATC_HDLC_ADDRESS_LEN            (1)     /**< Address Field. */
+#define ATC_HDLC_CONTROL_LEN            (1)     /**< Control Field. */
+#define ATC_HDLC_FCS_LEN                (2)     /**< FCS Field. */
+
+/** Minimum frame length: Address(1) + Control(1) + FCS(2). */
+#define ATC_HDLC_MIN_FRAME_LEN          (ATC_HDLC_ADDRESS_LEN + ATC_HDLC_CONTROL_LEN + ATC_HDLC_FCS_LEN)
+
+/* Frame Type Masks & Values */
+#define ATC_HDLC_FRAME_TYPE_MASK_I      (0x01)
+#define ATC_HDLC_FRAME_TYPE_VAL_I       (0x00)
+
+#define ATC_HDLC_FRAME_TYPE_MASK_S      (0x03)
+#define ATC_HDLC_FRAME_TYPE_VAL_S       (0x01)
+
+#define ATC_HDLC_FRAME_TYPE_MASK_U      (0x03)
+#define ATC_HDLC_FRAME_TYPE_VAL_U       (0x03)
+
 /**
  * @brief Input State Machine States.
  * Internal states for the byte-by-byte receive parser.
@@ -210,6 +233,14 @@ void hdlc_reset_connection_state(atc_hdlc_context_t *ctx);
  * INTERNAL FRAME SEND HELPERS
  * --------------------------------------------------------------------------
  */
+
+/* hdlc_output.c — Complete frame output (internal) */
+void atc_hdlc_output_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame);
+
+/* hdlc_frame.c — Control field constructors (internal) */
+atc_hdlc_control_t atc_hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
+atc_hdlc_control_t atc_hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
+atc_hdlc_control_t atc_hdlc_create_u_ctrl(atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf);
 
 /* Shared frame type resolver */
 static inline atc_hdlc_frame_type_t hdlc_resolve_frame_type(atc_hdlc_u8 ctrl) {

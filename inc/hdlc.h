@@ -160,18 +160,6 @@ void atc_hdlc_input_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte);
  */
 void atc_hdlc_input_bytes(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
 
-/**
- * @brief Output a complete HDLC Frame.
- * 
- * Constructs a raw HDLC stream from the provided `frame` structure,
- * automatically handling Flag generation, Byte Stuffing, and CRC calculation.
- * The output bytes are sent immediately via the `output_cb`.
- * 
- * @param ctx   Pointer to the initialized HDLC context.
- * @param frame Pointer to the frame structure to transmit.
- */
-void atc_hdlc_output_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame);
-
 
 /**
  * @brief Pack (Serialize) a frame into a memory buffer.
@@ -318,33 +306,6 @@ void atc_hdlc_output_frame_start_ui(atc_hdlc_context_t *ctx);
 void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx);
 
 
-
-/**
- * @brief Create an I-Frame Control Field.
- * @param ns Send Sequence Number N(S) (3 bits).
- * @param nr Receive Sequence Number N(R) (3 bits).
- * @param pf Poll/Final Bit.
- * @return Constructed control field.
- */
-atc_hdlc_control_t atc_hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
-
-/**
- * @brief Create an S-Frame Control Field.
- * @param s_bits Supervisory function bits (2 bits: RR=00, RNR=01, REJ=10).
- * @param nr     Receive Sequence Number N(R) (3 bits).
- * @param pf     Poll/Final Bit.
- * @return Constructed control field.
- */
-atc_hdlc_control_t atc_hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
-
-/**
- * @brief Create a U-Frame Control Field.
- * @param m_lo Modifier function bits (low 2 bits).
- * @param m_hi Modifier function bits (high 3 bits).
- * @param pf   Poll/Final Bit.
- * @return Constructed control field.
- */
-atc_hdlc_control_t atc_hdlc_create_u_ctrl(atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf);
 
 /**
  * @brief Get the S-Frame sub-type from a control field.
