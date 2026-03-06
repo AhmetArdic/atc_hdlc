@@ -67,6 +67,12 @@ void atc_hdlc_init(atc_hdlc_context_t *ctx, atc_hdlc_u8 *input_buffer, atc_hdlc_
   // Clear context
   memset(ctx, 0, sizeof(atc_hdlc_context_t));
 
+  // Bind callbacks
+  ctx->output_byte_cb = output_cb;
+  ctx->on_frame_cb = on_frame_cb;
+  ctx->on_state_change_cb = on_state_change_cb;
+  ctx->user_data = user_data;
+
   // Initialize Buffer
   ctx->input_buffer = input_buffer;
   ctx->input_buffer_len = input_buffer_len;
@@ -79,31 +85,11 @@ void atc_hdlc_init(atc_hdlc_context_t *ctx, atc_hdlc_u8 *input_buffer, atc_hdlc_
       ctx->retransmit_slot_size = retransmit_buffer_len / window_size;
   }
 
-  // Bind callbacks
-  ctx->output_byte_cb = output_cb;
-  ctx->on_frame_cb = on_frame_cb;
-  ctx->on_state_change_cb = on_state_change_cb;
-  ctx->user_data = user_data;
-
-  // Initialize State
+  // Initialize Non-Zero Configuration
   ctx->input_state = HDLC_INPUT_STATE_HUNT;
-  ctx->current_state = ATC_HDLC_PROTOCOL_STATE_DISCONNECTED;
-  
-  // Reliable State (Go-Back-N)
-  ctx->vs = 0;
-  ctx->vr = 0;
-  ctx->va = 0;
-  ctx->ack_timer = 0;
   ctx->ack_delay_timeout = ack_delay_timeout;
-  ctx->rej_exception = false;
   ctx->retransmit_timeout = retransmit_timeout;
   ctx->max_retry_count = max_retry_count;
-  ctx->retry_count = 0;
-  ctx->next_tx_slot = 0;
-  memset(ctx->tx_seq_to_slot, 0, sizeof(ctx->tx_seq_to_slot));
-  
-  // Connection Management State
-  ctx->contention_timer = 0;
 }
 
 /**

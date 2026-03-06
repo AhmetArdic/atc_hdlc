@@ -124,6 +124,25 @@ typedef enum {
 #define HDLC_FRMR_Y_BIT         0x04
 #define HDLC_FRMR_Z_BIT         0x08
 #define HDLC_FRMR_V_BIT         0x10
+/**
+ * @brief Frame Reject (FRMR) Information Fields.
+ * Standard format for the information field of an FRMR response.
+ * Internal only — used by hdlc_frame_handlers.c for FRMR parsing.
+ */
+typedef struct {
+    atc_hdlc_u16 rejected_control; /**< Copy of the rejected control field. */
+    atc_hdlc_u8 v_s;               /**< Current Send Sequence Number V(S). */
+    atc_hdlc_u8 v_r;               /**< Current Receive Sequence Number V(R). */
+    atc_hdlc_bool cr;              /**< Command/Response flag. */
+    struct {
+        atc_hdlc_bool w; /**< Control field undefined/unimplemented. */
+        atc_hdlc_bool x; /**< Info field not allowed with this frame. */
+        atc_hdlc_bool y; /**< Info field too long. */
+        atc_hdlc_bool z; /**< Invalid N(R). */
+        atc_hdlc_bool v; /**< Invalid N(S). */
+    } errors;
+} atc_hdlc_frmr_data_t;
+
 /*
  * --------------------------------------------------------------------------
  * S-FRAME SUPERVISORY FUNCTION BITS

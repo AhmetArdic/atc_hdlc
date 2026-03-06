@@ -156,8 +156,7 @@ atc_hdlc_bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer, atc_hdlc_u32 buff
     calced_crc = atc_hdlc_crc_ccitt_update(calced_crc, flat_buffer[i]);
   }
 
-  atc_hdlc_fcs_t *fcs = (atc_hdlc_fcs_t *)&flat_buffer[data_len];
-  atc_hdlc_u16 rx_fcs = (fcs->fcs[0] << 8) | fcs->fcs[1];
+  atc_hdlc_u16 rx_fcs = ((atc_hdlc_u16)flat_buffer[data_len] << 8) | flat_buffer[data_len + 1];
 
   if (calced_crc != rx_fcs) return false;
 

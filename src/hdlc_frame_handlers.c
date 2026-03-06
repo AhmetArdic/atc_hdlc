@@ -291,10 +291,7 @@ static void hdlc_process_frmr(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *f
    hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED, ATC_HDLC_EVENT_PROTOCOL_ERROR);
 }
 
-static void hdlc_process_ui(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    (void)ctx;
-    (void)frame;
-}
+
 
 static void hdlc_process_test(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
     atc_hdlc_output_frame_start(ctx, ctx->my_address,
@@ -318,7 +315,6 @@ static bool handle_u_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *fram
   if (frame->address == ctx->my_address || frame->address == ATC_HDLC_BROADCAST_ADDRESS) {
     
     if (m_lo == HDLC_U_MODIFIER_LO_UI && m_hi == HDLC_U_MODIFIER_HI_UI) {
-         hdlc_process_ui(ctx, frame);
          return true; // UI frames contain user payload
     }
 

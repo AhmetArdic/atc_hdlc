@@ -60,8 +60,7 @@ void atc_hdlc_input_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
 
         // Extract Received FCS (Assuming MSB first order on wire -> Buffered as
         // Hi, Lo)
-        atc_hdlc_fcs_t *fcs = (atc_hdlc_fcs_t *)&ctx->input_buffer[ctx->input_index - ATC_HDLC_FCS_LEN];
-        atc_hdlc_u16 rx_fcs = (fcs->fcs[0] << 8) | fcs->fcs[1];
+        atc_hdlc_u16 rx_fcs = ((atc_hdlc_u16)ctx->input_buffer[data_len] << 8) | ctx->input_buffer[data_len + 1];
 
         if (calced_crc == rx_fcs) {
           // Valid Frame!
@@ -97,7 +96,6 @@ void atc_hdlc_input_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
     // immediately catch it and drop the state to HUNT.
     ctx->input_state = HDLC_INPUT_STATE_ADDRESS;
     ctx->input_index = 0;
-    ctx->input_crc = ATC_HDLC_FCS_INIT_VALUE;
     return;
   }
 

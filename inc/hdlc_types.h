@@ -181,9 +181,7 @@ typedef union {
 
 } atc_hdlc_control_t;
 
-typedef union {
-    atc_hdlc_u8 fcs[2];
-} atc_hdlc_fcs_t;
+
 
 /*
  * --------------------------------------------------------------------------
@@ -205,23 +203,7 @@ typedef struct {
     atc_hdlc_frame_type_t type;         /**< Resolved Frame Type (I/S/U). */
 } atc_hdlc_frame_t;
 
-/**
- * @brief Frame Reject (FRMR) Information Fields.
- * Standard format for the information field of an FRMR response.
- */
-typedef struct {
-    atc_hdlc_u16 rejected_control; /**< Copy of the rejected control field. */
-    atc_hdlc_u8 v_s;               /**< Current Send Sequence Number V(S). */
-    atc_hdlc_u8 v_r;               /**< Current Receive Sequence Number V(R). */
-    atc_hdlc_bool cr;              /**< Command/Response flag. */
-    struct {
-        atc_hdlc_bool w; /**< Control field undefined/unimplemented. */
-        atc_hdlc_bool x; /**< Info field not allowed with this frame. */
-        atc_hdlc_bool y; /**< Info field too long. */
-        atc_hdlc_bool z; /**< Invalid N(R). */
-        atc_hdlc_bool v; /**< Invalid N(S). */
-    } errors;
-} atc_hdlc_frmr_data_t;
+
 
 /*
  * --------------------------------------------------------------------------
@@ -356,7 +338,7 @@ typedef struct {
     atc_hdlc_u8 *input_buffer;      /**< Pointer to the user-supplied RX buffer. */
     atc_hdlc_u32 input_buffer_len;  /**< Length of the user-supplied RX buffer. */
     atc_hdlc_u32 input_index;       /**< Current write index in rx_buffer. */
-    atc_hdlc_u16 input_crc;         /**< Running RX CRC. */
+
     atc_hdlc_frame_t input_frame_buffer;   /**< Temporary frame descriptor passed to callback. */
 
     /* Transmitter Engine State */
