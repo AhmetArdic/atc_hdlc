@@ -150,7 +150,7 @@ void atc_hdlc_output_frame_end(atc_hdlc_context_t *ctx) {
  * @brief Start a UI Frame Output.
  * @see hdlc.h
  */
-void atc_hdlc_output_frame_start_ui(atc_hdlc_context_t *ctx) {
+void atc_hdlc_output_frame_start_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address) {
   if (ctx == NULL) {
     return;
   }
@@ -159,14 +159,14 @@ void atc_hdlc_output_frame_start_ui(atc_hdlc_context_t *ctx) {
   // M_LO=0, M_HI=0
   atc_hdlc_control_t ctrl = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_UI, HDLC_U_MODIFIER_HI_UI, 0); // P=0 usually
   
-  atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
+  atc_hdlc_output_frame_start(ctx, address, ctrl.value);
 }
 
 /**
  * @brief Start a TEST Frame Output.
  * @see hdlc.h
  */
-void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx) {
+void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx, atc_hdlc_u8 address) {
   if (ctx == NULL) {
     return;
   }
@@ -174,7 +174,7 @@ void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx) {
   // TEST Frame: m_lo=0, m_hi=7, P=1
   atc_hdlc_control_t ctrl = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST, 1);
   
-  atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
+  atc_hdlc_output_frame_start(ctx, address, ctrl.value);
 }
 
 
@@ -185,11 +185,11 @@ void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx) {
  * --------------------------------------------------------------------------
  */
 
-atc_hdlc_bool atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
+atc_hdlc_bool atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
   if (ctx == NULL) return false;
 
   // Start Frame
-  atc_hdlc_output_frame_start_ui(ctx);
+  atc_hdlc_output_frame_start_ui(ctx, address);
   
   // Send Data
   if (data != NULL && len > 0) {
@@ -201,11 +201,11 @@ atc_hdlc_bool atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx, const atc_hdlc_u
   return true;
 }
 
-atc_hdlc_bool atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
+atc_hdlc_bool atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
   if (ctx == NULL) return false;
 
   // Start Frame
-  atc_hdlc_output_frame_start_test(ctx);
+  atc_hdlc_output_frame_start_test(ctx, address);
 
   // Send Data
   if (data != NULL && len > 0) {

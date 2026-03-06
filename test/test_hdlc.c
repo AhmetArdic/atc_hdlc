@@ -469,12 +469,12 @@ void test_ui_frame_transmission(void) {
     atc_hdlc_configure_addresses(&ctx, 0x01, 0x02); // My=0x01, Peer=0x02
 
     const char *payload = "HELLO";
-    bool res = atc_hdlc_output_frame_ui(&ctx, (const atc_hdlc_u8*)payload, 5);
+    bool res = atc_hdlc_output_frame_ui(&ctx, ATC_HDLC_BROADCAST_ADDRESS, (const atc_hdlc_u8*)payload, 5);
     
     if (res && mock_output_len >= 11) {
          // Check Control Field for UI (0x03 or 0x13)
-        // Addr=0x02 (Peer)
-        if (mock_output_buffer[1] == 0x02 && (mock_output_buffer[2] & 0xEF) == 0x03) {
+        // Addr=0xFF (Broadcast)
+        if (mock_output_buffer[1] == ATC_HDLC_BROADCAST_ADDRESS && (mock_output_buffer[2] & 0xEF) == 0x03) {
             test_pass("UI Frame Transmission");
         } else {
              test_fail("UI Frame Transmission", "Header mismatch");
@@ -526,7 +526,7 @@ void test_test_frame(void) {
 
     // --- 1. Send TEST command ---
     atc_hdlc_u8 test_data[] = "LOOPBACK";
-    atc_hdlc_output_frame_test(&ctx, test_data, 8);
+    atc_hdlc_output_frame_test(&ctx, ctx.peer_address, test_data, 8);
 
     if (mock_output_len == 0) test_fail("TEST Send", "No output produced");
 

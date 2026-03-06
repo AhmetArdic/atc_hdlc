@@ -161,7 +161,7 @@ static void hdlc_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data)
 
   if (frame->type == ATC_HDLC_FRAME_I) {
     /* Echo payload back as UI */
-    atc_hdlc_output_frame_ui(&hdlc_ctx, frame->information, frame->information_len);
+    atc_hdlc_output_frame_ui(&hdlc_ctx, frame->address, frame->information, frame->information_len);
   }
   /* U-frames (SABM, DISC, etc.) and S-frames are handled by the library
      internally — no user action needed. */

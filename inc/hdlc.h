@@ -191,17 +191,18 @@ atc_hdlc_bool atc_hdlc_frame_pack(const atc_hdlc_frame_t *frame, atc_hdlc_u8 *bu
 atc_hdlc_bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer, atc_hdlc_u32 buffer_len, atc_hdlc_frame_t *frame, atc_hdlc_u8 *flat_buffer, atc_hdlc_u32 flat_buffer_len);
 
 /**
- * @brief Output an Unnumbered Information (UI) frame.
+ * @brief Output an Unnumbered Information (UI) Frame.
  * 
- * Transmits a UI frame using the streaming interface. UI frames are
- * unacknowledged and unsequenced.
+ * Used for connectionless, unacknowledged data transfer.
+ * Can be sent to a specific peer or broadcast (`ATC_HDLC_BROADCAST_ADDRESS`).
  * 
  * @param ctx  Pointer to the initialized HDLC context.
- * @param data Pointer to the data payload (can be NULL).
- * @param len  Length of the data payload.
- * @return true if the frame was output successfully, false otherwise.
+ * @param address Destination address (e.g., `ATC_HDLC_BROADCAST_ADDRESS`).
+ * @param data Pointer to the payload buffer.
+ * @param len  Length of the payload in bytes.
+ * @return true if successful, false otherwise.
  */
-atc_hdlc_bool atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
+atc_hdlc_bool atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
 
 /**
  * @brief Output a TEST command frame.
@@ -211,11 +212,12 @@ atc_hdlc_bool atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx, const atc_hdlc_u
  * Used for link integrity verification.
  *
  * @param ctx  Pointer to the initialized HDLC context.
+ * @param address Destination address.
  * @param data Pointer to the test data payload (can be NULL).
  * @param len  Length of the test data payload.
  * @return true if the frame was output successfully, false otherwise.
  */
-atc_hdlc_bool atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
+atc_hdlc_bool atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
 
 /**
  * @brief Output an Information (I) frame (Reliable).
@@ -286,24 +288,26 @@ void atc_hdlc_output_frame_information_bytes(atc_hdlc_context_t *ctx, const atc_
 void atc_hdlc_output_frame_end(atc_hdlc_context_t *ctx);
 
 /**
- * @brief Start a UI Frame Output.
- *
- * Begins a new UI frame transmission by sending the Start Flag (`0x7E`),
- * Address, and UI Control Field.
- *
+ * @brief Start a UI Frame Output (Streaming).
+ * 
+ * Starts streaming a UI frame. Follow with 
+ * `atc_hdlc_output_frame_information_byte(s)` and finally `atc_hdlc_output_frame_end()`.
+ * 
  * @param ctx Pointer to the initialized HDLC context.
+ * @param address Destination address (e.g., `ATC_HDLC_BROADCAST_ADDRESS`).
  */
-void atc_hdlc_output_frame_start_ui(atc_hdlc_context_t *ctx);
+void atc_hdlc_output_frame_start_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address);
 
 /**
- * @brief Start a TEST Frame Output.
- *
- * Begins a new TEST frame transmission by sending the Start Flag (`0x7E`),
- * Address, and TEST Control Field.
- *
+ * @brief Start a TEST Frame Output (Streaming).
+ * 
+ * Starts streaming a TEST frame. Follow with 
+ * `atc_hdlc_output_frame_information_byte(s)` and finally `atc_hdlc_output_frame_end()`.
+ * 
  * @param ctx Pointer to the initialized HDLC context.
+ * @param address Destination address.
  */
-void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx);
+void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx, atc_hdlc_u8 address);
 
 
 
