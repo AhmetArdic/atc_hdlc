@@ -53,10 +53,6 @@ extern "C" {
 #endif
 
 
-
-
-
-
 /*
  * --------------------------------------------------------------------------
  * BASIC TYPE DEFINITIONS
@@ -136,11 +132,11 @@ typedef enum {
  * Contains the parsed header fields and the payload buffer.
  */
 typedef struct {
+    atc_hdlc_u8 *information;           /**< Pointer to Information Field (Payload). */
+    atc_hdlc_frame_type_t type;         /**< Resolved Frame Type (I/S/U). */
+    atc_hdlc_u16 information_len;       /**< Length of valid data in information. */
     atc_hdlc_u8 address;                /**< Address Field. */
     atc_hdlc_u8 control;                /**< Control Field. */
-    atc_hdlc_u8 *information;           /**< Pointer to Information Field (Payload). */
-    atc_hdlc_u16 information_len;       /**< Length of valid data in information. */
-    atc_hdlc_frame_type_t type;         /**< Resolved Frame Type (I/S/U). */
 } atc_hdlc_frame_t;
 
 
@@ -264,60 +260,53 @@ typedef void (*atc_hdlc_on_state_change_cb_t)(atc_hdlc_protocol_state_t state, a
  * instance.
  */
 typedef struct {
-    /* Configuration & Callbacks */
-    atc_hdlc_output_byte_cb_t output_byte_cb;   /**< Hardware TX callback. */
-    atc_hdlc_on_frame_cb_t on_frame_cb;         /**< Application RX callback. */
+    /* Callbacks & Pointers (Highest alignment requirement) */
+    atc_hdlc_output_byte_cb_t output_byte_cb;         /**< Hardware TX callback. */
+    atc_hdlc_on_frame_cb_t on_frame_cb;               /**< Application RX callback. */
     atc_hdlc_on_state_change_cb_t on_state_change_cb; /**< State change callback. */
-    void *user_data;                        /**< User context passed to callbacks. */
+    void *user_data;                                  /**< User context passed to callbacks. */
+    atc_hdlc_u8 *retransmit_buffer;                   /**< User-supplied buffer for Go-Back-N. */
+    atc_hdlc_u8 *input_buffer;                        /**< User-supplied RX buffer. */
+    
+    /* Inner Structs */
+    atc_hdlc_frame_t input_frame_buffer;              /**< Temporary frame descriptor. */
 
-    /* Protocol Logic State */
+    /* 32-bit Types & Arrays (4-byte alignment) */
+    atc_hdlc_u32 retransmit_lens[8];                  /**< Payload length stored per slot. */
+    atc_hdlc_u32 ack_timer;                           /**< Timer for delayed ACK. */
+    atc_hdlc_u32 ack_delay_timeout;                   /**< Configurable ACK delay timeout. */
+    atc_hdlc_u32 contention_timer;                    /**< Timer for SABM contention resolution delay. */
+    atc_hdlc_u32 retransmit_buffer_len;               /**< Total length of the retransmit buffer. */
+    atc_hdlc_u32 retransmit_slot_size;                /**< Max payload per slot. */
+    atc_hdlc_u32 retransmit_timer;                    /**< Timer for retransmission. */
+    atc_hdlc_u32 retransmit_timeout;                  /**< Configurable retransmission timeout. */
+    atc_hdlc_u32 input_buffer_len;                    /**< Length of the user-supplied RX buffer. */
+    atc_hdlc_u32 input_index;                         /**< Current write index in rx_buffer. */
+    atc_hdlc_u32 stats_input_frames;                  /**< Count of valid frames received. */
+    atc_hdlc_u32 stats_output_frames;                 /**< Count of frames transmitted. */
+    atc_hdlc_u32 stats_crc_errors;                    /**< Count of frames discarded due to CRC mismatch. */
+
+    /* Enums (typically 4-byte aligned in C) */
     volatile atc_hdlc_protocol_state_t current_state; /**< Current connection state. */
+    atc_hdlc_link_mode_t mode;                        /**< Operational link mode. */
+    atc_hdlc_station_role_t role;                     /**< Operational station role. */
 
-    /* Configuration */
-    atc_hdlc_link_mode_t mode;
-    atc_hdlc_station_role_t role;
+    /* 16-bit Types (2-byte alignment) */
+    atc_hdlc_u16 output_crc;                          /**< Running CRC for streaming TX. */
+
+    /* 8-bit Types & Arrays (1-byte alignment) */
+    atc_hdlc_u8 tx_seq_to_slot[8];                    /**< Mapping: Seq num V(S) -> physical buffer slot. */
     atc_hdlc_u8 my_address;                           /**< Local station address. */
     atc_hdlc_u8 peer_address;                         /**< Remote station address. */
-
-    /* Reliable Transmission State (Go-Back-N) */
-    atc_hdlc_u8 vs;                 /**< Send State Variable V(S). Sequence number of next I-frame to send. */
-    atc_hdlc_u8 vr;                 /**< Receive State Variable V(R). Sequence number of next expected I-frame. */
-    atc_hdlc_u8 va;                 /**< Acknowledge State Variable V(A). Oldest unacknowledged sequence number. */
-    atc_hdlc_u8 window_size;        /**< Transmit window size (1..7). */
-    atc_hdlc_u32 ack_timer;         /**< Timer for delayed ACK (counts down in ticks). 0 means no ACK pending. */
-    atc_hdlc_u32 ack_delay_timeout; /**< Configurable ACK delay timeout period in ticks. */
-    atc_hdlc_bool rej_exception;    /**< REJ exception condition. Prevents duplicate REJ retransmission. */
-    
-    /* Connection Management State */
-    atc_hdlc_u32 contention_timer;  /**< Timer for SABM contention resolution delay. */
-    
-    /* Retransmission Buffer (Go-Back-N, slotted) */
-    atc_hdlc_u8 *retransmit_buffer; /**< User-supplied buffer, divided into window_size equal slots. */
-    atc_hdlc_u32 retransmit_buffer_len; /**< Total length of the retransmit buffer. */
-    atc_hdlc_u32 retransmit_slot_size;  /**< Max payload per slot (retransmit_buffer_len / window_size). */
-    atc_hdlc_u32 retransmit_lens[8];    /**< Payload length stored per slot. */
-    atc_hdlc_u8 tx_seq_to_slot[8];      /**< Dynamic mapping: Sequence number V(S) to physical buffer slot index. */
-    atc_hdlc_u8 next_tx_slot;           /**< The next available physical slot index (0 to window_size-1). */
-    atc_hdlc_u32 retransmit_timer; /**< Timer for retransmission (counts down in ticks). */
-    atc_hdlc_u32 retransmit_timeout; /**< Configurable retransmission timeout period in ticks. */
-    atc_hdlc_u8 max_retry_count;      /**< Maximum number of retransmissions before link failure (N2). */
-    atc_hdlc_u8 retry_count;          /**< Current retransmission count. */
-
-    /* Receiver Engine State */
-    atc_hdlc_u8 input_state;        /**< Current internal parser state. */
-    atc_hdlc_u8 *input_buffer;      /**< Pointer to the user-supplied RX buffer. */
-    atc_hdlc_u32 input_buffer_len;  /**< Length of the user-supplied RX buffer. */
-    atc_hdlc_u32 input_index;       /**< Current write index in rx_buffer. */
-
-    atc_hdlc_frame_t input_frame_buffer;   /**< Temporary frame descriptor passed to callback. */
-
-    /* Transmitter Engine State */
-    atc_hdlc_u16 output_crc; /**< Running CRC for streaming TX. */
-
-    /* Statistics */
-    atc_hdlc_u32 stats_input_frames; /**< Count of valid frames received. */
-    atc_hdlc_u32 stats_output_frames; /**< Count of frames transmitted. */
-    atc_hdlc_u32 stats_crc_errors; /**< Count of frames discarded due to CRC mismatch. */
+    atc_hdlc_u8 vs;                                   /**< Send State Variable V(S). */
+    atc_hdlc_u8 vr;                                   /**< Receive State Variable V(R). */
+    atc_hdlc_u8 va;                                   /**< Acknowledge State Variable V(A). */
+    atc_hdlc_u8 window_size;                          /**< Transmit window size (1..7). */
+    atc_hdlc_u8 next_tx_slot;                         /**< Next available physical slot index. */
+    atc_hdlc_u8 max_retry_count;                      /**< Max retransmissions before link failure (N2). */
+    atc_hdlc_u8 retry_count;                          /**< Current retransmission count. */
+    atc_hdlc_u8 input_state;                          /**< Current internal parser state. */
+    atc_hdlc_bool rej_exception;                      /**< REJ exception condition. */
 } atc_hdlc_context_t;
 
 #ifdef __cplusplus
