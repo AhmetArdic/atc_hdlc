@@ -86,7 +86,7 @@ static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 static void hdlc_output_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data);
 static void hdlc_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data);
-static void hdlc_state_cb(atc_hdlc_protocol_state_t state, void *user_data);
+static void hdlc_state_cb(atc_hdlc_protocol_state_t state, atc_hdlc_event_t event, void *user_data);
 static void tx_flush_dma(void);
 /* USER CODE END PFP */
 
@@ -118,7 +118,12 @@ static void tx_flush_dma(void)
   tx_dma_busy = 1;
   __enable_irq();
   
-  HAL_UART_Transmit_DMA(&huart2, &tx_ring[tail], len);
+  if (HAL_UART_Transmit_DMA(&huart2, &tx_ring[tail], len) != HAL_OK) {
+    /* If DMA transmission fails to start, unlock the flag */
+    __disable_irq();
+    tx_dma_busy = 0;
+    __enable_irq();
+  }
 }
 
 /* ================================================================
@@ -161,7 +166,7 @@ static void hdlc_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data)
 
   if (frame->type == ATC_HDLC_FRAME_I) {
     /* Echo payload back as UI */
-    atc_hdlc_output_frame_ui(&hdlc_ctx, frame->address, frame->information, frame->information_len);
+    atc_hdlc_output_frame_ui(&hdlc_ctx, 0x01, frame->information, frame->information_len);
   }
   /* U-frames (SABM, DISC, etc.) and S-frames are handled by the library
      internally — no user action needed. */
@@ -170,7 +175,7 @@ static void hdlc_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data)
 /**
  * @brief Connection state change callback (informational).
  */
-static void hdlc_state_cb(atc_hdlc_protocol_state_t state, void *user_data)
+static void hdlc_state_cb(atc_hdlc_protocol_state_t state, atc_hdlc_event_t event, void *user_data)
 {
   (void)user_data;
   (void)state;
@@ -366,7 +371,8 @@ static void MX_USART2_UART_Init(void)
   huart2.Init.OverSampling = UART_OVERSAMPLING_16;
   huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
   huart2.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_RXOVERRUNDISABLE_INIT;
+  huart2.AdvancedInit.OverrunDisable = UART_ADVFEATURE_OVERRUN_DISABLE;
   if (HAL_UART_Init(&huart2) != HAL_OK)
   {
     Error_Handler();
