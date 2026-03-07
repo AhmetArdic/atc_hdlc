@@ -184,7 +184,10 @@ atc_hdlc_bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer, atc_hdlc_u32 buff
  * @see hdlc.h
  */
 atc_hdlc_u8 atc_hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
-  return ((ns & 0x7) << 1) | ((pf & 0x1) << 4) | ((nr & 0x7) << 5);
+  return ATC_HDLC_FRAME_TYPE_VAL_I |
+         ((ns & HDLC_CTRL_I_NS_MASK) << HDLC_CTRL_I_NS_SHIFT) |
+         ((pf & HDLC_CTRL_PF_MASK) << HDLC_CTRL_PF_SHIFT) |
+         ((nr & HDLC_CTRL_NR_MASK) << HDLC_CTRL_NR_SHIFT);
 }
 
 /**
@@ -192,7 +195,10 @@ atc_hdlc_u8 atc_hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 p
  * @see hdlc.h
  */
 atc_hdlc_u8 atc_hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
-  return 0x01 | ((s_bits & 0x3) << 2) | ((pf & 0x1) << 4) | ((nr & 0x7) << 5);
+  return ATC_HDLC_FRAME_TYPE_VAL_S |
+         ((s_bits & HDLC_CTRL_S_BITS_MASK) << HDLC_CTRL_S_BITS_SHIFT) |
+         ((pf & HDLC_CTRL_PF_MASK) << HDLC_CTRL_PF_SHIFT) |
+         ((nr & HDLC_CTRL_NR_MASK) << HDLC_CTRL_NR_SHIFT);
 }
 
 /**
@@ -200,7 +206,10 @@ atc_hdlc_u8 atc_hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_
  * @see hdlc.h
  */
 atc_hdlc_u8 atc_hdlc_create_u_ctrl(atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf) {
-  return 0x03 | ((m_lo & 0x3) << 2) | ((pf & 0x1) << 4) | ((m_hi & 0x7) << 5);
+  return ATC_HDLC_FRAME_TYPE_VAL_U |
+         ((m_lo & HDLC_CTRL_U_M_LO_MASK) << HDLC_CTRL_U_M_LO_SHIFT) |
+         ((pf & HDLC_CTRL_PF_MASK) << HDLC_CTRL_PF_SHIFT) |
+         ((m_hi & HDLC_CTRL_U_M_HI_MASK) << HDLC_CTRL_U_M_HI_SHIFT);
 }
 
 /* --- Control Field Analyzers --- */

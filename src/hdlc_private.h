@@ -60,12 +60,25 @@
  * S-Frame: [b0: 1] [b1: 0] [b2-3: S] [b4: P/F] [b5-7: N(R)]
  * U-Frame: [b0: 1] [b1: 1] [b2-3: M_lo] [b4: P/F] [b5-7: M_hi]
  */
-#define HDLC_CTRL_PF(ctrl)         (((ctrl) >> 4) & 0x01)
-#define HDLC_CTRL_NR(ctrl)         (((ctrl) >> 5) & 0x07)
-#define HDLC_CTRL_I_NS(ctrl)       (((ctrl) >> 1) & 0x07)
-#define HDLC_CTRL_S_BITS(ctrl)     (((ctrl) >> 2) & 0x03)
-#define HDLC_CTRL_U_M_LO(ctrl)     (((ctrl) >> 2) & 0x03)
-#define HDLC_CTRL_U_M_HI(ctrl)     (((ctrl) >> 5) & 0x07)
+#define HDLC_CTRL_PF_MASK          (0x01)
+#define HDLC_CTRL_PF_SHIFT         (4)
+#define HDLC_CTRL_NR_MASK          (0x07)
+#define HDLC_CTRL_NR_SHIFT         (5)
+#define HDLC_CTRL_I_NS_MASK        (0x07)
+#define HDLC_CTRL_I_NS_SHIFT       (1)
+#define HDLC_CTRL_S_BITS_MASK      (0x03)
+#define HDLC_CTRL_S_BITS_SHIFT     (2)
+#define HDLC_CTRL_U_M_LO_MASK      (0x03)
+#define HDLC_CTRL_U_M_LO_SHIFT     (2)
+#define HDLC_CTRL_U_M_HI_MASK      (0x07)
+#define HDLC_CTRL_U_M_HI_SHIFT     (5)
+
+#define HDLC_CTRL_PF(ctrl)         (((ctrl) >> HDLC_CTRL_PF_SHIFT) & HDLC_CTRL_PF_MASK)
+#define HDLC_CTRL_NR(ctrl)         (((ctrl) >> HDLC_CTRL_NR_SHIFT) & HDLC_CTRL_NR_MASK)
+#define HDLC_CTRL_I_NS(ctrl)       (((ctrl) >> HDLC_CTRL_I_NS_SHIFT) & HDLC_CTRL_I_NS_MASK)
+#define HDLC_CTRL_S_BITS(ctrl)     (((ctrl) >> HDLC_CTRL_S_BITS_SHIFT) & HDLC_CTRL_S_BITS_MASK)
+#define HDLC_CTRL_U_M_LO(ctrl)     (((ctrl) >> HDLC_CTRL_U_M_LO_SHIFT) & HDLC_CTRL_U_M_LO_MASK)
+#define HDLC_CTRL_U_M_HI(ctrl)     (((ctrl) >> HDLC_CTRL_U_M_HI_SHIFT) & HDLC_CTRL_U_M_HI_MASK)
 
 /**
  * @brief Input State Machine States.
