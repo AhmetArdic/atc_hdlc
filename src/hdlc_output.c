@@ -157,9 +157,9 @@ void atc_hdlc_output_frame_start_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address
   
   // UI Frame Control: 11 00 P 000 (Val=0x03 if P=0, 0x13 if P=1)
   // M_LO=0, M_HI=0
-  atc_hdlc_control_t ctrl = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_UI, HDLC_U_MODIFIER_HI_UI, 0); // P=0 usually
+  atc_hdlc_u8 ctrl = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_UI, HDLC_U_MODIFIER_HI_UI, 0); // P=0 usually
   
-  atc_hdlc_output_frame_start(ctx, address, ctrl.value);
+  atc_hdlc_output_frame_start(ctx, address, ctrl);
 }
 
 /**
@@ -172,9 +172,9 @@ void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx, atc_hdlc_u8 addre
   }
   
   // TEST Frame: m_lo=0, m_hi=7, P=1
-  atc_hdlc_control_t ctrl = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST, 1);
+  atc_hdlc_u8 ctrl = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST, 1);
   
-  atc_hdlc_output_frame_start(ctx, address, ctrl.value);
+  atc_hdlc_output_frame_start(ctx, address, ctrl);
 }
 
 
@@ -247,8 +247,8 @@ atc_hdlc_bool atc_hdlc_output_frame_i(atc_hdlc_context_t *ctx, const atc_hdlc_u8
 
   // Start Frame
   ATC_HDLC_LOG_DEBUG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
-  atc_hdlc_control_t ctrl = atc_hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
-  atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
+  atc_hdlc_u8 ctrl = atc_hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
+  atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl);
   
   // Send Data
   if (data != NULL && len > 0) {

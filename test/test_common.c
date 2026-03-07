@@ -26,7 +26,7 @@ void mock_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data) {
 
   printf("   %s[ON FRAME EVENT] Frame Received!%s\n", COL_GREEN, COL_RESET);
   printf("   Type: %d, Addr: %02X, Ctrl: %02X, Information Len: %d\n",
-         frame->type, frame->address, frame->control.value,
+         frame->type, frame->address, frame->control,
          frame->information_len);
   if (frame->information_len > 0) {
     printf("   Information: ");

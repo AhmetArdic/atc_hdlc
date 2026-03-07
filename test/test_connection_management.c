@@ -110,7 +110,7 @@ void test_connect_sends_sabm(void) {
     decode_last_tx(&frame_out, flat, sizeof(flat));
 
     if (frame_out.address != 0x02) test_fail("Connect Sends SABM", "Wrong Dest Address");   // To Peer
-    if (frame_out.control.value != 0x3F) test_fail("Connect Sends SABM", "Not SABM(P=1)");  // SABM (P=1) -> 0x3F
+    if (frame_out.control != 0x3F) test_fail("Connect Sends SABM", "Not SABM(P=1)");  // SABM (P=1) -> 0x3F
     
     test_pass("Connect Sends SABM");
 }
@@ -125,7 +125,7 @@ void test_connect_complete_on_ua(void) {
     // Simulate Receiving UA from Peer
     atc_hdlc_frame_t ua_frame;
     ua_frame.address = 0x02; // Peer's address (Response)
-    ua_frame.control.value = 0x73; // UA with F=1
+    ua_frame.control = 0x73; // UA with F=1
     ua_frame.information = NULL;
     ua_frame.information_len = 0;
     ua_frame.type = ATC_HDLC_FRAME_U;
@@ -172,7 +172,7 @@ void test_disconnect_flow(void) {
     
     // DISC(P=1) = 0x53
     if (frame_out.address != 0x02) test_fail("Disconnect Flow", "Wrong Address");
-    if (frame_out.control.value != 0x53) test_fail("Disconnect Flow", "Not DISC(P=1)");
+    if (frame_out.control != 0x53) test_fail("Disconnect Flow", "Not DISC(P=1)");
 
     // 3. Receive UA
     // Clear buffer
@@ -180,7 +180,7 @@ void test_disconnect_flow(void) {
     
     atc_hdlc_frame_t ua_frame;
     ua_frame.address = 0x02;
-    ua_frame.control.value = 0x73; // UA(F=1)
+    ua_frame.control = 0x73; // UA(F=1)
     ua_frame.information = NULL;
     ua_frame.information_len = 0;
 
@@ -205,7 +205,7 @@ void test_passive_open(void) {
     // SABM(P=1) = 0x3F.
     atc_hdlc_frame_t sabm_frame;
     sabm_frame.address = 0x01;
-    sabm_frame.control.value = 0x3F;
+    sabm_frame.control = 0x3F;
     sabm_frame.information = NULL;
     sabm_frame.information_len = 0;
 
@@ -225,7 +225,7 @@ void test_passive_open(void) {
     decode_last_tx(&frame_out, flat, sizeof(flat));
 
     if (frame_out.address != 0x01) test_fail("Passive Open", "UA wrong address");   // My address
-    if (frame_out.control.value != 0x73) test_fail("Passive Open", "Not UA(F=1)");  // UA(F=1)
+    if (frame_out.control != 0x73) test_fail("Passive Open", "Not UA(F=1)");  // UA(F=1)
     
     test_pass("Passive Open (Accept SABM)");
 }
@@ -308,7 +308,7 @@ void test_mode_rejection(void) {
 
     // DM: 000 F 00 11 (Hi=0, Lo=3). F should match P (1).
     // 000 1 11 11 -> 0x1F.
-    if (frame_out.control.value != 0x1F) // DM with F=1
+    if (frame_out.control != 0x1F) // DM with F=1
          test_fail("Mode Rejection", "Did not send DM");
     
     test_pass("Mode Rejection (SNRM)");
@@ -338,7 +338,7 @@ void test_extended_mode_rejection(void) {
         uint8_t flat[32];
         decode_last_tx(&frame_out, flat, sizeof(flat));
 
-        if (frame_out.control.value != 0x1F) // DM with F=1
+        if (frame_out.control != 0x1F) // DM with F=1
             test_fail("Ext Rejection SABME", "Did not send DM");
     }
 
@@ -362,7 +362,7 @@ void test_extended_mode_rejection(void) {
         uint8_t flat[32];
         decode_last_tx(&frame_out, flat, sizeof(flat));
 
-        if (frame_out.control.value != 0x1F) // DM with F=1
+        if (frame_out.control != 0x1F) // DM with F=1
             test_fail("Ext Rejection SNRME", "Did not send DM");
     }
 
@@ -386,7 +386,7 @@ void test_extended_mode_rejection(void) {
         uint8_t flat[32];
         decode_last_tx(&frame_out, flat, sizeof(flat));
 
-        if (frame_out.control.value != 0x1F) // DM with F=1
+        if (frame_out.control != 0x1F) // DM with F=1
             test_fail("Ext Rejection SARME", "Did not send DM");
     }
 
@@ -411,7 +411,7 @@ void test_contention_resolution_winner(void) {
     // 2. Peer also initiated connection, so we receive their SABM
     atc_hdlc_frame_t sabm_frame;
     sabm_frame.address = 0x02; // Addressed to us
-    sabm_frame.control.value = 0x3F; // SABM (P=1)
+    sabm_frame.control = 0x3F; // SABM (P=1)
     sabm_frame.information = NULL;
     sabm_frame.information_len = 0;
 
@@ -431,7 +431,7 @@ void test_contention_resolution_winner(void) {
     decode_last_tx(&frame_out, flat, sizeof(flat));
 
     if (frame_out.address != 0x02) test_fail("Contention Winner", "UA wrong address");
-    if (frame_out.control.value != 0x73) test_fail("Contention Winner", "Did not send UA(F=1)"); // UA(F=1)
+    if (frame_out.control != 0x73) test_fail("Contention Winner", "Did not send UA(F=1)"); // UA(F=1)
     
     // Check timer was NOT set
     if (ctx.contention_timer != 0) test_fail("Contention Winner", "Timer should not be set for winner");
@@ -453,7 +453,7 @@ void test_contention_resolution_loser(void) {
     // 2. Peer also initiated connection, so we receive their SABM
     atc_hdlc_frame_t sabm_frame;
     sabm_frame.address = 0x01; // Addressed to us
-    sabm_frame.control.value = 0x3F; // SABM (P=1)
+    sabm_frame.control = 0x3F; // SABM (P=1)
     sabm_frame.information = NULL;
     sabm_frame.information_len = 0;
 
@@ -496,7 +496,7 @@ void test_contention_resolution_loser(void) {
     uint8_t retx_flat[32];
     decode_last_tx(&retx_frame, retx_flat, sizeof(retx_flat));
     
-    if (retx_frame.control.value != 0x3F) {
+    if (retx_frame.control != 0x3F) {
         test_fail("Contention Loser", "Timer expired but output was not SABM");
     }
          

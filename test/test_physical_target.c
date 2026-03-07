@@ -311,7 +311,7 @@ static void node_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data)
     node->frames_received++;
 
     if (frame->type == ATC_HDLC_FRAME_U &&
-        atc_hdlc_get_u_frame_sub_type(&frame->control) == ATC_HDLC_U_FRAME_TYPE_UI) {
+        atc_hdlc_get_u_frame_sub_type(frame->control) == ATC_HDLC_U_FRAME_TYPE_UI) {
         /* Copy payload into verification buffer */
         if (node->recv_buffer && frame->information_len > 0) {
             uint32_t space = node->recv_buffer_len - node->bytes_received;
@@ -326,7 +326,7 @@ static void node_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data)
         fflush(stdout);
     } else {
         printf("\nReceived non-UI frame: type=%d, len=%u, ctrl=%02X\n",
-               frame->type, frame->information_len, frame->control.value);
+               frame->type, frame->information_len, frame->control);
     }
 }
 

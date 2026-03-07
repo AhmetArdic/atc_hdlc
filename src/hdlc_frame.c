@@ -72,7 +72,7 @@ atc_hdlc_bool frame_pack_core(const atc_hdlc_frame_t *frame, hdlc_put_byte_fn pu
   pack_escaped_crc_update(enc_ctx, put_fn, frame->address, &crc);
   if (!enc_ctx->success) return false;
 
-  pack_escaped_crc_update(enc_ctx, put_fn, frame->control.value, &crc);
+  pack_escaped_crc_update(enc_ctx, put_fn, frame->control, &crc);
   if (!enc_ctx->success) return false;
 
   if (frame->information != NULL && frame->information_len > 0) {
@@ -161,7 +161,7 @@ atc_hdlc_bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer, atc_hdlc_u32 buff
   if (calced_crc != rx_fcs) return false;
 
   frame->address = flat_buffer[0];
-  frame->control.value = flat_buffer[1];
+  frame->control = flat_buffer[1];
 
   atc_hdlc_u32 header_len = ATC_HDLC_ADDRESS_LEN + ATC_HDLC_CONTROL_LEN;
   if (data_len > header_len) {
@@ -172,7 +172,7 @@ atc_hdlc_bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer, atc_hdlc_u32 buff
     frame->information_len = 0;
   }
 
-  frame->type = hdlc_resolve_frame_type(frame->control.value);
+  frame->type = hdlc_resolve_frame_type(frame->control);
 
   return true;
 }
@@ -183,41 +183,24 @@ atc_hdlc_bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer, atc_hdlc_u32 buff
  * @brief Create an I-Frame Control Field.
  * @see hdlc.h
  */
-atc_hdlc_control_t atc_hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
-  atc_hdlc_control_t ctrl = {0};
-  ctrl.i_frame.frame_type_0 = 0;
-  ctrl.i_frame.ns = ns;
-  ctrl.i_frame.pf = pf;
-  ctrl.i_frame.nr = nr;
-  return ctrl;
+atc_hdlc_u8 atc_hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
+  return ((ns & 0x7) << 1) | ((pf & 0x1) << 4) | ((nr & 0x7) << 5);
 }
 
 /**
  * @brief Create an S-Frame Control Field.
  * @see hdlc.h
  */
-atc_hdlc_control_t atc_hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
-  atc_hdlc_control_t ctrl = {0};
-  ctrl.s_frame.frame_type_0 = 1;
-  ctrl.s_frame.frame_type_1 = 0;
-  ctrl.s_frame.s = s_bits;
-  ctrl.s_frame.pf = pf;
-  ctrl.s_frame.nr = nr;
-  return ctrl;
+atc_hdlc_u8 atc_hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
+  return 0x01 | ((s_bits & 0x3) << 2) | ((pf & 0x1) << 4) | ((nr & 0x7) << 5);
 }
 
 /**
  * @brief Create a U-Frame Control Field.
  * @see hdlc.h
  */
-atc_hdlc_control_t atc_hdlc_create_u_ctrl(atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf) {
-  atc_hdlc_control_t ctrl = {0};
-  ctrl.u_frame.frame_type_0 = 1;
-  ctrl.u_frame.frame_type_1 = 1;
-  ctrl.u_frame.m_lo = m_lo;
-  ctrl.u_frame.pf = pf;
-  ctrl.u_frame.m_hi = m_hi;
-  return ctrl;
+atc_hdlc_u8 atc_hdlc_create_u_ctrl(atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf) {
+  return 0x03 | ((m_lo & 0x3) << 2) | ((pf & 0x1) << 4) | ((m_hi & 0x7) << 5);
 }
 
 /* --- Control Field Analyzers --- */
@@ -225,11 +208,9 @@ atc_hdlc_control_t atc_hdlc_create_u_ctrl(atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, at
 /**
  * @brief Get the S-Frame sub-type from a control field.
  */
-atc_hdlc_s_frame_sub_type_t atc_hdlc_get_s_frame_sub_type(const atc_hdlc_control_t *control) {
-    if (!control) return ATC_HDLC_S_FRAME_TYPE_UNKNOWN;
-
-    if (control->s_frame.frame_type_0 == 1 && control->s_frame.frame_type_1 == 0) {
-        switch (control->s_frame.s) {
+atc_hdlc_s_frame_sub_type_t atc_hdlc_get_s_frame_sub_type(atc_hdlc_u8 control) {
+    if (hdlc_resolve_frame_type(control) == ATC_HDLC_FRAME_S) {
+        switch (HDLC_CTRL_S_BITS(control)) {
             case HDLC_S_RR:  return ATC_HDLC_S_FRAME_TYPE_RR;
             case HDLC_S_RNR: return ATC_HDLC_S_FRAME_TYPE_RNR;
             case HDLC_S_REJ: return ATC_HDLC_S_FRAME_TYPE_REJ;
@@ -242,12 +223,10 @@ atc_hdlc_s_frame_sub_type_t atc_hdlc_get_s_frame_sub_type(const atc_hdlc_control
 /**
  * @brief Get the U-Frame sub-type from a control field.
  */
-atc_hdlc_u_frame_sub_type_t atc_hdlc_get_u_frame_sub_type(const atc_hdlc_control_t *control) {
-    if (!control) return ATC_HDLC_U_FRAME_TYPE_UNKNOWN;
-
-    if (control->u_frame.frame_type_0 == 1 && control->u_frame.frame_type_1 == 1) {
-        atc_hdlc_u8 m_hi = control->u_frame.m_hi;
-        atc_hdlc_u8 m_lo = control->u_frame.m_lo;
+atc_hdlc_u_frame_sub_type_t atc_hdlc_get_u_frame_sub_type(atc_hdlc_u8 control) {
+    if (hdlc_resolve_frame_type(control) == ATC_HDLC_FRAME_U) {
+        atc_hdlc_u8 m_hi = HDLC_CTRL_U_M_HI(control);
+        atc_hdlc_u8 m_lo = HDLC_CTRL_U_M_LO(control);
 
         if (m_hi == HDLC_U_MODIFIER_HI_SABM && m_lo == HDLC_U_MODIFIER_LO_SABM) return ATC_HDLC_U_FRAME_TYPE_SABM;
         if (m_hi == HDLC_U_MODIFIER_HI_SNRM && m_lo == HDLC_U_MODIFIER_LO_SNRM) return ATC_HDLC_U_FRAME_TYPE_SNRM;

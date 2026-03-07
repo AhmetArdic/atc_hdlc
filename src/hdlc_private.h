@@ -53,6 +53,20 @@
 #define ATC_HDLC_FRAME_TYPE_MASK_U      (0x03)
 #define ATC_HDLC_FRAME_TYPE_VAL_U       (0x03)
 
+/*
+ * Control Field Properties Extraction/Creation Macros
+ * Assuming structure:
+ * I-Frame: [b0: 0] [b1-3: N(S)] [b4: P/F] [b5-7: N(R)]
+ * S-Frame: [b0: 1] [b1: 0] [b2-3: S] [b4: P/F] [b5-7: N(R)]
+ * U-Frame: [b0: 1] [b1: 1] [b2-3: M_lo] [b4: P/F] [b5-7: M_hi]
+ */
+#define HDLC_CTRL_PF(ctrl)         (((ctrl) >> 4) & 0x01)
+#define HDLC_CTRL_NR(ctrl)         (((ctrl) >> 5) & 0x07)
+#define HDLC_CTRL_I_NS(ctrl)       (((ctrl) >> 1) & 0x07)
+#define HDLC_CTRL_S_BITS(ctrl)     (((ctrl) >> 2) & 0x03)
+#define HDLC_CTRL_U_M_LO(ctrl)     (((ctrl) >> 2) & 0x03)
+#define HDLC_CTRL_U_M_HI(ctrl)     (((ctrl) >> 5) & 0x07)
+
 /**
  * @brief Input State Machine States.
  * Internal states for the byte-by-byte receive parser.
@@ -238,9 +252,9 @@ void hdlc_reset_connection_state(atc_hdlc_context_t *ctx);
 void atc_hdlc_output_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame);
 
 /* hdlc_frame.c — Control field constructors (internal) */
-atc_hdlc_control_t atc_hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
-atc_hdlc_control_t atc_hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
-atc_hdlc_control_t atc_hdlc_create_u_ctrl(atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf);
+atc_hdlc_u8 atc_hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
+atc_hdlc_u8 atc_hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
+atc_hdlc_u8 atc_hdlc_create_u_ctrl(atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf);
 
 /* Shared frame type resolver */
 static inline atc_hdlc_frame_type_t hdlc_resolve_frame_type(atc_hdlc_u8 ctrl) {
@@ -251,8 +265,8 @@ static inline atc_hdlc_frame_type_t hdlc_resolve_frame_type(atc_hdlc_u8 ctrl) {
 }
 
 static inline void hdlc_send_u_frame(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf) {
-    atc_hdlc_control_t ctrl = atc_hdlc_create_u_ctrl(m_lo, m_hi, pf);
-    atc_hdlc_output_frame_start(ctx, address, ctrl.value);
+    atc_hdlc_u8 ctrl = atc_hdlc_create_u_ctrl(m_lo, m_hi, pf);
+    atc_hdlc_output_frame_start(ctx, address, ctrl);
     atc_hdlc_output_frame_end(ctx);
 }
 
@@ -265,8 +279,8 @@ static inline void hdlc_send_dm(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
 }
 
 static inline void hdlc_send_s_frame(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
-    atc_hdlc_control_t ctrl = atc_hdlc_create_s_ctrl(s_bits, nr, pf);
-    atc_hdlc_output_frame_start(ctx, address, ctrl.value);
+    atc_hdlc_u8 ctrl = atc_hdlc_create_s_ctrl(s_bits, nr, pf);
+    atc_hdlc_output_frame_start(ctx, address, ctrl);
     atc_hdlc_output_frame_end(ctx);
 }
 

@@ -315,17 +315,17 @@ void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx, atc_hdlc_u8 addre
 
 /**
  * @brief Get the S-Frame sub-type from a control field.
- * @param control Pointer to the control field to evaluate.
+ * @param control The control field byte to evaluate.
  * @return S-Frame sub-type (e.g., RR, RNR) or UNKNOWN if invalid.
  */
-atc_hdlc_s_frame_sub_type_t atc_hdlc_get_s_frame_sub_type(const atc_hdlc_control_t *control);
+atc_hdlc_s_frame_sub_type_t atc_hdlc_get_s_frame_sub_type(atc_hdlc_u8 control);
 
 /**
  * @brief Get the U-Frame sub-type from a control field.
- * @param control Pointer to the control field to evaluate.
+ * @param control The control field byte to evaluate.
  * @return U-Frame sub-type (e.g., SABM, UA) or UNKNOWN if invalid.
  */
-atc_hdlc_u_frame_sub_type_t atc_hdlc_get_u_frame_sub_type(const atc_hdlc_control_t *control);
+atc_hdlc_u_frame_sub_type_t atc_hdlc_get_u_frame_sub_type(atc_hdlc_u8 control);
 
 #ifdef __cplusplus
 }

@@ -42,7 +42,7 @@ static inline void hdlc_process_nr(atc_hdlc_context_t *ctx, atc_hdlc_u8 nr);
  */
 
 void process_complete_frame(atc_hdlc_context_t *ctx) {
-  atc_hdlc_u8 ctrl = ctx->input_frame_buffer.control.value;
+  atc_hdlc_u8 ctrl = ctx->input_frame_buffer.control;
   bool pass_to_user = false;
 
   ctx->input_frame_buffer.type = hdlc_resolve_frame_type(ctrl);
@@ -75,9 +75,9 @@ void process_complete_frame(atc_hdlc_context_t *ctx) {
  */
 
 static bool handle_i_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-  atc_hdlc_u8 msg_ns = (frame->control.i_frame.ns);
-  atc_hdlc_u8 msg_nr = (frame->control.i_frame.nr);
-  atc_hdlc_u8 msg_p  = (frame->control.i_frame.pf);
+  atc_hdlc_u8 msg_ns = HDLC_CTRL_I_NS(frame->control);
+  atc_hdlc_u8 msg_nr = HDLC_CTRL_NR(frame->control);
+  atc_hdlc_u8 msg_p  = HDLC_CTRL_PF(frame->control);
 
   ATC_HDLC_LOG_DEBUG("rx: I-Frame N(S)=%u, N(R)=%u, P/F=%u", msg_ns, msg_nr, msg_p);
 
@@ -122,8 +122,8 @@ static void hdlc_retransmit_go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_
 
     while (ctx->vs != old_vs) {
         atc_hdlc_u8 slot = ctx->tx_seq_to_slot[ctx->vs];
-        atc_hdlc_control_t ctrl = atc_hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
-        atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl.value);
+        atc_hdlc_u8 ctrl = atc_hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
+        atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl);
         if (ctx->retransmit_lens[slot] > 0 && ctx->retransmit_buffer != NULL) {
             atc_hdlc_output_frame_information_bytes(ctx,
                 ctx->retransmit_buffer + (slot * ctx->retransmit_slot_size),
@@ -141,9 +141,9 @@ static void hdlc_retransmit_go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_
 }
 
 static bool handle_s_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-  atc_hdlc_u8 mode = (frame->control.s_frame.s);
-  atc_hdlc_u8 msg_nr = (frame->control.s_frame.nr);
-  atc_hdlc_u8 msg_pf = (frame->control.s_frame.pf);
+  atc_hdlc_u8 mode = HDLC_CTRL_S_BITS(frame->control);
+  atc_hdlc_u8 msg_nr = HDLC_CTRL_NR(frame->control);
+  atc_hdlc_u8 msg_pf = HDLC_CTRL_PF(frame->control);
   bool is_command = (frame->address == ctx->my_address);
 
   ATC_HDLC_LOG_DEBUG("rx: S-Frame S=%u, N(R)=%u, P/F=%u", mode, msg_nr, msg_pf);
@@ -218,32 +218,32 @@ static void hdlc_process_sabm(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *f
 
     hdlc_reset_connection_state(ctx);
     hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_CONNECTED, ATC_HDLC_EVENT_INCOMING_CONNECT);
-    hdlc_send_ua(ctx, frame->control.u_frame.pf);
+    hdlc_send_ua(ctx, HDLC_CTRL_PF(frame->control));
 }
 
 static void hdlc_process_snrm(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    hdlc_send_dm(ctx, frame->control.u_frame.pf);
+    hdlc_send_dm(ctx, HDLC_CTRL_PF(frame->control));
 }
 
 static void hdlc_process_sarm(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    hdlc_send_dm(ctx, frame->control.u_frame.pf);
+    hdlc_send_dm(ctx, HDLC_CTRL_PF(frame->control));
 }
 
 static void hdlc_process_sabme(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    hdlc_send_dm(ctx, frame->control.u_frame.pf);
+    hdlc_send_dm(ctx, HDLC_CTRL_PF(frame->control));
 }
 
 static void hdlc_process_snrme(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    hdlc_send_dm(ctx, frame->control.u_frame.pf);
+    hdlc_send_dm(ctx, HDLC_CTRL_PF(frame->control));
 }
 
 static void hdlc_process_sarme(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    hdlc_send_dm(ctx, frame->control.u_frame.pf);
+    hdlc_send_dm(ctx, HDLC_CTRL_PF(frame->control));
 }
 
 static void hdlc_process_disc(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
     hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED, ATC_HDLC_EVENT_PEER_DISCONNECT);
-    hdlc_send_ua(ctx, frame->control.u_frame.pf);
+    hdlc_send_ua(ctx, HDLC_CTRL_PF(frame->control));
 }
 
 static void hdlc_process_ua(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
@@ -296,7 +296,7 @@ static void hdlc_process_frmr(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *f
 static void hdlc_process_test(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
     atc_hdlc_output_frame_start(ctx, ctx->my_address,
         atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST,
-                           frame->control.u_frame.pf).value);
+                           HDLC_CTRL_PF(frame->control)));
 
     if (frame->information != NULL && frame->information_len > 0) {
         atc_hdlc_output_frame_information_bytes(ctx, frame->information, frame->information_len);
@@ -306,8 +306,8 @@ static void hdlc_process_test(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *f
 }
 
 static bool handle_u_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-  atc_hdlc_u8 m_lo = frame->control.u_frame.m_lo;
-  atc_hdlc_u8 m_hi = frame->control.u_frame.m_hi;
+  atc_hdlc_u8 m_lo = HDLC_CTRL_U_M_LO(frame->control);
+  atc_hdlc_u8 m_hi = HDLC_CTRL_U_M_HI(frame->control);
 
   ATC_HDLC_LOG_DEBUG("rx: U-Frame M_LO=%u, M_HI=%u", m_lo, m_hi);
 

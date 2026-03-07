@@ -26,7 +26,7 @@ void test_basic_frame() {
 
   atc_hdlc_u8 payload[] = "TEST";
   atc_hdlc_frame_t frame_out = {
-      .address = 0xFF, .control.value = 0x00, .information = payload, .information_len = 4};
+      .address = 0xFF, .control = 0x00, .information = payload, .information_len = 4};
 
   atc_hdlc_output_frame(&ctx, &frame_out);
   print_hexdump("Output Buffer", mock_output_buffer, mock_output_len);
@@ -68,7 +68,7 @@ void test_empty_information() {
   setup_test_context(&ctx);
 
   atc_hdlc_frame_t frame_out = {
-      .address = 0xFF, .control.value = 0x00, .information = NULL, .information_len = 0};
+      .address = 0xFF, .control = 0x00, .information = NULL, .information_len = 0};
 
   atc_hdlc_output_frame(&ctx, &frame_out);
   
@@ -109,7 +109,7 @@ void test_byte_stuffing_heavy() {
   // Payload with special characters
   atc_hdlc_u8 special[] = {0x7E, 0x7D, 0x7E, 0x7D, 0x00, 0xFF, 0x7E};
   atc_hdlc_frame_t frame_out = {
-      .address = 0xFF, .control.value = 0x03, .information = special, .information_len = sizeof(special)};
+      .address = 0xFF, .control = 0x03, .information = special, .information_len = sizeof(special)};
 
   atc_hdlc_output_frame(&ctx, &frame_out);
   // Verify escaping happened (size should be > raw size)
@@ -156,7 +156,7 @@ void test_garbage_noise() {
 
   // Generate valid frame first
   atc_hdlc_frame_t valid_frame = {
-      .address = 0xFF, .control.value = 0x03, .information = (atc_hdlc_u8*)"DATA", .information_len = 4};
+      .address = 0xFF, .control = 0x03, .information = (atc_hdlc_u8*)"DATA", .information_len = 4};
   
   mock_output_len = 0;
   atc_hdlc_output_frame(&ctx, &valid_frame);
@@ -195,7 +195,7 @@ void test_consecutive_flags() {
   setup_test_context(&ctx);
 
   mock_output_len = 0;
-  atc_hdlc_frame_t f = {.address=0xFF, .control.value=0x03, .information=NULL, .information_len=0};
+  atc_hdlc_frame_t f = {.address=0xFF, .control=0x03, .information=NULL, .information_len=0};
   atc_hdlc_output_frame(&ctx, &f);
   
   int frame_len = mock_output_len;
@@ -286,7 +286,7 @@ void test_crc_error_injection() {
   setup_test_context(&ctx);
 
   // Generate valid frame
-  atc_hdlc_frame_t f = {.address=0xFF, .control.value=0x00, .information=(atc_hdlc_u8*)"123", .information_len=3};
+  atc_hdlc_frame_t f = {.address=0xFF, .control=0x00, .information=(atc_hdlc_u8*)"123", .information_len=3};
   atc_hdlc_output_frame(&ctx, &f);
   
   // Corrupt it: Flip bit in data
@@ -419,9 +419,9 @@ void test_control_field_i(void) {
   atc_hdlc_u8 info_buf[256];
   if (atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len, &parsed_frame, info_buf, sizeof(info_buf))) {
       if (parsed_frame.type == ATC_HDLC_FRAME_I &&
-          parsed_frame.control.i_frame.ns == 3 &&
-          parsed_frame.control.i_frame.pf == 1 &&
-          parsed_frame.control.i_frame.nr == 5) {
+          HDLC_CTRL_I_NS(parsed_frame.control) == 3 &&
+          HDLC_CTRL_PF(parsed_frame.control) == 1 &&
+          HDLC_CTRL_NR(parsed_frame.control) == 5) {
           test_pass("Control Field I");
       } else {
           test_fail("Control Field I", "Parsed fields mismatch");
@@ -447,10 +447,10 @@ void test_control_field_s(void) {
   atc_hdlc_u8 info_buf[256];
   if (atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len, &parsed_frame, info_buf, sizeof(info_buf))) {
     if (parsed_frame.type == ATC_HDLC_FRAME_S &&
-        parsed_frame.control.s_frame.s == 0x02 && // REJ
-        parsed_frame.control.s_frame.nr == 7 &&
-        parsed_frame.control.s_frame.pf == 0 &&
-        atc_hdlc_get_s_frame_sub_type(&parsed_frame.control) == ATC_HDLC_S_FRAME_TYPE_REJ) {
+        HDLC_CTRL_S_BITS(parsed_frame.control) == 0x02 && // REJ
+        HDLC_CTRL_NR(parsed_frame.control) == 7 &&
+        HDLC_CTRL_PF(parsed_frame.control) == 0 &&
+        atc_hdlc_get_s_frame_sub_type(parsed_frame.control) == ATC_HDLC_S_FRAME_TYPE_REJ) {
       test_pass("Control Field S");
     } else {
       test_fail("Control Field S", "Parsed S-frame mismatch");
@@ -506,10 +506,10 @@ void test_ui_frame_reception(void) {
     if (on_frame_call_count == 1 && 
         last_received_frame.type == ATC_HDLC_FRAME_U &&
         last_received_frame.address == 0x01 &&
-        (last_received_frame.control.value & 0xEF) == 0x03 &&
+        (last_received_frame.control & 0xEF) == 0x03 &&
         last_received_frame.information_len == 5 &&
         memcmp(last_received_frame.information, "WORLD", 5) == 0 &&
-        atc_hdlc_get_u_frame_sub_type(&last_received_frame.control) == ATC_HDLC_U_FRAME_TYPE_UI) {
+        atc_hdlc_get_u_frame_sub_type(last_received_frame.control) == ATC_HDLC_U_FRAME_TYPE_UI) {
         test_pass("UI Frame Reception");
     } else {
         test_fail("UI Frame Reception", "Frame mismatch or not received");

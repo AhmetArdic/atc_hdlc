@@ -119,53 +119,7 @@ typedef enum {
     ATC_HDLC_U_FRAME_TYPE_UNKNOWN  /**< Unknown or Invalid U-Frame */
 } atc_hdlc_u_frame_sub_type_t;
 
-/*
- * --------------------------------------------------------------------------
- * CONTROL FIELD STRUCTURES
- * --------------------------------------------------------------------------
- */
 
-/**
- * @brief HDLC Control Field Union.
- * Bit allocations:
- * I-Frame: N(R)[3] | P/F[1] | N(S)[3] | 0[1]
- * S-Frame: N(R)[3] | P/F[1] | S[2]    | 01[2]
- * U-Frame: M[3]    | P/F[1] | M[2]    | 11[2]
- *
- * Provides accessible bit-fields for I, S, and U frame control bytes.
- * NOTE: Bit-field ordering is compiler-dependent. Use the raw `value`
- * for critical serialization if not packing explicitly.
- */
-typedef union {
-    atc_hdlc_u8 value; /**< Raw 8-bit Control Byte value. */
-
-    /** Information Frame (I-Frame) [0 N(S) P/F N(R)] */
-    struct {
-        atc_hdlc_u8 frame_type_0 : 1; /**< Frame Type ID (Must be 0). */
-        atc_hdlc_u8 ns           : 3; /**< Send Sequence Number N(S). */
-        atc_hdlc_u8 pf           : 1; /**< Poll/Final Bit. */
-        atc_hdlc_u8 nr           : 3; /**< Receive Sequence Number N(R). */
-    } i_frame;
-
-    /** Supervisory Frame (S-Frame) [1 0 S S P/F N(R)] */
-    struct {
-        atc_hdlc_u8 frame_type_0 : 1; /**< Frame Type ID (Must be 1). */
-        atc_hdlc_u8 frame_type_1 : 1; /**< Frame Type ID (Must be 0). */
-        atc_hdlc_u8 s            : 2; /**< Supervisory function bits. */
-        atc_hdlc_u8 pf           : 1; /**< Poll/Final Bit. */
-        atc_hdlc_u8 nr           : 3; /**< Receive Sequence Number N(R). */
-    } s_frame;
-
-    /** Unnumbered Frame (U-Frame) [1 1 M M P/F M M M] */
-    struct {
-        atc_hdlc_u8 frame_type_0 : 1; /**< Frame Type ID (Must be 1). */
-        atc_hdlc_u8 frame_type_1 : 1; /**< Frame Type ID (Must be 1). */
-        atc_hdlc_u8 m_lo         : 2; /**< Modifier function bits (low). */
-        atc_hdlc_u8 pf           : 1; /**< Poll/Final Bit. */
-        atc_hdlc_u8 m_hi         : 3; /**< Modifier function bits (high). */
-    } u_frame;
-
-} atc_hdlc_control_t;
 
 
 
@@ -183,7 +137,7 @@ typedef union {
  */
 typedef struct {
     atc_hdlc_u8 address;                /**< Address Field. */
-    atc_hdlc_control_t control;         /**< Control Field. */
+    atc_hdlc_u8 control;                /**< Control Field. */
     atc_hdlc_u8 *information;           /**< Pointer to Information Field (Payload). */
     atc_hdlc_u16 information_len;       /**< Length of valid data in information. */
     atc_hdlc_frame_type_t type;         /**< Resolved Frame Type (I/S/U). */

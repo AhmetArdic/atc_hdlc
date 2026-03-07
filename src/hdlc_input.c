@@ -69,7 +69,7 @@ void atc_hdlc_input_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
 
           /* Construct the temporary frame descriptor (Zero-Copy) */
           ctx->input_frame_buffer.address = ctx->input_buffer[0];
-          ctx->input_frame_buffer.control.value = ctx->input_buffer[1];
+          ctx->input_frame_buffer.control = ctx->input_buffer[1];
           
           // Information starts after Header (Addr+Ctrl), length is Total - (Header+FCS) = Total - 4
           // But only if total >= 4 (checked above)
