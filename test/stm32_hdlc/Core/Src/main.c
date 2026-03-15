@@ -37,12 +37,14 @@
 #define RX_RING_SIZE       8192u    /* must be power of 2 */
 #define RX_RING_MASK       (RX_RING_SIZE - 1u)
 
-/* ---- TX Buffer ---- */
-#define TX_BUF_SIZE        8192u
+/* ---- TX Ring Buffer (DMA) ---- */
+#define TX_RING_SIZE       8192u    /* must be power of 2 */
+#define TX_RING_MASK       (TX_RING_SIZE - 1u)
 
-/* ---- HDLC Buffers ---- */
-#define HDLC_INPUT_BUF_SIZE   (8192u)
-#define HDLC_RETX_BUF_SIZE   (8192u)
+/* ---- HDLC Buffer Sizes ---- */
+#define HDLC_MAX_FRAME_SIZE  512u                               /**< Max payload per I-frame (bytes). */
+#define HDLC_RX_BUF_SIZE     (HDLC_MAX_FRAME_SIZE + 4u)        /**< Addr(1)+Ctrl(1)+Payload+FCS(2). */
+#define HDLC_WINDOW_SIZE     7u
 
 /* USER CODE END PD */
 
@@ -58,23 +60,35 @@ DMA_HandleTypeDef hdma_usart2_tx;
 
 /* USER CODE BEGIN PV */
 
-/* ---------- RX Ring Buffer ---------- */
-static uint8_t  rx_ring[RX_RING_SIZE];
-static volatile uint16_t rx_head = 0;   /* written by ISR  */
-static uint16_t rx_tail = 0;            /* read by main    */
+/* ---------- RX Ring Buffer (written by DMA, read by main loop) ---------- */
+static uint8_t           rx_ring[RX_RING_SIZE];
+static volatile uint16_t rx_head = 0;  /* written by ISR  */
+static uint16_t          rx_tail = 0;  /* read by main    */
 
-/* ---------- TX Buffer (DMA) ---------- */
-#define TX_RING_SIZE       8192u    /* must be power of 2 */
-#define TX_RING_MASK       (TX_RING_SIZE - 1u)
-static uint8_t  tx_ring[TX_RING_SIZE];
-static volatile uint16_t tx_head = 0;   /* written by hdlc   */
-static volatile uint16_t tx_tail = 0;   /* read by DMA       */
+/* ---------- TX Ring Buffer (written by HDLC, read by DMA) ---------- */
+static uint8_t           tx_ring[TX_RING_SIZE];
+static volatile uint16_t tx_head    = 0;
+static volatile uint16_t tx_tail    = 0;
 static volatile uint8_t  tx_dma_busy = 0;
 
-/* ---------- HDLC ---------- */
-static atc_hdlc_context_t hdlc_ctx;
-static uint8_t hdlc_input_buf[HDLC_INPUT_BUF_SIZE];
-static uint8_t hdlc_retx_buf[HDLC_RETX_BUF_SIZE];
+/* ---------- HDLC station ---------- */
+static atc_hdlc_context_t  hdlc_ctx;
+static atc_hdlc_config_t   hdlc_cfg;
+static atc_hdlc_platform_t hdlc_plat;
+static atc_hdlc_tx_window_t hdlc_tw;
+static atc_hdlc_rx_buffer_t hdlc_rx;
+
+/* Static storage for HDLC buffers */
+static uint8_t  hdlc_rx_buf[HDLC_RX_BUF_SIZE];
+static uint8_t  hdlc_tx_slots[HDLC_WINDOW_SIZE * HDLC_MAX_FRAME_SIZE];
+static uint32_t hdlc_tx_lens[HDLC_WINDOW_SIZE];
+static uint8_t  hdlc_tx_seq[8];  /* seq_to_slot map: indexed by V(S) 0..7 (mod-8) */
+
+/* Timer state flags (set/cleared by platform callbacks) */
+static volatile uint8_t  t1_active     = 0;
+static volatile uint32_t t1_started_ms = 0;  /* HAL_GetTick() snapshot */
+static volatile uint8_t  t2_active     = 0;
+static volatile uint32_t t2_started_ms = 0;
 
 /* USER CODE END PV */
 
@@ -84,9 +98,13 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-static void hdlc_output_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data);
-static void hdlc_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data);
-static void hdlc_state_cb(atc_hdlc_protocol_state_t state, atc_hdlc_event_t event, void *user_data);
+static int  hdlc_on_send_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data);
+static void hdlc_on_data_cb(const atc_hdlc_u8 *data, atc_hdlc_u16 len, void *user_data);
+static void hdlc_on_event_cb(atc_hdlc_event_t event, void *user_data);
+static void hdlc_t1_start_cb(atc_hdlc_u32 ms, void *user_data);
+static void hdlc_t1_stop_cb(void *user_data);
+static void hdlc_t2_start_cb(atc_hdlc_u32 ms, void *user_data);
+static void hdlc_t2_stop_cb(void *user_data);
 static void tx_flush_dma(void);
 /* USER CODE END PFP */
 
@@ -94,92 +112,135 @@ static void tx_flush_dma(void);
 /* USER CODE BEGIN 0 */
 
 /**
- * @brief Flush the TX ring buffer via DMA.
+ * @brief Flush the TX ring buffer via DMA (non-blocking, ISR-safe).
  */
 static void tx_flush_dma(void)
 {
-  __disable_irq(); // Protect state check
-  if (tx_dma_busy || (tx_head == tx_tail)) {
-    __enable_irq();
-    return;
-  }
-  
-  uint16_t head = tx_head;
-  uint16_t tail = tx_tail;
-  uint16_t len = 0;
-
-  if (head > tail) {
-    len = head - tail;
-  } else {
-    /* Send up to the end of the ring buffer first */
-    len = TX_RING_SIZE - tail;
-  }
-  
-  tx_dma_busy = 1;
-  __enable_irq();
-  
-  if (HAL_UART_Transmit_DMA(&huart2, &tx_ring[tail], len) != HAL_OK) {
-    /* If DMA transmission fails to start, unlock the flag */
     __disable_irq();
-    tx_dma_busy = 0;
+    if (tx_dma_busy || (tx_head == tx_tail)) {
+        __enable_irq();
+        return;
+    }
+
+    uint16_t head = tx_head;
+    uint16_t tail = tx_tail;
+    uint16_t len;
+
+    if (head > tail) {
+        len = head - tail;
+    } else {
+        /* Wrap-around: send from tail to end of buffer first */
+        len = TX_RING_SIZE - tail;
+    }
+
+    tx_dma_busy = 1;
     __enable_irq();
-  }
+
+    if (HAL_UART_Transmit_DMA(&huart2, &tx_ring[tail], len) != HAL_OK) {
+        __disable_irq();
+        tx_dma_busy = 0;
+        __enable_irq();
+    }
 }
 
 /* ================================================================
- *  HDLC Callbacks
+ *  HDLC Platform Callbacks
  * ================================================================ */
 
 /**
- * @brief Output byte callback — appends to TX ring buffer and flushes on demand.
+ * @brief Physical byte-output callback.
+ *        Appends byte to TX ring buffer and triggers DMA on frame end.
  */
-static void hdlc_output_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data)
+static int hdlc_on_send_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data)
 {
-  (void)user_data;
+    (void)user_data;
 
-  /* Block if TX buffer is full to prevent byte dropping during high-load tests */
-  uint16_t next_head = (tx_head + 1u) & TX_RING_MASK;
-  while (next_head == tx_tail) {
-    /* If we are full, we MUST flush any pending DMA and wait.
-       This is critical for physical throughput tests at high baud rates. */
-    tx_flush_dma();
-    /* Small delay or yield could go here if using RTOS, otherwise just wait */
-  }
+    /* Block if TX ring is full — DMA will drain it */
+    uint16_t next_head = (tx_head + 1u) & TX_RING_MASK;
+    while (next_head == tx_tail) {
+        tx_flush_dma();
+    }
 
-  tx_ring[tx_head] = byte;
-  tx_head = next_head;
+    tx_ring[tx_head] = byte;
+    tx_head = next_head;
 
-  if (flush) {
-    tx_flush_dma();
-  }
+    if (flush) {
+        tx_flush_dma();
+    }
+
+    return 0;
 }
 
 /**
- * @brief Frame received callback.
- *        - I-frame data is echoed back as a UI frame.
- *        - ACK (RR) generation for I-frames is handled automatically
- *          by the HDLC library.
+ * @brief Upper-layer data delivery callback.
+ *        Called once per complete, valid I-frame or UI-frame received.
+ *        Echoes payload back as a UI frame for demonstration.
  */
-static void hdlc_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data)
+static void hdlc_on_data_cb(const atc_hdlc_u8 *data, atc_hdlc_u16 len, void *user_data)
 {
-  (void)user_data;
+    (void)user_data;
 
-  if (frame->type == ATC_HDLC_FRAME_I) {
-    /* Echo payload back as UI */
-    atc_hdlc_output_frame_ui(&hdlc_ctx, 0x01, frame->information, frame->information_len);
-  }
-  /* U-frames (SABM, DISC, etc.) and S-frames are handled by the library
-     internally — no user action needed. */
+    /* Echo payload back as UI to the peer */
+    atc_hdlc_transmit_ui(&hdlc_ctx, hdlc_ctx.peer_address, data, len);
 }
 
 /**
- * @brief Connection state change callback (informational).
+ * @brief Event notification callback.
+ *        Could toggle an LED or set a flag for the application layer.
  */
-static void hdlc_state_cb(atc_hdlc_protocol_state_t state, atc_hdlc_event_t event, void *user_data)
+static void hdlc_on_event_cb(atc_hdlc_event_t event, void *user_data)
 {
-  (void)user_data;
-  (void)state;
-  /* Could toggle an LED here for visual feedback */
+    (void)user_data;
+    (void)event;
+    /* Example: HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin); */
+}
+
+/**
+ * @brief T1 retransmission timer start callback.
+ *        Records the start time; main loop checks expiry.
+ */
+static void hdlc_t1_start_cb(atc_hdlc_u32 ms, void *user_data)
+{
+    (void)ms;
+    (void)user_data;
+    t1_started_ms = HAL_GetTick();
+    t1_active     = 1;
+}
+
+/**
+ * @brief T1 retransmission timer stop callback.
+ */
+static void hdlc_t1_stop_cb(void *user_data)
+{
+    (void)user_data;
+    t1_active = 0;
+}
+
+/**
+ * @brief T2 delayed-ACK timer start callback.
+ *
+ * On a bare-metal main loop driven by HAL_GetTick (1ms resolution),
+ * waiting a full t2_ms before ACKing significantly reduces throughput
+ * at high baud rates (each 512-byte frame takes ~5.5ms at 921600).
+ * Fire T2 immediately so the RR goes out on the same DMA burst as the
+ * last received byte, maximising pipelining with the sender.
+ */
+static void hdlc_t2_start_cb(atc_hdlc_u32 ms, void *user_data)
+{
+    (void)ms;
+    (void)user_data;
+    /* Immediate expiry — set flag for main loop to fire on next iteration */
+    t2_started_ms = 0;   /* epoch trick: always elapsed */
+    t2_active     = 1;
+}
+
+/**
+ * @brief T2 delayed-ACK timer stop callback.
+ */
+static void hdlc_t2_stop_cb(void *user_data)
+{
+    (void)user_data;
+    t2_active = 0;
 }
 
 /* ================================================================
@@ -187,27 +248,16 @@ static void hdlc_state_cb(atc_hdlc_protocol_state_t state, atc_hdlc_event_t even
  * ================================================================ */
 
 /**
- * @brief UART RX Complete (using DMA now, so we poll NDTR).
- *        Unused callback, handled in main polling loop.
- */
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-  (void)huart;
-}
-
-/**
- * @brief UART TX complete.
+ * @brief UART TX DMA complete — advance tail pointer and chain next transfer.
  */
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 {
-  if (huart->Instance == USART2) {
-    uint16_t len = huart->TxXferSize;
-    tx_tail = (tx_tail + len) & TX_RING_MASK;
-    tx_dma_busy = 0;
-    
-    /* Start next transfer if queue is not empty */
-    tx_flush_dma();
-  }
+    if (huart->Instance == USART2) {
+        uint16_t len = huart->TxXferSize;
+        tx_tail    = (tx_tail + len) & TX_RING_MASK;
+        tx_dma_busy = 0;
+        tx_flush_dma(); /* chain next chunk if ring not empty */
+    }
 }
 
 /* USER CODE END 0 */
@@ -245,58 +295,87 @@ int main(void)
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  /* Enable I-Cache, D-Cache and Prefetch Buffer for performance */
+  /* Enable Flash caches for performance */
   __HAL_FLASH_INSTRUCTION_CACHE_ENABLE();
   __HAL_FLASH_DATA_CACHE_ENABLE();
   __HAL_FLASH_PREFETCH_BUFFER_ENABLE();
 
-  /* ---- Initialize HDLC ---- */
-  atc_hdlc_init(&hdlc_ctx,
-            hdlc_input_buf, sizeof(hdlc_input_buf),
-            hdlc_retx_buf,  sizeof(hdlc_retx_buf),
-            500,   	/* retransmit timeout (ticks) */
-			1,   	/* ack timtout (ticks)*/
-            7,     	/* window size */
-            10,    	/* max retry count */
-            hdlc_output_cb,
-            hdlc_on_frame_cb,
-            hdlc_state_cb,
-            NULL);
+  /* ---- Build HDLC config ---- */
+  hdlc_cfg.mode           = ATC_HDLC_MODE_ABM;
+  hdlc_cfg.address        = 0x02;          /* This station (STM32) */
+  hdlc_cfg.window_size    = HDLC_WINDOW_SIZE;
+  hdlc_cfg.max_frame_size = HDLC_MAX_FRAME_SIZE;
+  hdlc_cfg.max_retries    = 10;
+  hdlc_cfg.t1_ms          = 500;           /* Retransmission timeout */
+  hdlc_cfg.t2_ms          = 1;             /* Delayed-ACK timeout (1ms = 1 HAL tick) */
+  hdlc_cfg.t3_ms          = 0;             /* Keep-alive disabled */
+  hdlc_cfg.use_extended   = false;
 
-  /* Target is address 0x02, peer (PC) is 0x01 */
-  atc_hdlc_configure_station(&hdlc_ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x02, 0x01);
+  /* ---- Build platform callbacks ---- */
+  hdlc_plat.on_send   = hdlc_on_send_cb;
+  hdlc_plat.on_data   = hdlc_on_data_cb;
+  hdlc_plat.on_event  = hdlc_on_event_cb;
+  hdlc_plat.user_ctx  = NULL;
+  hdlc_plat.t1_start  = hdlc_t1_start_cb;
+  hdlc_plat.t1_stop   = hdlc_t1_stop_cb;
+  hdlc_plat.t2_start  = hdlc_t2_start_cb;
+  hdlc_plat.t2_stop   = hdlc_t2_stop_cb;
+  hdlc_plat.t3_start  = NULL;              /* T3 not used */
+  hdlc_plat.t3_stop   = NULL;
 
-  /* Start receiving via DMA (Circular mode) */
+  /* ---- Build TX window descriptor ---- */
+  hdlc_tw.slots        = hdlc_tx_slots;
+  hdlc_tw.slot_lens    = hdlc_tx_lens;
+  hdlc_tw.seq_to_slot  = hdlc_tx_seq;
+  hdlc_tw.slot_count   = HDLC_WINDOW_SIZE;
+  hdlc_tw.slot_capacity = HDLC_MAX_FRAME_SIZE;
+
+  /* ---- Build RX buffer descriptor ---- */
+  hdlc_rx.buffer   = hdlc_rx_buf;
+  hdlc_rx.capacity = sizeof(hdlc_rx_buf);  /* HDLC_RX_BUF_SIZE = payload + 4 bytes overhead */
+
+  /* ---- Initialize HDLC station ---- */
+  atc_hdlc_init(&hdlc_ctx, &hdlc_cfg, &hdlc_plat, &hdlc_tw, &hdlc_rx);
+
+  /* ---- Initiate connection to peer (PC = address 0x01) ---- */
+  atc_hdlc_link_setup(&hdlc_ctx, 0x01);
+
+  /* ---- Start RX DMA (Circular mode) ---- */
   HAL_UART_Receive_DMA(&huart2, rx_ring, RX_RING_SIZE);
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint32_t last_tick = HAL_GetTick();
-
   while (1)
   {
-    /* ---- Drain RX ring buffer into HDLC parser (DMA Polling) ---- */
-    uint32_t rx_head = RX_RING_SIZE - __HAL_DMA_GET_COUNTER(huart2.hdmarx);
-    if (rx_head == RX_RING_SIZE) {
-        rx_head = 0; // Handle edge case if NDTR flips to reload value
+    /* ---- Drain RX ring buffer into HDLC parser ---- */
+    uint32_t dma_head = RX_RING_SIZE - __HAL_DMA_GET_COUNTER(huart2.hdmarx);
+    if (dma_head == RX_RING_SIZE) dma_head = 0;
+
+    while (rx_tail != (uint16_t)dma_head) {
+        atc_hdlc_data_in(&hdlc_ctx, rx_ring[rx_tail]);
+        rx_tail = (rx_tail + 1u) & RX_RING_MASK;
     }
 
-    while (rx_tail != rx_head) {
-      atc_hdlc_input_byte(&hdlc_ctx, rx_ring[rx_tail]);
-      rx_tail = (rx_tail + 1u) & RX_RING_MASK;
+    /* ---- Fire T1 expiry if timeout has elapsed ---- */
+    if (t1_active) {
+        uint32_t now = HAL_GetTick();
+        if ((now - t1_started_ms) >= hdlc_cfg.t1_ms) {
+            t1_active = 0;
+            atc_hdlc_t1_expired(&hdlc_ctx);
+        }
     }
 
-    /* ---- Drive HDLC timers at ~1 ms resolution ---- */
-    uint32_t now = HAL_GetTick();
-    if (now != last_tick) {
-      uint32_t elapsed = now - last_tick;
-      for (uint32_t t = 0; t < elapsed; t++) {
-        atc_hdlc_tick(&hdlc_ctx);
-      }
-      last_tick = now;
+    /* ---- Fire T2 expiry if timeout has elapsed ---- */
+    if (t2_active) {
+        uint32_t now = HAL_GetTick();
+        if ((now - t2_started_ms) >= hdlc_cfg.t2_ms) {
+            t2_active = 0;
+            atc_hdlc_t2_expired(&hdlc_ctx);
+        }
     }
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -448,7 +527,6 @@ static void MX_GPIO_Init(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
   while (1)
   {
@@ -466,8 +544,6 @@ void Error_Handler(void)
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */

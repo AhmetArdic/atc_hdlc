@@ -83,8 +83,11 @@ atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t        *ctx,
         return ATC_HDLC_ERR_INVALID_PARAM;
     }
 
-    /* RX buffer consistency */
-    if (rx_buf->capacity < config->max_frame_size) {
+    /* RX buffer consistency — must hold full wire frame:
+     * Address(1) + Control(1) + Payload(max_frame_size) + FCS(2) */
+    atc_hdlc_u32 min_rx_cap = config->max_frame_size +
+                               HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN + HDLC_FCS_LEN;
+    if (rx_buf->capacity < min_rx_cap) {
         return ATC_HDLC_ERR_INCONSISTENT_BUFFER;
     }
     if (rx_buf->capacity < HDLC_MIN_FRAME_LEN) {
