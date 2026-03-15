@@ -107,11 +107,8 @@ void* node_thread_func(void* arg) {
         double now = get_time_s();
         double elapsed_ms = (now - last_time) * 1000.0;
         
-        if (elapsed_ms >= 1.0) {
-            uint32_t ticks = (uint32_t)elapsed_ms;
-            for(uint32_t _t=0; _t<ticks; _t++) atc_hdlc_tick(&node->ctx);
-            last_time += (double)ticks / 1000.0; // Preserve fractional ms
-        }
+        atc_hdlc_tick(&node->ctx);
+        
         MUTEX_UNLOCK(&node->ctx_lock);
         
         if (n == 0) {
@@ -146,7 +143,7 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     node1->hdlc_cfg.mode = ATC_HDLC_MODE_ABM; node1->hdlc_cfg.address = 0x01;
     node1->hdlc_cfg.window_size = (atc_hdlc_u8)window_size;
     node1->hdlc_cfg.max_frame_size = CHUNK_SIZE; node1->hdlc_cfg.max_retries = 3;
-    node1->hdlc_cfg.t1_ms = 50; node1->hdlc_cfg.t2_ms = 1;
+    node1->hdlc_cfg.t1_ms = 1000; node1->hdlc_cfg.t2_ms = 10;
     node1->hdlc_cfg.t3_ms = 5000; node1->hdlc_cfg.use_extended = false;
 
     node1->hdlc_plat.send     = node_output_cb;
@@ -170,7 +167,7 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     node2->hdlc_cfg.mode = ATC_HDLC_MODE_ABM; node2->hdlc_cfg.address = 0x02;
     node2->hdlc_cfg.window_size = (atc_hdlc_u8)window_size;
     node2->hdlc_cfg.max_frame_size = CHUNK_SIZE; node2->hdlc_cfg.max_retries = 25;
-    node2->hdlc_cfg.t1_ms = 50; node2->hdlc_cfg.t2_ms = 1;
+    node2->hdlc_cfg.t1_ms = 1000; node2->hdlc_cfg.t2_ms = 10;
     node2->hdlc_cfg.t3_ms = 5000; node2->hdlc_cfg.use_extended = false;
 
     node2->hdlc_plat.send     = node_output_cb;
@@ -556,8 +553,8 @@ int main(void) {
     
     /* Error injection starts at w=3: w=1 with error is impractically slow
      * (single-slot stop-and-wait + retransmit on every loss). */
-    printf("\nStarting Mem-Pipe Virtual COM Tests (Error Injection - 0.005%%, w=3..7)...\n");
-    for (int w = 3; w <= 7; w++) run_window_test(w, 50);
+    printf("\nStarting Mem-Pipe Virtual COM Tests (Error Injection - 0.005%%)...\n");
+    for (int w = 1; w <= 7; w++) run_window_test(w, 50);
     
     printf("\nStarting Mem-Pipe Virtual COM Tests (Timeout Injection)...\n");
     for (int w = 1; w <= 7; w++) run_timeout_test(w);
@@ -568,8 +565,8 @@ int main(void) {
     printf("\nStarting Mem-Pipe Virtual COM Tests (File Transfer - test.pdf)...\n");
     for (int w = 1; w <= 7; w++) run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w, 0);
     
-    printf("\nStarting Mem-Pipe Virtual COM Tests (File Transfer - Error Injection - 0.005%%, w=3..7)...\n");
-    for (int w = 3; w <= 7; w++) run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w, 50);
+    printf("\nStarting Mem-Pipe Virtual COM Tests (File Transfer - Error Injection - 0.005%%)...\n");
+    for (int w = 1; w <= 7; w++) run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w, 50);
     
     printf("\nMem-Pipe Virtual COM Tests Completed Successfully.\n");
     return 0;
