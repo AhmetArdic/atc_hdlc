@@ -135,27 +135,24 @@ void* node_thread_func(void* arg) {
         int n = pipe_read(node->rx_pipe, buf, sizeof(buf));
 
         MUTEX_LOCK(&node->ctx_lock);
+
         if (n > 0) {
             atc_hdlc_data_in_bytes(&node->ctx, buf, n);
-        }
-
-        double now = get_time_s();
-
-        /* T1: fire if started and duration has elapsed */
-        if (node->t1_pending) {
-            double elapsed_ms = (now - node->t1_started_at) * 1000.0;
-            if (elapsed_ms >= (double)node->hdlc_cfg.t1_ms) {
-                node->t1_pending = false;
-                atc_hdlc_t1_expired(&node->ctx);
+            /* T2 start callback sets t2_started_at=0, t2_pending=true.
+             * Fire immediately here while lock is held — no wall-clock
+             * check needed for zero-latency virtual pipe. */
+            if (node->t2_pending) {
+                node->t2_pending = false;
+                atc_hdlc_t2_expired(&node->ctx);
             }
         }
 
-        /* T2: fire if started and duration has elapsed */
-        if (node->t2_pending) {
-            double elapsed_ms = (now - node->t2_started_at) * 1000.0;
-            if (elapsed_ms >= (double)node->hdlc_cfg.t2_ms) {
-                node->t2_pending = false;
-                atc_hdlc_t2_expired(&node->ctx);
+        /* T1: wall-clock check, only when actually pending (infrequent) */
+        if (node->t1_pending) {
+            double now = get_time_s();
+            if ((now - node->t1_started_at) * 1000.0 >= (double)node->hdlc_cfg.t1_ms) {
+                node->t1_pending = false;
+                atc_hdlc_t1_expired(&node->ctx);
             }
         }
 
