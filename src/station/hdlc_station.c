@@ -21,7 +21,10 @@
  * @date 02.02.2026
  * @brief HDLC station core — initialisation, connection management, and timers.
  *
- * Contains the public station API entry points and the periodic tick handler.
+ * Contains the public station API entry points and the timer expiry handlers.
+ * Timers are driven by the platform via start/stop callbacks; the library
+ * receives expiry notifications through atc_hdlc_t1/t2/t3_expired().
+ *
  * Frame I/O and protocol processing are in separate modules:
  *   - hdlc_in.c              (RX byte parser)
  *   - hdlc_out.c             (TX streaming API)
@@ -144,8 +147,7 @@ atc_hdlc_error_t atc_hdlc_link_setup(atc_hdlc_context_t *ctx,
     hdlc_send_u_frame(ctx, ctx->peer_address,
                       HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1);
 
-    /* Start T1 retransmission timer */
-    ctx->t1_timer = ctx->config->t1_ms;
+    hdlc_t1_start(ctx);
 
     hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTING,
                              ATC_HDLC_EVENT_LINK_SETUP_REQUEST);
@@ -167,8 +169,7 @@ atc_hdlc_error_t atc_hdlc_disconnect(atc_hdlc_context_t *ctx) {
     hdlc_send_u_frame(ctx, ctx->peer_address,
                       HDLC_U_MODIFIER_LO_DISC, HDLC_U_MODIFIER_HI_DISC, 1);
 
-    /* Start T1 retransmission timer */
-    ctx->t1_timer = ctx->config->t1_ms;
+    hdlc_t1_start(ctx);
 
     hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTING,
                              ATC_HDLC_EVENT_DISCONNECT_REQUEST);
@@ -189,7 +190,7 @@ atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_context_t *ctx) {
 
     hdlc_send_u_frame(ctx, ctx->peer_address,
                       HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1);
-    ctx->t1_timer      = ctx->config->t1_ms;
+    hdlc_t1_start(ctx);
     ctx->current_state = ATC_HDLC_STATE_CONNECTING;
 
     return ATC_HDLC_OK;
@@ -229,88 +230,87 @@ atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_context_t *ctx,
 
 /*
  * --------------------------------------------------------------------------
- * PUBLIC API — Periodic tick
+ * PUBLIC API — Timer expiry entry points
  * --------------------------------------------------------------------------
  */
 
 /**
- * @brief Drive all internal timers by one tick.
+ * @brief T1 retransmission timer expired.
  * @see hdlc.h
  */
-void atc_hdlc_tick(atc_hdlc_context_t *ctx) {
+void atc_hdlc_t1_expired(atc_hdlc_context_t *ctx) {
     if (ctx == NULL) return;
 
-    const atc_hdlc_u8 max_retries = ctx->config ? ctx->config->max_retries : 0;
+    ctx->t1_active = false; /* Timer has fired — no longer running */
 
-    /* --- T2: Delayed ACK --- */
-    if (ctx->t2_timer > 0) {
-        ctx->t2_timer--;
-        if (ctx->t2_timer == 0) {
-            hdlc_send_rr(ctx, 0);
-        }
+    const atc_hdlc_u8 max_retries = ctx->config ? ctx->config->max_retries : 0;
+    ctx->retry_count++;
+    ctx->stats.timeout_count++;
+
+    if (max_retries > 0 && ctx->retry_count > max_retries) {
+        ATC_HDLC_LOG_ERROR("tx: Link failure — N2 exceeded (state %d)",
+                           ctx->current_state);
+        hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED,
+                                 ATC_HDLC_EVENT_LINK_FAILURE);
+        hdlc_reset_connection_state(ctx);
+        return;
     }
 
-    /* --- Contention backoff (SABM collision, within CONNECTING) --- */
-    if (ctx->current_state == ATC_HDLC_STATE_CONNECTING &&
-        ctx->contention_timer > 0) {
-        ctx->contention_timer--;
-        if (ctx->contention_timer == 0) {
-            ATC_HDLC_LOG_DEBUG("tx: Contention backoff expired, retrying SABM");
+    switch (ctx->current_state) {
+        case ATC_HDLC_STATE_CONNECTING:
+            ATC_HDLC_LOG_WARN("tx: T1 expired in CONNECTING, retry SABM (%u/%u)",
+                              ctx->retry_count, max_retries);
             hdlc_send_u_frame(ctx, ctx->peer_address,
                               HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1);
-            ctx->t1_timer = ctx->config->t1_ms;
-        }
+            hdlc_t1_start(ctx);
+            break;
+
+        case ATC_HDLC_STATE_DISCONNECTING:
+            ATC_HDLC_LOG_WARN("tx: T1 expired in DISCONNECTING, retry DISC (%u/%u)",
+                              ctx->retry_count, max_retries);
+            hdlc_send_u_frame(ctx, ctx->peer_address,
+                              HDLC_U_MODIFIER_LO_DISC, HDLC_U_MODIFIER_HI_DISC, 1);
+            hdlc_t1_start(ctx);
+            break;
+
+        case ATC_HDLC_STATE_CONNECTED:
+            if (ctx->va != ctx->vs) {
+                ATC_HDLC_LOG_WARN("tx: T1 expired, enquiry RR(P=1) (%u/%u)",
+                                  ctx->retry_count, max_retries);
+                hdlc_send_rr(ctx, 1);
+                hdlc_t1_start(ctx);
+            }
+            break;
+
+        default:
+            break;
     }
+}
 
-    /* --- T1: Retransmission / polling --- */
-    if (ctx->t1_timer > 0) {
-        ctx->t1_timer--;
+/**
+ * @brief T2 delayed-ACK timer expired.
+ * @see hdlc.h
+ */
+void atc_hdlc_t2_expired(atc_hdlc_context_t *ctx) {
+    if (ctx == NULL) return;
 
-        if (ctx->t1_timer == 0) {
-            ctx->retry_count++;
-            ctx->stats.timeout_count++;
+    ctx->t2_active = false;
+    hdlc_send_rr(ctx, 0);
+}
 
-            if (max_retries > 0 && ctx->retry_count > max_retries) {
-                ATC_HDLC_LOG_ERROR("tx: Link failure — N2 exceeded (state %d)",
-                                   ctx->current_state);
-                hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED,
-                                         ATC_HDLC_EVENT_LINK_FAILURE);
-                hdlc_reset_connection_state(ctx);
-                return;
-            }
+/**
+ * @brief T3 idle/keep-alive timer expired.
+ * @see hdlc.h
+ */
+void atc_hdlc_t3_expired(atc_hdlc_context_t *ctx) {
+    if (ctx == NULL) return;
 
-            switch (ctx->current_state) {
-                case ATC_HDLC_STATE_CONNECTING:
-                    ATC_HDLC_LOG_WARN("tx: T1 expired in CONNECTING, retry SABM (%u/%u)",
-                                      ctx->retry_count, max_retries);
-                    hdlc_send_u_frame(ctx, ctx->peer_address,
-                                      HDLC_U_MODIFIER_LO_SABM,
-                                      HDLC_U_MODIFIER_HI_SABM, 1);
-                    ctx->t1_timer = ctx->config->t1_ms;
-                    break;
+    ctx->t3_active = false;
 
-                case ATC_HDLC_STATE_DISCONNECTING:
-                    ATC_HDLC_LOG_WARN("tx: T1 expired in DISCONNECTING, retry DISC (%u/%u)",
-                                      ctx->retry_count, max_retries);
-                    hdlc_send_u_frame(ctx, ctx->peer_address,
-                                      HDLC_U_MODIFIER_LO_DISC,
-                                      HDLC_U_MODIFIER_HI_DISC, 1);
-                    ctx->t1_timer = ctx->config->t1_ms;
-                    break;
-
-                case ATC_HDLC_STATE_CONNECTED:
-                    if (ctx->va != ctx->vs) {
-                        ATC_HDLC_LOG_WARN("tx: T1 expired, enquiry RR(P=1) (%u/%u)",
-                                          ctx->retry_count, max_retries);
-                        hdlc_send_rr(ctx, 1);
-                        ctx->t1_timer = ctx->config->t1_ms;
-                    }
-                    break;
-
-                default:
-                    break;
-            }
-        }
+    if (ctx->current_state == ATC_HDLC_STATE_CONNECTED) {
+        ATC_HDLC_LOG_DEBUG("tx: T3 expired, sending keep-alive RR(P=1)");
+        hdlc_send_rr(ctx, 1);
+        hdlc_t1_start(ctx);
     }
 }
 
@@ -342,12 +342,12 @@ atc_hdlc_u8 atc_hdlc_get_window_available(const atc_hdlc_context_t *ctx) {
 }
 
 /**
- * @brief Return true if a received I-frame is pending acknowledgement.
+ * @brief Return true if a T2 (delayed ACK) is pending.
  * @see hdlc.h
  */
 atc_hdlc_bool atc_hdlc_has_pending_ack(const atc_hdlc_context_t *ctx) {
     if (ctx == NULL) return false;
-    return (ctx->t2_timer > 0);
+    return ctx->t2_active;
 }
 
 /**
@@ -357,19 +357,6 @@ atc_hdlc_bool atc_hdlc_has_pending_ack(const atc_hdlc_context_t *ctx) {
 void atc_hdlc_get_stats(const atc_hdlc_context_t *ctx, atc_hdlc_stats_t *out) {
     if (ctx == NULL || out == NULL) return;
     memcpy(out, &ctx->stats, sizeof(atc_hdlc_stats_t));
-}
-
-/**
- * @brief Return ticks until the nearest timer expiry.
- * @see hdlc.h
- */
-atc_hdlc_u32 atc_hdlc_get_next_timeout_ticks(const atc_hdlc_context_t *ctx) {
-    if (ctx == NULL) return (atc_hdlc_u32)-1;
-    atc_hdlc_u32 next = (atc_hdlc_u32)-1;
-    if (ctx->t2_timer > 0 && ctx->t2_timer < next) next = ctx->t2_timer;
-    if (ctx->t1_timer > 0 && ctx->t1_timer < next) next = ctx->t1_timer;
-    if (ctx->t3_timer > 0 && ctx->t3_timer < next) next = ctx->t3_timer;
-    return next;
 }
 
 /*

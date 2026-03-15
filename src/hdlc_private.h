@@ -242,6 +242,57 @@ typedef void (*hdlc_put_byte_fn)(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, a
 /* hdlc_station.c — State management */
 void hdlc_set_protocol_state(atc_hdlc_context_t *ctx, atc_hdlc_state_t new_state, atc_hdlc_event_t event);
 
+/*
+ * --------------------------------------------------------------------------
+ * INTERNAL TIMER HELPERS
+ * --------------------------------------------------------------------------
+ * Thin wrappers that invoke the platform start/stop callbacks and maintain
+ * the t1/t2/t3_active flags. Use these everywhere inside the library instead
+ * of touching ctx->t1_active directly.
+ */
+
+static inline void hdlc_t1_start(atc_hdlc_context_t *ctx) {
+    if (ctx->platform && ctx->platform->t1_start && ctx->config) {
+        ctx->platform->t1_start(ctx->config->t1_ms, ctx->platform->user_ctx);
+    }
+    ctx->t1_active = true;
+}
+
+static inline void hdlc_t1_stop(atc_hdlc_context_t *ctx) {
+    if (ctx->t1_active && ctx->platform && ctx->platform->t1_stop) {
+        ctx->platform->t1_stop(ctx->platform->user_ctx);
+    }
+    ctx->t1_active = false;
+}
+
+static inline void hdlc_t2_start(atc_hdlc_context_t *ctx) {
+    if (ctx->platform && ctx->platform->t2_start && ctx->config) {
+        ctx->platform->t2_start(ctx->config->t2_ms, ctx->platform->user_ctx);
+    }
+    ctx->t2_active = true;
+}
+
+static inline void hdlc_t2_stop(atc_hdlc_context_t *ctx) {
+    if (ctx->t2_active && ctx->platform && ctx->platform->t2_stop) {
+        ctx->platform->t2_stop(ctx->platform->user_ctx);
+    }
+    ctx->t2_active = false;
+}
+
+static inline void hdlc_t3_start(atc_hdlc_context_t *ctx) {
+    if (ctx->platform && ctx->platform->t3_start && ctx->config) {
+        ctx->platform->t3_start(ctx->config->t3_ms, ctx->platform->user_ctx);
+    }
+    ctx->t3_active = true;
+}
+
+static inline void hdlc_t3_stop(atc_hdlc_context_t *ctx) {
+    if (ctx->t3_active && ctx->platform && ctx->platform->t3_stop) {
+        ctx->platform->t3_stop(ctx->platform->user_ctx);
+    }
+    ctx->t3_active = false;
+}
+
 /* hdlc_out.c — TX helpers used by multiple modules */
 void atc_hdlc_transmit_start(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 control);
 void atc_hdlc_transmit_data_bytes(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);

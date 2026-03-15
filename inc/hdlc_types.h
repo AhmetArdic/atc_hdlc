@@ -342,6 +342,29 @@ typedef struct {
 typedef int (*atc_hdlc_send_fn)(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_ctx);
 
 /**
+ * @brief Timer start callback.
+ *
+ * Called by the library when a timer must be started. The platform must
+ * arrange for the corresponding @c atc_hdlc_t1/t2/t3_expired() function to
+ * be called after @p ms milliseconds.
+ *
+ * @param ms       Timer duration in milliseconds.
+ * @param user_ctx Opaque pointer provided in @ref atc_hdlc_platform_t.
+ */
+typedef void (*atc_hdlc_timer_start_fn)(atc_hdlc_u32 ms, void *user_ctx);
+
+/**
+ * @brief Timer stop callback.
+ *
+ * Called by the library when a running timer must be cancelled before it
+ * expires. The platform must ensure the corresponding expired callback is
+ * NOT called after this point.
+ *
+ * @param user_ctx Opaque pointer provided in @ref atc_hdlc_platform_t.
+ */
+typedef void (*atc_hdlc_timer_stop_fn)(void *user_ctx);
+
+/**
  * @brief Verified payload delivery callback.
  *
  * Invoked once per accepted I-frame or UI/TEST information field after FCS
@@ -381,9 +404,17 @@ typedef void (*atc_hdlc_on_event_fn)(atc_hdlc_event_t event, void *user_ctx);
  */
 typedef struct {
     atc_hdlc_send_fn     on_send;   /**< Physical byte-output function (mandatory). */
-    atc_hdlc_on_data_fn  on_data;  /**< Payload delivery to upper layer (optional). */
-    atc_hdlc_on_event_fn on_event; /**< Event notification to upper layer (optional). */
-    void                *user_ctx; /**< Opaque pointer forwarded to all callbacks. */
+    atc_hdlc_on_data_fn  on_data;   /**< Payload delivery to upper layer (optional). */
+    atc_hdlc_on_event_fn on_event;  /**< Event notification to upper layer (optional). */
+    void                *user_ctx;  /**< Opaque pointer forwarded to all callbacks. */
+
+    /* Timer callbacks (all optional — NULL disables the timer) */
+    atc_hdlc_timer_start_fn t1_start; /**< Start T1 retransmission timer. */
+    atc_hdlc_timer_stop_fn  t1_stop;  /**< Stop T1. */
+    atc_hdlc_timer_start_fn t2_start; /**< Start T2 delayed-ACK timer. */
+    atc_hdlc_timer_stop_fn  t2_stop;  /**< Stop T2. */
+    atc_hdlc_timer_start_fn t3_start; /**< Start T3 idle/keep-alive timer. */
+    atc_hdlc_timer_stop_fn  t3_stop;  /**< Stop T3. */
 } atc_hdlc_platform_t;
 
 /*
@@ -517,11 +548,7 @@ typedef struct {
     atc_hdlc_stats_t       stats;      /**< Runtime statistics counters. */
     atc_hdlc_test_result_t test_result;/**< Result of the most recent TEST round-trip. */
 
-    /* --- 32-bit timers --- */
-    atc_hdlc_u32 t2_timer;         /**< T2 countdown (ticks until standalone RR is sent). */
-    atc_hdlc_u32 contention_timer; /**< Backoff countdown for SABM contention resolution. */
-    atc_hdlc_u32 t1_timer;         /**< T1 countdown (ticks until retransmission). */
-    atc_hdlc_u32 t3_timer;         /**< T3 countdown (ticks until keep-alive RR). */
+    /* --- 32-bit fields --- */
     atc_hdlc_u32 rx_index;         /**< Current write index into rx_buf->buffer. */
 
     /* --- State machine --- */
@@ -547,6 +574,11 @@ typedef struct {
     atc_hdlc_bool remote_busy;   /**< Peer is in RNR state; outgoing I-frames are suspended. */
     atc_hdlc_bool local_busy;    /**< Local RNR has been sent; peer TX is throttled. */
     atc_hdlc_bool test_pending;  /**< A TEST(P=1) has been sent; awaiting TEST(F=1) response. */
+
+    /* --- Timer state flags (set/cleared by start/stop helpers) --- */
+    atc_hdlc_bool t1_active; /**< T1 retransmission timer is currently running. */
+    atc_hdlc_bool t2_active; /**< T2 delayed-ACK timer is currently running. */
+    atc_hdlc_bool t3_active; /**< T3 idle/keep-alive timer is currently running. */
 } atc_hdlc_context_t;
 
 #ifdef __cplusplus

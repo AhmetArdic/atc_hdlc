@@ -81,18 +81,38 @@ atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t        *ctx,
                                  atc_hdlc_rx_buffer_t      *rx_buf);
 
 /**
- * @brief Drive all internal timers by one tick.
+ * @brief Notify the station that the T1 retransmission timer has expired.
  *
- * Must be called periodically at a fixed rate. The tick period (in ms) is
- * implied by the call frequency and must be consistent with @c config->t1_ms,
- * @c config->t2_ms, and @c config->t3_ms.
- *
- * Handles T1 retransmission, T2 delayed-ACK, T3 keep-alive, and SABM/DISC
- * retry logic for CONNECTING and DISCONNECTING states.
+ * Must be called by the platform from its OS/HW timer callback after the
+ * duration previously requested via @c platform->t1_start(). Handles SABM
+ * retry (CONNECTING), DISC retry (DISCONNECTING), and I-frame enquiry RR(P=1)
+ * (CONNECTED). Increments the retry counter and triggers link failure when
+ * N2 is exceeded.
  *
  * @param ctx Initialised station context.
  */
-void atc_hdlc_tick(atc_hdlc_context_t *ctx);
+void atc_hdlc_t1_expired(atc_hdlc_context_t *ctx);
+
+/**
+ * @brief Notify the station that the T2 delayed-ACK timer has expired.
+ *
+ * Must be called by the platform after the duration requested via
+ * @c platform->t2_start(). Sends a standalone RR to acknowledge the last
+ * received in-sequence I-frame.
+ *
+ * @param ctx Initialised station context.
+ */
+void atc_hdlc_t2_expired(atc_hdlc_context_t *ctx);
+
+/**
+ * @brief Notify the station that the T3 idle/keep-alive timer has expired.
+ *
+ * Must be called by the platform after the duration requested via
+ * @c platform->t3_start(). Sends RR(P=1) and starts T1 to poll the peer.
+ *
+ * @param ctx Initialised station context.
+ */
+void atc_hdlc_t3_expired(atc_hdlc_context_t *ctx);
 
 /*
  * --------------------------------------------------------------------------
@@ -448,17 +468,7 @@ atc_hdlc_bool atc_hdlc_has_pending_ack(const atc_hdlc_context_t *ctx);
  */
 void atc_hdlc_get_stats(const atc_hdlc_context_t *ctx, atc_hdlc_stats_t *out);
 
-/**
- * @brief Return the time in ticks until the nearest timer expiry.
- *
- * Allows tickless/low-power schedulers to sleep for the exact duration
- * before calling @ref atc_hdlc_tick. Returns @c UINT32_MAX when no timers
- * are active.
- *
- * @param ctx Initialised station context.
- * @return Ticks until next expiry, or @c UINT32_MAX if none active.
- */
-atc_hdlc_u32 atc_hdlc_get_next_timeout_ticks(const atc_hdlc_context_t *ctx);
+
 
 #ifdef __cplusplus
 }

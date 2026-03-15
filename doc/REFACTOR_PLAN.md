@@ -394,7 +394,154 @@ atc_hdlc_error_t atc_hdlc_link_setup(atc_hdlc_context_t *ctx, atc_hdlc_u8 peer_a
 
 ---
 
-## PHASE 3 — State Machine Expansion ⬜
+## PHASE 3a — Coding Convention Cleanup ✅
+
+**Goal:** Unify naming conventions across the entire codebase following Linux LAPB patterns.
+
+**Status:** `COMPLETE`
+
+### Naming Convention (adopted)
+
+| Scope | Rule | Example |
+|---|---|---|
+| File names — RX/TX | `_in` / `_out` suffix | `hdlc_in.c`, `hdlc_out.c` |
+| Public RX API | `atc_hdlc_data_in*` | `atc_hdlc_data_in`, `atc_hdlc_data_in_bytes` |
+| Public TX API | `atc_hdlc_transmit_*` | `atc_hdlc_transmit_i`, `atc_hdlc_transmit_ui` |
+| Platform struct field | `.on_send` | consistent with `.on_data`, `.on_event` |
+| Context RX fields | `rx_` prefix | `rx_state`, `rx_index`, `rx_frame` |
+| Context TX fields | `tx_` prefix | `tx_crc` |
+| Timer fields | `t1_timer`, `t2_timer`, `t3_timer` | replaces `retransmit_timer`, `ack_timer` |
+| Internal functions | `hdlc_` prefix | `hdlc_process_complete_frame`, `hdlc_pack_escaped` |
+| Internal macros | `HDLC_` prefix | `HDLC_FLAG_LEN`, `HDLC_MIN_FRAME_LEN` |
+| Internal ctrl constructors | `hdlc_create_*` | `hdlc_create_i_ctrl`, `hdlc_create_u_ctrl` |
+| RX state enum | `hdlc_rx_state_t` / `HDLC_RX_STATE_*` | replaces `hdlc_input_state_t` |
+
+### Renames Applied
+
+**Files:** `hdlc_input.c` → `hdlc_in.c`, `hdlc_output.c` → `hdlc_out.c`
+
+**Public API:**
+- `atc_hdlc_input_byte/bytes` → `atc_hdlc_data_in / atc_hdlc_data_in_bytes`
+- `atc_hdlc_output_frame_i/ui/test` → `atc_hdlc_transmit_i/ui/test`
+- `atc_hdlc_output_frame_start/end/information_byte/bytes` → `atc_hdlc_transmit_start/end/data_byte/data_bytes`
+- `atc_hdlc_output_frame_start_ui/test` → `atc_hdlc_transmit_start_ui/test`
+- `atc_hdlc_platform_t::send` → `::on_send`
+
+**Context struct:**
+- `input_frame_buffer` → `rx_frame`
+- `input_index` → `rx_index`
+- `input_state` → `rx_state`
+- `output_crc` → `tx_crc`
+- `ack_timer` → `t2_timer`
+- `retransmit_timer` → `t1_timer`
+
+**Internal (src/ only):**
+- `process_complete_frame` → `hdlc_process_complete_frame`
+- `output_byte_to_callback` → `hdlc_write_byte`
+- `pack_escaped` → `hdlc_pack_escaped`
+- `pack_escaped_crc_update` → `hdlc_pack_escaped_crc`
+- `frame_pack_core` → `hdlc_frame_pack_core`
+- `atc_hdlc_output_frame` (internal) → `hdlc_transmit_frame`
+- `atc_hdlc_create_*_ctrl` → `hdlc_create_*_ctrl`
+- `hdlc_input_state_t` / `HDLC_INPUT_STATE_*` → `hdlc_rx_state_t` / `HDLC_RX_STATE_*`
+
+**Private header macros:**
+- `ATC_HDLC_FLAG_LEN / ADDRESS_LEN / CONTROL_LEN / FCS_LEN` → `HDLC_*`
+- `ATC_HDLC_MIN_FRAME_LEN` → `HDLC_MIN_FRAME_LEN`
+- `ATC_HDLC_FRAME_TYPE_MASK_* / VAL_*` → `HDLC_FRAME_TYPE_MASK_* / VAL_*`
+
+### Tasks
+- [x] `git mv` file renames
+- [x] Update all `#include` references
+- [x] Apply all renames in `src/`, `inc/`, `test/`
+- [x] Update `src/CMakeLists.txt`
+- [x] Build: **PASS** (0 errors)
+- [x] Tests: **3/3 PASS** (test_hdlc, test_connection_management, test_reliable_transmission)
+
+### Files Changed
+All `src/station/*.c`, `src/frame/hdlc_frame.c`, `src/hdlc_private.h`, `inc/hdlc.h`, `inc/hdlc_types.h`, `src/CMakeLists.txt`, all `test/*.c`
+
+---
+
+## PHASE 3b — Timer Architecture Refactor ✅
+
+**Goal:** Replace the tick-based timer model with platform-driven start/stop callbacks and explicit expiry entry points, following Linux LAPB `lapb_start_t1timer` / `lapb_stop_t1timer` pattern.
+
+**Status:** `COMPLETE`
+
+### Design
+
+The tick model requires the application to call `atc_hdlc_tick()` periodically, which couples the library to a fixed time base and prevents use of hardware timers or OS timer APIs. The new model inverts control: the library calls `t1_start(ms)` / `t1_stop()` at the right moments, and the platform fires `atc_hdlc_t1_expired()` when the timer elapses.
+
+```
+Library:                          Platform:
+  t1_start(t1_ms) ─────────────► OS/HW timer starts
+                                  ... (t1_ms elapses) ...
+  atc_hdlc_t1_expired(ctx) ◄──── timer callback
+```
+
+### New Platform Callbacks (added to `atc_hdlc_platform_t`)
+
+```c
+typedef void (*atc_hdlc_timer_start_fn)(atc_hdlc_u32 ms, void *user_ctx);
+typedef void (*atc_hdlc_timer_stop_fn)(void *user_ctx);
+
+/* In atc_hdlc_platform_t: */
+atc_hdlc_timer_start_fn t1_start; /**< Start T1 retransmission timer (mandatory if I-frames used). */
+atc_hdlc_timer_stop_fn  t1_stop;  /**< Stop T1. */
+atc_hdlc_timer_start_fn t2_start; /**< Start T2 delayed-ACK timer. */
+atc_hdlc_timer_stop_fn  t2_stop;  /**< Stop T2. */
+atc_hdlc_timer_start_fn t3_start; /**< Start T3 idle/keep-alive timer. */
+atc_hdlc_timer_stop_fn  t3_stop;  /**< Stop T3. */
+```
+
+All timer callbacks are optional (NULL = timer not used).
+
+### New Public API
+
+```c
+void atc_hdlc_t1_expired(atc_hdlc_context_t *ctx);
+void atc_hdlc_t2_expired(atc_hdlc_context_t *ctx);
+void atc_hdlc_t3_expired(atc_hdlc_context_t *ctx);
+```
+
+### Removed Public API
+
+```c
+void atc_hdlc_tick(atc_hdlc_context_t *ctx);           /* removed */
+atc_hdlc_u32 atc_hdlc_get_next_timeout_ticks(...);     /* removed */
+```
+
+### Internal helpers (in hdlc_private.h)
+
+```c
+static inline void hdlc_t1_start(atc_hdlc_context_t *ctx);
+static inline void hdlc_t1_stop(atc_hdlc_context_t *ctx);
+static inline void hdlc_t2_start(atc_hdlc_context_t *ctx);
+static inline void hdlc_t2_stop(atc_hdlc_context_t *ctx);
+static inline void hdlc_t3_start(atc_hdlc_context_t *ctx);
+static inline void hdlc_t3_stop(atc_hdlc_context_t *ctx);
+```
+
+### Tasks
+- [x] Add timer typedef + 6 callback fields to `atc_hdlc_platform_t`
+- [x] Remove `t1_timer`, `t2_timer`, `t3_timer` countdown fields from context
+- [x] Add `hdlc_t1_start/stop`, `hdlc_t2_start/stop`, `hdlc_t3_start/stop` inline helpers to `hdlc_private.h`
+- [x] Implement `atc_hdlc_t1_expired()`, `atc_hdlc_t2_expired()`, `atc_hdlc_t3_expired()` in `hdlc_station.c`
+- [x] Remove `atc_hdlc_tick()` and `atc_hdlc_get_next_timeout_ticks()` from API and implementation
+- [x] Replace all `ctx->t1_timer = ...` / countdown logic with `hdlc_t1_start/stop` calls
+- [x] Update `atc_hdlc_has_pending_ack()` — T2 active state tracked via boolean flag
+- [x] Update all test files: thread loops simulate timers via periodic `atc_hdlc_t1/t2_expired()` calls
+- [x] Build: **PASS**
+- [x] Tests: **4/4 PASS** (including test_virtual_com)
+
+### Files Changed
+`inc/hdlc_types.h`, `inc/hdlc.h`, `src/hdlc_private.h`, `src/station/hdlc_station.c`,
+`src/station/hdlc_out.c`, `src/station/hdlc_frame_handlers.c`, all `test/*.c`
+
+---
+
+## PHASE 4 — State Machine Expansion ⬜
 
 **Goal:** Implement FRMR lock-down and transition guards. Sub-conditions within
 CONNECTED (remote busy, local busy, reject-recovery) are modelled as boolean
@@ -879,15 +1026,17 @@ atc_hdlc_u8 *atc_hdlc_swap_rx_buffer(atc_hdlc_context_t *ctx,
 | 0 | Directory reorganisation | ✅ Complete | PASS | 3/3 PASS |
 | 1 | Core type system | ✅ Complete | PASS | 3/3 PASS |
 | 2 | Init / reset refactor | ✅ Complete | PASS | 3/3 PASS |
-| 3 | State machine expansion | ⬜ Pending | — | — |
-| 4 | T3 timer + T1 retry | ⬜ Pending | — | — |
-| 5 | Remote busy / local busy | ⬜ Pending | — | — |
-| 6 | FRMR sending + link reset | ⬜ Pending | — | — |
-| 7 | TEST frame lifecycle | ⬜ Pending | — | — |
-| 8 | Events + query functions | ⬜ Pending | — | — |
-| 9 | Stats + compile-time config | ⬜ Pending | — | — |
-| 10 | I-frame fixes + preconditions | ⬜ Pending | — | — |
-| 11 | Buffer-based output + zero-copy RX | ⬜ Pending | — | — |
+| 3a | Coding convention cleanup | ✅ Complete | PASS | 3/3 PASS |
+| 3b | Timer architecture refactor | ✅ Complete | PASS | 4/4 PASS |
+| 4 | State machine expansion | ⬜ Pending | — | — |
+| 5 | T3 timer (now: platform-driven) | ⬜ Pending | — | — |
+| 6 | Remote busy / local busy | ⬜ Pending | — | — |
+| 7 | FRMR sending + link reset | ⬜ Pending | — | — |
+| 8 | TEST frame lifecycle | ⬜ Pending | — | — |
+| 9 | Events + query functions | ⬜ Pending | — | — |
+| 10 | Stats + compile-time config | ⬜ Pending | — | — |
+| 11 | I-frame fixes + preconditions | ⬜ Pending | — | — |
+| 12 | Buffer-based output + zero-copy RX | ⬜ Pending | — | — |
 
 ---
 
@@ -899,3 +1048,5 @@ atc_hdlc_u8 *atc_hdlc_swap_rx_buffer(atc_hdlc_context_t *ctx,
 | 2026-03-15 | 0 | Directory reorganisation complete: `src/frame/`, `src/station/`, `hdlc.c` → `hdlc_station.c`, all include paths updated, clean build + 3/3 tests pass |
 | 2026-03-15 | 1 | Core type system: atc_hdlc_error_t, atc_hdlc_state_t (5-state), config/platform/buffer/stats/test_result structs added; state machine model corrected |
 | 2026-03-15 | 2 | Init/reset refactor: new `atc_hdlc_init()` (5-param struct-based), all consistency checks, deprecated fields removed from context, `configure_station` removed, `link_setup(peer_addr)`, all output_frame_* return `atc_hdlc_error_t`, platform callbacks via `atc_hdlc_platform_t`, new link_reset/set_local_busy/query APIs, all test files migrated; clean build + 3/3 tests pass |
+| 2026-03-15 | 3a | Convention cleanup: `hdlc_in.c`/`hdlc_out.c` rename, `data_in*`/`transmit_*` API rename, `.on_send`, `rx_*`/`tx_*` context fields, `t1_timer`/`t2_timer`, `HDLC_` internal macros, `hdlc_` prefix on internal functions; clean build + 3/3 tests pass |
+| 2026-03-15 | 3b | Timer refactor: `atc_hdlc_tick()` removed, `t1/t2/t3_start/stop` platform callbacks added, `atc_hdlc_t1/t2/t3_expired()` public API, all internal timer logic migrated, test thread loops updated; clean build + 4/4 tests pass |

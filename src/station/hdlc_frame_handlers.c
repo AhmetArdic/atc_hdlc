@@ -85,7 +85,7 @@ static bool handle_i_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *fram
 
   if (msg_ns == ctx->vr) {
       ctx->vr = (ctx->vr + 1) % HDLC_SEQUENCE_MODULUS;
-      ctx->t2_timer = ctx->config->t2_ms;
+      hdlc_t2_start(ctx);
   } else {
       ATC_HDLC_LOG_WARN("rx: Out of sequence I-Frame (Exp %u, got %u). Sending REJ.",
                         ctx->vr, msg_ns);
@@ -97,7 +97,7 @@ static bool handle_i_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *fram
 
   if (msg_p) {
       hdlc_send_rr(ctx, 1);
-      ctx->t2_timer = 0;
+      hdlc_t2_stop(ctx);
   }
 
   return true;
@@ -140,7 +140,7 @@ static void hdlc_retransmit_go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_
         }
     }
 
-    ctx->t1_timer = ctx->config->t1_ms;
+    hdlc_t1_start(ctx);
 }
 
 static bool handle_s_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
@@ -189,19 +189,20 @@ void hdlc_reset_connection_state(atc_hdlc_context_t *ctx) {
                ctx->tx_window->slot_count * sizeof(ctx->tx_window->slot_lens[0]));
     }
     ctx->next_tx_slot  = 0;
-    ctx->t2_timer      = 0;
     ctx->rej_exception = false;
-    ctx->t1_timer      = 0;
     ctx->retry_count   = 0;
-    ctx->contention_timer = 0;
+    hdlc_t1_stop(ctx);
+    hdlc_t2_stop(ctx);
+    hdlc_t3_stop(ctx);
 }
 
 static void hdlc_process_sabm(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
     if (ctx->current_state == ATC_HDLC_STATE_CONNECTING) {
         if (ctx->peer_address > ctx->my_address) {
-            ATC_HDLC_LOG_WARN("state: SABM collision. I lost (addr %u < %u). Backing off.",
+            ATC_HDLC_LOG_WARN("state: SABM collision. I lost (addr %u < %u). Waiting for T1.",
                               ctx->my_address, ctx->peer_address);
-            ctx->contention_timer = ATC_HDLC_DEFAULT_CONTENTION_DELAY_TIMEOUT;
+            /* Back off: T1 is already running from link_setup(); let it expire
+             * and retry SABM via atc_hdlc_t1_expired(). */
             return;
         } else {
             ATC_HDLC_LOG_WARN("state: SABM collision. I won (addr %u > %u). Answering UA.",
@@ -381,9 +382,9 @@ static inline void hdlc_process_nr(atc_hdlc_context_t *ctx, atc_hdlc_u8 nr) {
         }
 
         if (ctx->va == ctx->vs) {
-            ctx->t1_timer = 0;
+            hdlc_t1_stop(ctx);  /* All frames acknowledged — stop T1 */
         } else {
-            ctx->t1_timer = ctx->config->t1_ms;
+            hdlc_t1_start(ctx); /* Outstanding frames remain — restart T1 */
         }
     } else {
         ATC_HDLC_LOG_WARN("rx: Ignored invalid N(R)=%u (V(A)=%u, V(S)=%u)", nr, ctx->va, ctx->vs);

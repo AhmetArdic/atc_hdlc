@@ -338,18 +338,18 @@ static void node_event_cb(atc_hdlc_event_t event, void *user_data)
 }
 
 /* ================================================================
- *  RX Thread — reads serial + drives atc_hdlc_tick
+ *  RX Thread — reads serial + fires timer expiry notifications
  * ================================================================ */
 static void rx_thread_body(physical_node_t *node)
 {
     uint8_t buf[8192];
-    double last = get_time_s();
+    double last_t1 = get_time_s();
+    double last_t2 = get_time_s();
 
     while (node->running) {
         int n = serial_read(node->port, buf, sizeof(buf));
 
         double now = get_time_s();
-        long elapsed_ms = (long)((now - last) * 1000.0);
 
         mutex_lock(&node->ctx_lock);
 
@@ -357,10 +357,20 @@ static void rx_thread_body(physical_node_t *node)
             atc_hdlc_data_in_bytes(&node->ctx, buf, (atc_hdlc_u32)n);
         }
 
-        if (elapsed_ms >= 2) {
-            for (long t = 0; t < elapsed_ms; t++)
-                atc_hdlc_tick(&node->ctx);
-            last = now;
+        /* T1 expiry simulation */
+        double elapsed_t1_ms = (now - last_t1) * 1000.0;
+        if (node->ctx.t1_active && elapsed_t1_ms >= (double)node->ctx.config->t1_ms) {
+            last_t1 = now;
+            atc_hdlc_t1_expired(&node->ctx);
+        }
+
+        /* T2 expiry simulation */
+        double elapsed_t2_ms = (now - last_t2) * 1000.0;
+        if (node->ctx.t2_active && elapsed_t2_ms >= (double)node->ctx.config->t2_ms) {
+            last_t2 = now;
+            atc_hdlc_t2_expired(&node->ctx);
+        } else if (!node->ctx.t2_active) {
+            last_t2 = now;
         }
 
         mutex_unlock(&node->ctx_lock);
@@ -424,11 +434,7 @@ static bool wait_for_connection(physical_node_t *node, int timeout_ms)
     int retries = timeout_ms;
     while (node->ctx.current_state != ATC_HDLC_STATE_CONNECTED && retries > 0) {
         sleep_ms(1);
-        if (retries % 1000 == 0) {
-            mutex_lock(&node->ctx_lock);
-            for (int t = 0; t < 1000; t++) atc_hdlc_tick(&node->ctx);
-            mutex_unlock(&node->ctx_lock);
-        }
+        /* T1/T2 timers are driven by rx_thread_body — no manual tick needed */
         retries--;
     }
     return node->ctx.current_state == ATC_HDLC_STATE_CONNECTED;

@@ -223,9 +223,7 @@ atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_context_t *ctx,
     atc_hdlc_transmit_end(ctx);
 
     /* Start T1 to detect timeout */
-    if (ctx->config) {
-        ctx->t1_timer = ctx->config->t1_ms;
-    }
+    hdlc_t1_start(ctx);
 
     return ATC_HDLC_OK;
 }
@@ -279,11 +277,11 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t *ctx,
 
     /* Advance V(S), cancel T2 (ACK piggybacked in N(R)) */
     ctx->vs = (atc_hdlc_u8)((ctx->vs + 1) % HDLC_SEQUENCE_MODULUS);
-    ctx->t2_timer = 0;
+    hdlc_t2_stop(ctx);
 
     /* Start T1 only for the first outstanding frame */
     if (outstanding == 0) {
-        ctx->t1_timer = ctx->config->t1_ms;
+        hdlc_t1_start(ctx);
     }
 
     ctx->stats.tx_i_frames++;

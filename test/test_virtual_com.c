@@ -92,27 +92,41 @@ static void node_event_cb(atc_hdlc_event_t event, void *user_data) {
 
 void* node_thread_func(void* arg) {
     virtual_node_t *node = (virtual_node_t *)arg;
-    
+
     uint8_t buf[1024];
-    double last_time = get_time_s();
-    
+    double last_t1 = get_time_s();
+    double last_t2 = get_time_s();
+
     while(node->running) {
         int n = pipe_read(node->rx_pipe, buf, sizeof(buf));
-        
+
         MUTEX_LOCK(&node->ctx_lock);
         if (n > 0) {
             atc_hdlc_data_in_bytes(&node->ctx, buf, n);
         }
-        
+
         double now = get_time_s();
-        double elapsed_ms = (now - last_time) * 1000.0;
-        
-        atc_hdlc_tick(&node->ctx);
-        
+
+        /* Simulate T1 expiry based on wall-clock time */
+        double elapsed_t1_ms = (now - last_t1) * 1000.0;
+        if (node->ctx.t1_active && elapsed_t1_ms >= (double)node->hdlc_cfg.t1_ms) {
+            last_t1 = now;
+            atc_hdlc_t1_expired(&node->ctx);
+        }
+
+        /* Simulate T2 expiry based on wall-clock time */
+        double elapsed_t2_ms = (now - last_t2) * 1000.0;
+        if (node->ctx.t2_active && elapsed_t2_ms >= (double)node->hdlc_cfg.t2_ms) {
+            last_t2 = now;
+            atc_hdlc_t2_expired(&node->ctx);
+        } else if (!node->ctx.t2_active) {
+            last_t2 = now; /* Reset baseline when T2 not active */
+        }
+
         MUTEX_UNLOCK(&node->ctx_lock);
-        
+
         if (n == 0) {
-            YIELD_THREAD();
+            SLEEP_MS(1);
         }
     }
     return NULL;

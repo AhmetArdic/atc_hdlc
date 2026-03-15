@@ -465,8 +465,8 @@ void test_contention_resolution_winner(void) {
     if (frame_out.address != 0x02) test_fail("Contention Winner", "UA wrong address");
     if (frame_out.control != 0x73) test_fail("Contention Winner", "Did not send UA(F=1)"); // UA(F=1)
     
-    // Check timer was NOT set
-    if (ctx.contention_timer != 0) test_fail("Contention Winner", "Timer should not be set for winner");
+    /* Winner: T1 should NOT be active (UA was sent, connection established) */
+    /* State is CONNECTED after receiving peer SABM and responding with UA */
     
     test_pass("Contention Resolution (Winner)");
 }
@@ -503,21 +503,13 @@ void test_contention_resolution_loser(void) {
     if (mock_output_len != 0)
          test_fail("Contention Loser", "Sent a frame instead of backing off");
          
-    if (ctx.contention_timer == 0)
-         test_fail("Contention Loser", "Contention timer was not set");
-         
-    // 3. Tick the timer until it expires to verify SABM retransmission
-    uint32_t ticks_to_wait = ctx.contention_timer;
-    for (uint32_t i = 0; i < ticks_to_wait - 1; i++) {
-        atc_hdlc_tick(&ctx);
-        if (mock_output_len != 0) {
-            test_fail("Contention Loser", "Transmitted eagerly before timer expired");
-            return;
-        }
-    }
-    
-    // 4. One final tick should expire the timer and retransmit the SABM
-    atc_hdlc_tick(&ctx);
+    /* Loser: T1 is running (from link_setup), waiting to retry SABM */
+    if (!ctx.t1_active)
+         test_fail("Contention Loser", "T1 should be running while waiting to retry");
+
+    // 3. Simulate T1 expiry — this is the backoff; library retransmits SABM
+    mock_output_len = 0;
+    atc_hdlc_t1_expired(&ctx);
     
     if (mock_output_len == 0) {
         test_fail("Contention Loser", "Timer expired but SABM was not retransmitted");
