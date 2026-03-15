@@ -61,8 +61,10 @@ void process_complete_frame(atc_hdlc_context_t *ctx) {
       break;
   }
 
-  if (pass_to_user && ctx->on_frame_cb != NULL) {
-    ctx->on_frame_cb(&ctx->input_frame_buffer, ctx->user_data);
+  if (pass_to_user && ctx->platform && ctx->platform->on_data) {
+    const atc_hdlc_frame_t *f = &ctx->input_frame_buffer;
+    ctx->platform->on_data(f->information, f->information_len,
+                           ctx->platform->user_ctx);
   }
 
   ctx->stats.rx_i_frames++;
@@ -83,7 +85,7 @@ static bool handle_i_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *fram
 
   if (msg_ns == ctx->vr) {
       ctx->vr = (ctx->vr + 1) % HDLC_SEQUENCE_MODULUS;
-      ctx->ack_timer = ctx->ack_delay_timeout;
+      ctx->ack_timer = ctx->config->t2_ms;
   } else {
       ATC_HDLC_LOG_WARN("rx: Out of sequence I-Frame (Exp %u, got %u). Sending REJ.", ctx->vr, msg_ns);
       hdlc_send_rej(ctx, msg_p);
@@ -116,28 +118,28 @@ static void hdlc_retransmit_go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_
     /* Rewind the Go-Back-N window */
     ctx->vs = from_seq;
 
-    if (ctx->retransmit_buffer != NULL && ctx->retransmit_slot_size > 0) {
-        ctx->next_tx_slot = ctx->tx_seq_to_slot[ctx->vs];
+    if (ctx->tx_window->slots != NULL && ctx->tx_window->slot_capacity > 0) {
+        ctx->next_tx_slot = ctx->tx_window->seq_to_slot[ctx->vs];
     }
 
     while (ctx->vs != old_vs) {
-        atc_hdlc_u8 slot = ctx->tx_seq_to_slot[ctx->vs];
+        atc_hdlc_u8 slot = ctx->tx_window->seq_to_slot[ctx->vs];
         atc_hdlc_u8 ctrl = atc_hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
         atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl);
-        if (ctx->retransmit_lens[slot] > 0 && ctx->retransmit_buffer != NULL) {
+        if (ctx->tx_window->slot_lens[slot] > 0 && ctx->tx_window->slots != NULL) {
             atc_hdlc_output_frame_information_bytes(ctx,
-                ctx->retransmit_buffer + (slot * ctx->retransmit_slot_size),
-                ctx->retransmit_lens[slot]);
+                ctx->tx_window->slots + (slot * ctx->tx_window->slot_capacity),
+                ctx->tx_window->slot_lens[slot]);
         }
         atc_hdlc_output_frame_end(ctx);
         
         ctx->vs = (ctx->vs + 1) % HDLC_SEQUENCE_MODULUS;
-        if (ctx->retransmit_buffer != NULL && ctx->retransmit_slot_size > 0) {
+        if (ctx->tx_window->slots != NULL && ctx->tx_window->slot_capacity > 0) {
             ctx->next_tx_slot = (ctx->next_tx_slot + 1) % ctx->window_size;
         }
     }
 
-    ctx->retransmit_timer = ctx->retransmit_timeout;
+    ctx->retransmit_timer = ctx->config->t1_ms;
 }
 
 static bool handle_s_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
@@ -191,8 +193,9 @@ void hdlc_reset_connection_state(atc_hdlc_context_t *ctx) {
     ctx->vs = 0;
     ctx->vr = 0;
     ctx->va = 0;
-    if (ctx->retransmit_buffer != NULL) {
-        memset(ctx->retransmit_lens, 0, sizeof(ctx->retransmit_lens));
+    if (ctx->tx_window != NULL && ctx->tx_window->slot_lens != NULL) {
+        memset(ctx->tx_window->slot_lens, 0,
+               ctx->tx_window->slot_count * sizeof(ctx->tx_window->slot_lens[0]));
     }
     ctx->next_tx_slot = 0;
     ctx->ack_timer = 0;
@@ -404,7 +407,7 @@ static inline void hdlc_process_nr(atc_hdlc_context_t *ctx, atc_hdlc_u8 nr) {
         if (ctx->va == ctx->vs) {
             ctx->retransmit_timer = 0;
         } else {
-            ctx->retransmit_timer = ctx->retransmit_timeout;
+            ctx->retransmit_timer = ctx->config->t1_ms;
         }
     } else {
         ATC_HDLC_LOG_WARN("rx: Ignored invalid N(R)=%u (V(A)=%u, V(S)=%u)", nr, ctx->va, ctx->vs);

@@ -17,45 +17,75 @@ static atc_hdlc_context_t ctx;
 static atc_hdlc_state_t last_state_change = (atc_hdlc_state_t)-1;
 static int state_change_call_count = 0;
 
-void on_state_change(atc_hdlc_state_t state, atc_hdlc_event_t event, void *user_data) {
+/* on_event callback — matches atc_hdlc_on_event_fn signature.
+ * We derive the "new state" from the event type for test assertions. */
+void on_state_change(atc_hdlc_event_t event, void *user_data) {
     (void)user_data;
-    last_state_change = state;
     state_change_call_count++;
-    printf("   %s[STATE CHANGE] New State: %d (Event: %d)%s\n", COL_YELLOW, state, event, COL_RESET);
-    switch(state) {
-        case ATC_HDLC_STATE_CONNECTED:
-            printf("   %sConnected!%s\n", COL_GREEN, COL_RESET);
+
+    /* Map events to states for backward-compatible test assertions */
+    switch (event) {
+        case ATC_HDLC_EVENT_CONNECT_ACCEPTED:
+        case ATC_HDLC_EVENT_INCOMING_CONNECT:
+            last_state_change = ATC_HDLC_STATE_CONNECTED;
+            printf("   %s[EVENT] Connected (event %d)%s\n", COL_GREEN, event, COL_RESET);
             break;
-        case ATC_HDLC_STATE_DISCONNECTED:
-            printf("   %sDisconnected!%s\n", COL_RED, COL_RESET);
+        case ATC_HDLC_EVENT_LINK_SETUP_REQUEST:
+            last_state_change = ATC_HDLC_STATE_CONNECTING;
+            printf("   %s[EVENT] Connecting (event %d)%s\n", COL_YELLOW, event, COL_RESET);
             break;
-        case ATC_HDLC_STATE_CONNECTING:
-            printf("   %sConnecting!%s\n", COL_YELLOW, COL_RESET);
+        case ATC_HDLC_EVENT_DISCONNECT_REQUEST:
+            last_state_change = ATC_HDLC_STATE_DISCONNECTING;
+            printf("   %s[EVENT] Disconnecting (event %d)%s\n", COL_YELLOW, event, COL_RESET);
             break;
-        case ATC_HDLC_STATE_DISCONNECTING:
-            printf("   %sDisconnecting!%s\n", COL_YELLOW, COL_RESET);
+        case ATC_HDLC_EVENT_DISCONNECT_COMPLETE:
+        case ATC_HDLC_EVENT_PEER_DISCONNECT:
+        case ATC_HDLC_EVENT_PEER_REJECT:
+        case ATC_HDLC_EVENT_LINK_FAILURE:
+            last_state_change = ATC_HDLC_STATE_DISCONNECTED;
+            printf("   %s[EVENT] Disconnected (event %d)%s\n", COL_RED, event, COL_RESET);
+            break;
+        case ATC_HDLC_EVENT_PROTOCOL_ERROR:
+            last_state_change = ATC_HDLC_STATE_FRMR_ERROR;
+            printf("   %s[EVENT] FRMR Error (event %d)%s\n", COL_RED, event, COL_RESET);
             break;
         default:
-            printf("   %sUnknown State!%s\n", COL_YELLOW, COL_RESET);
+            printf("   %s[EVENT] Event %d%s\n", COL_YELLOW, event, COL_RESET);
             break;
     }
 }
 
-// Helper to reset test state (Custom for this file to include state change)
+/* Helper to reset test state (custom for this file to inject on_state_change). */
 void setup_context(void) {
-    static atc_hdlc_u8 static_retx_buf[1024];
-    // We call init manually to inject on_state_change, but use shared buffers/callbacks for the rest
-    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer),
-                  static_retx_buf, sizeof(static_retx_buf),
-                  ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT,
-                  ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
-                  ATC_HDLC_DEFAULT_WINDOW_SIZE, 3, mock_output_byte_cb, mock_on_frame_cb, on_state_change, NULL);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02); // Me=0x01, Peer=0x02
-    
-    // Reset shared state
+    static atc_hdlc_u8  s_retx_slots[1 * 1024];
+    static atc_hdlc_u32 s_retx_lens[1];
+    static atc_hdlc_u8  s_retx_seq[1];
+
+    static const atc_hdlc_config_t cfg = {
+        .mode = ATC_HDLC_MODE_ABM, .address = 0x01, .window_size = 1,
+        .max_frame_size = 1024, .max_retries = 3,
+        .t1_ms = ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT,
+        .t2_ms = ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
+        .t3_ms = 30000, .use_extended = false,
+    };
+    static const atc_hdlc_platform_t plat = {
+        .send     = mock_send_cb,
+        .on_data  = mock_on_data_cb,
+        .on_event = on_state_change,
+        .user_ctx = NULL,
+    };
+    static atc_hdlc_tx_window_t tw = {
+        .slots = s_retx_slots, .slot_lens = s_retx_lens,
+        .seq_to_slot = s_retx_seq, .slot_capacity = 1024, .slot_count = 1,
+    };
+    static atc_hdlc_rx_buffer_t rx = {
+        .buffer = mock_rx_buffer, .capacity = sizeof(mock_rx_buffer),
+    };
+
+    atc_hdlc_init(&ctx, &cfg, &plat, &tw, &rx);
+    ctx.peer_address = 0x02; /* peer address for tests */
+
     reset_test_state();
-    
-    // Reset local state
     state_change_call_count = 0;
     last_state_change = (atc_hdlc_state_t)-1;
 }
@@ -91,8 +121,8 @@ void test_connect_sends_sabm(void) {
     setup_context();
     
     // 1. Trigger Connect
-    bool res = atc_hdlc_link_setup(&ctx);
-    if (!res) test_fail("Connect Sends SABM", "Connect returned false");
+    atc_hdlc_error_t res = atc_hdlc_link_setup(&ctx, 0x02);
+    if (res != ATC_HDLC_OK) test_fail("Connect Sends SABM", "Connect returned error");
     
     // State Check
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTING)
@@ -118,7 +148,7 @@ void test_connect_sends_sabm(void) {
 void test_connect_complete_on_ua(void) {
     printf("TEST: Connect Complete on UA\n");
     setup_context();
-    atc_hdlc_link_setup(&ctx); // Go to CONNECTING
+    atc_hdlc_link_setup(&ctx, 0x02); // Go to CONNECTING
     mock_output_len = 0; // Clear TX buffer
     state_change_call_count = 0; // Clear counters
 
@@ -158,8 +188,8 @@ void test_disconnect_flow(void) {
     state_change_call_count = 0;
 
     // Send Disconnect
-    bool res = atc_hdlc_disconnect(&ctx);
-    if (!res) test_fail("Disconnect Flow", "Disconnect returned false");
+    atc_hdlc_error_t res = atc_hdlc_disconnect(&ctx);
+    if (res != ATC_HDLC_OK) test_fail("Disconnect Flow", "Disconnect returned error");
 
     // 1. Check State
     if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTING)
@@ -233,7 +263,7 @@ void test_passive_open(void) {
 void test_frmr_reception(void) {
     printf("TEST: FRMR Reception\n");
     setup_context();
-    atc_hdlc_link_setup(&ctx); // Connect first
+    atc_hdlc_link_setup(&ctx, 0x02); // Connect first
     // Force Connected state for testing
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
     state_change_call_count = 0; // Clear counters
@@ -399,10 +429,12 @@ void test_contention_resolution_winner(void) {
     
     // We are 0x01, peer is 0x02. Wait, the rule is higher address wins. 
     // Let's reconfigure so we are higher.
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x02, 0x01); // Me=0x02, Peer=0x01
-    
+    /* Reconfigure: we are 0x02 (higher), peer is 0x01 */
+    ctx.my_address   = 0x02;
+    ctx.peer_address = 0x01;
+
     // 1. We initiate connection (SABM sent)
-    atc_hdlc_link_setup(&ctx);
+    atc_hdlc_link_setup(&ctx, 0x01);
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTING)
          test_fail("Contention Winner", "State not CONNECTING");
          
@@ -444,10 +476,10 @@ void test_contention_resolution_loser(void) {
     setup_context();
     
     // We are 0x01, peer is 0x02. Lower address loses.
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02); // Me=0x01, Peer=0x02
+    ctx.peer_address = 0x02; // Me=0x01, Peer=0x02
     
     // 1. We initiate connection (SABM sent)
-    atc_hdlc_link_setup(&ctx);
+    atc_hdlc_link_setup(&ctx, 0x02);
     mock_output_len = 0;
     
     // 2. Peer also initiated connection, so we receive their SABM

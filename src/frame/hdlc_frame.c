@@ -29,8 +29,8 @@
 /* --- Encoding Helpers --- */
 
 void output_byte_to_callback(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush) {
-  if (enc_ctx->ctx && enc_ctx->ctx->output_byte_cb) {
-    enc_ctx->ctx->output_byte_cb(byte, flush, enc_ctx->ctx->user_data);
+  if (enc_ctx->ctx && enc_ctx->ctx->platform && enc_ctx->ctx->platform->send) {
+    enc_ctx->ctx->platform->send(byte, flush, enc_ctx->ctx->platform->user_ctx);
   }
 }
 

@@ -185,87 +185,119 @@ void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx, atc_hdlc_u8 addre
  * --------------------------------------------------------------------------
  */
 
-atc_hdlc_bool atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
-  if (ctx == NULL) return false;
+/**
+ * @brief Transmit an Unnumbered Information (UI) frame.
+ * @see hdlc.h
+ */
+atc_hdlc_error_t atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx,
+                                            atc_hdlc_u8         address,
+                                            const atc_hdlc_u8  *data,
+                                            atc_hdlc_u32        len) {
+    if (ctx == NULL) return ATC_HDLC_ERR_INVALID_PARAM;
+    if (ctx->config && len > ctx->config->max_frame_size) {
+        return ATC_HDLC_ERR_FRAME_TOO_LARGE;
+    }
 
-  // Start Frame
-  atc_hdlc_output_frame_start_ui(ctx, address);
-  
-  // Send Data
-  if (data != NULL && len > 0) {
-      atc_hdlc_output_frame_information_bytes(ctx, data, len);
-  }
-
-  // End Frame
-  atc_hdlc_output_frame_end(ctx);
-  return true;
-}
-
-atc_hdlc_bool atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
-  if (ctx == NULL) return false;
-
-  // Start Frame
-  atc_hdlc_output_frame_start_test(ctx, address);
-
-  // Send Data
-  if (data != NULL && len > 0) {
-      atc_hdlc_output_frame_information_bytes(ctx, data, len);
-  }
-
-  // End Frame
-  atc_hdlc_output_frame_end(ctx);
-  return true;
+    atc_hdlc_output_frame_start_ui(ctx, address);
+    if (data != NULL && len > 0) {
+        atc_hdlc_output_frame_information_bytes(ctx, data, len);
+    }
+    atc_hdlc_output_frame_end(ctx);
+    return ATC_HDLC_OK;
 }
 
 /**
- * @brief Output an Information (I) frame (Reliable).
+ * @brief Transmit a TEST frame and await the echo.
  * @see hdlc.h
  */
-atc_hdlc_bool atc_hdlc_output_frame_i(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
-  if (ctx == NULL) return false;
+atc_hdlc_error_t atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx,
+                                              atc_hdlc_u8         address,
+                                              const atc_hdlc_u8  *data,
+                                              atc_hdlc_u32        len) {
+    if (ctx == NULL) return ATC_HDLC_ERR_INVALID_PARAM;
+    if (ctx->test_pending) return ATC_HDLC_ERR_TEST_PENDING;
+    if (ctx->config && len > ctx->config->max_frame_size) {
+        return ATC_HDLC_ERR_FRAME_TOO_LARGE;
+    }
 
-  // Window Check (Go-Back-N)
-  atc_hdlc_u8 outstanding = (ctx->vs - ctx->va + HDLC_SEQUENCE_MODULUS) % HDLC_SEQUENCE_MODULUS;
-  if (outstanding >= ctx->window_size) {
-      return false; // Window full
-  }
-  
-  // Buffer for Retransmission using dynamic slot allocation
-  if (ctx->retransmit_buffer != NULL && ctx->retransmit_slot_size > 0) {
-      atc_hdlc_u8 slot = ctx->next_tx_slot;
-      ctx->tx_seq_to_slot[ctx->vs] = slot;
-      ctx->next_tx_slot = (ctx->next_tx_slot + 1) % ctx->window_size;
-      
-      if (len > 0 && data != NULL) {
-          if (len > ctx->retransmit_slot_size) {
-              return false; // Data too large for retransmit slot.
-          }
-          memcpy(ctx->retransmit_buffer + (slot * ctx->retransmit_slot_size), data, len);
-      }
-      ctx->retransmit_lens[slot] = len;
-  }
+    /* Store pattern for later comparison */
+    ctx->test_pattern     = data;
+    ctx->test_pattern_len = (atc_hdlc_u16)len;
+    ctx->test_pending     = true;
+    ctx->stats.test_sent++;
 
-  // Start Frame
-  ATC_HDLC_LOG_DEBUG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
-  atc_hdlc_u8 ctrl = atc_hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
-  atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl);
-  
-  // Send Data
-  if (data != NULL && len > 0) {
-      atc_hdlc_output_frame_information_bytes(ctx, data, len);
-  }
+    atc_hdlc_output_frame_start_test(ctx, address);
+    if (data != NULL && len > 0) {
+        atc_hdlc_output_frame_information_bytes(ctx, data, len);
+    }
+    atc_hdlc_output_frame_end(ctx);
 
-  // End Frame
-  atc_hdlc_output_frame_end(ctx);
-  
-  // Update State
-  ctx->vs = (ctx->vs + 1) % HDLC_SEQUENCE_MODULUS;
-  ctx->ack_timer = 0; // Piggybacked ACK sent via N(R) in I-frame
-  
-  // Start Timer (only if this is the first outstanding frame)
-  if (outstanding == 0) {
-      ctx->retransmit_timer = ctx->retransmit_timeout;
-  }
-  
-  return true;
+    /* Start T1 to detect timeout */
+    if (ctx->config) {
+        ctx->retransmit_timer = ctx->config->t1_ms;
+    }
+
+    return ATC_HDLC_OK;
+}
+
+/**
+ * @brief Transmit a reliable Information (I) frame.
+ * @see hdlc.h
+ */
+atc_hdlc_error_t atc_hdlc_output_frame_i(atc_hdlc_context_t *ctx,
+                                           const atc_hdlc_u8  *data,
+                                           atc_hdlc_u32        len) {
+    if (ctx == NULL) return ATC_HDLC_ERR_INVALID_PARAM;
+    if (ctx->current_state != ATC_HDLC_STATE_CONNECTED) {
+        return ATC_HDLC_ERR_INVALID_STATE;
+    }
+    if (ctx->remote_busy) return ATC_HDLC_ERR_REMOTE_BUSY;
+    if (ctx->tx_window == NULL) return ATC_HDLC_ERR_NO_BUFFER;
+    if (ctx->config && len > ctx->config->max_frame_size) {
+        return ATC_HDLC_ERR_FRAME_TOO_LARGE;
+    }
+
+    /* Window check */
+    atc_hdlc_u8 outstanding = (atc_hdlc_u8)((ctx->vs - ctx->va +
+                               HDLC_SEQUENCE_MODULUS) % HDLC_SEQUENCE_MODULUS);
+    if (outstanding >= ctx->window_size) {
+        return ATC_HDLC_ERR_WINDOW_FULL;
+    }
+
+    /* Copy payload into retransmit slot */
+    atc_hdlc_u8 slot = ctx->next_tx_slot;
+    ctx->tx_window->seq_to_slot[ctx->vs] = slot;
+    ctx->next_tx_slot = (atc_hdlc_u8)((ctx->next_tx_slot + 1) % ctx->window_size);
+
+    if (len > 0 && data != NULL) {
+        if (len > ctx->tx_window->slot_capacity) {
+            return ATC_HDLC_ERR_FRAME_TOO_LARGE;
+        }
+        memcpy(ctx->tx_window->slots + (slot * ctx->tx_window->slot_capacity),
+               data, len);
+    }
+    ctx->tx_window->slot_lens[slot] = len;
+
+    /* Build and send frame */
+    ATC_HDLC_LOG_DEBUG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
+    atc_hdlc_u8 ctrl = atc_hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
+    atc_hdlc_output_frame_start(ctx, ctx->peer_address, ctrl);
+    if (data != NULL && len > 0) {
+        atc_hdlc_output_frame_information_bytes(ctx, data, len);
+    }
+    atc_hdlc_output_frame_end(ctx);
+
+    /* Advance V(S), cancel T2 (ACK piggybacked in N(R)) */
+    ctx->vs = (atc_hdlc_u8)((ctx->vs + 1) % HDLC_SEQUENCE_MODULUS);
+    ctx->ack_timer = 0;
+
+    /* Start T1 only for the first outstanding frame */
+    if (outstanding == 0) {
+        ctx->retransmit_timer = ctx->config->t1_ms;
+    }
+
+    ctx->stats.tx_i_frames++;
+    ctx->stats.tx_bytes += len;
+
+    return ATC_HDLC_OK;
 }

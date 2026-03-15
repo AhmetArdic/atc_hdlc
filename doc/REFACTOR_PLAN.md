@@ -299,11 +299,11 @@ Enum rename: `atc_hdlc_protocol_state_t` → `atc_hdlc_state_t`; values renamed.
 
 ---
 
-## PHASE 2 — Init / Reset Refactor ⬜
+## PHASE 2 — Init / Reset Refactor ✅
 
 **Goal:** Replace the 13-parameter `atc_hdlc_init()` with a clean struct-based signature. Return error codes. Add all consistency checks.
 
-**Status:** `PENDING`
+**Status:** `COMPLETE`
 
 ### New Public API Signatures
 
@@ -370,16 +370,19 @@ atc_hdlc_error_t atc_hdlc_link_setup(atc_hdlc_context_t *ctx, atc_hdlc_u8 peer_a
 - Keep: `output_crc`, `current_state`, `peer_address`
 
 ### Tasks
-- [ ] Refactor `atc_hdlc_context_t` in `hdlc_types.h`
-- [ ] Rewrite `atc_hdlc_init()` in `src/station/hdlc_station.c`
-- [ ] Remove `atc_hdlc_configure_station()` from API and implementation
-- [ ] Update `atc_hdlc_link_setup()` signature to accept `peer_addr`
-- [ ] Update `atc_hdlc_disconnect()` return type: `bool` → `atc_hdlc_error_t`
-- [ ] Update `atc_hdlc_output_frame_i/ui/test()` return types: `bool` → `atc_hdlc_error_t`
-- [ ] Update all internal `ctx->` field accesses in all `src/station/*.c` and `src/frame/*.c`
-- [ ] Update `test_common.c`: `setup_test_context()` helper to use new init
-- [ ] Update `test_hdlc.c`, `test_connection_management.c`, `test_reliable_transmission.c` init calls
-- [ ] Verify build + tests pass
+- [x] Refactor `atc_hdlc_context_t` — all deprecated fields removed
+- [x] Rewrite `atc_hdlc_init()` with new signature + full consistency checks
+- [x] Remove `atc_hdlc_configure_station()` from API and implementation
+- [x] Update `atc_hdlc_link_setup()` to accept `peer_addr`, add state pre-condition guard
+- [x] Update `atc_hdlc_disconnect()` return type: `bool` → `atc_hdlc_error_t`
+- [x] Update `atc_hdlc_output_frame_i/ui/test()` return types: `bool` → `atc_hdlc_error_t`
+- [x] Remove old callback typedefs; platform integration via `atc_hdlc_platform_t`
+- [x] Update all internal `ctx->` field accesses in all `src/station/*.c` and `src/frame/*.c`
+- [x] Add new public API: `atc_hdlc_link_reset()`, `atc_hdlc_set_local_busy()`, query functions
+- [x] Update `test_common.c/h`: new `mock_send_cb`, `mock_on_data_cb`, `setup_test_context()` with new init
+- [x] Update all test files to new API (init, link_setup, callbacks, return types)
+- [x] Verify build: **PASS** (0 errors)
+- [x] Verify tests: **3/3 PASS**
 
 ### Files Changed
 `inc/hdlc_types.h`, `inc/hdlc.h`, `src/station/hdlc_station.c`, `src/station/hdlc_input.c`,
@@ -875,7 +878,7 @@ atc_hdlc_u8 *atc_hdlc_swap_rx_buffer(atc_hdlc_context_t *ctx,
 |-------|-------------|--------|-------|-------|
 | 0 | Directory reorganisation | ✅ Complete | PASS | 3/3 PASS |
 | 1 | Core type system | ✅ Complete | PASS | 3/3 PASS |
-| 2 | Init / reset refactor | ⬜ Pending | — | — |
+| 2 | Init / reset refactor | ✅ Complete | PASS | 3/3 PASS |
 | 3 | State machine expansion | ⬜ Pending | — | — |
 | 4 | T3 timer + T1 retry | ⬜ Pending | — | — |
 | 5 | Remote busy / local busy | ⬜ Pending | — | — |
@@ -894,4 +897,5 @@ atc_hdlc_u8 *atc_hdlc_swap_rx_buffer(atc_hdlc_context_t *ctx,
 |------|-------|--------|
 | 2026-03-15 | — | Initial plan created |
 | 2026-03-15 | 0 | Directory reorganisation complete: `src/frame/`, `src/station/`, `hdlc.c` → `hdlc_station.c`, all include paths updated, clean build + 3/3 tests pass |
-| 2026-03-15 | 1 | Core type system complete: `atc_hdlc_error_t`, `atc_hdlc_state_t` (8-state), `atc_hdlc_config_t`, `atc_hdlc_platform_t`, `atc_hdlc_tx_window_t`, `atc_hdlc_rx_buffer_t`, `atc_hdlc_stats_t`, `atc_hdlc_test_result_t` added; context expanded; stats/state migration done; clean build + 3/3 tests pass |
+| 2026-03-15 | 1 | Core type system: atc_hdlc_error_t, atc_hdlc_state_t (5-state), config/platform/buffer/stats/test_result structs added; state machine model corrected |
+| 2026-03-15 | 2 | Init/reset refactor: new `atc_hdlc_init()` (5-param struct-based), all consistency checks, deprecated fields removed from context, `configure_station` removed, `link_setup(peer_addr)`, all output_frame_* return `atc_hdlc_error_t`, platform callbacks via `atc_hdlc_platform_t`, new link_reset/set_local_busy/query APIs, all test files migrated; clean build + 3/3 tests pass |

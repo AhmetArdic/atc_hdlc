@@ -45,11 +45,11 @@ void test_basic_frame() {
   }
 
   // Verify Reception
-  if (on_frame_call_count != 1) {
+  if (on_data_call_count != 1) {
     test_fail("Basic Frame", "Callback not triggered");
   }
 
-  if (memcmp(last_received_frame.information, payload, 4) != 0) {
+  if (memcmp(last_data_payload, payload, 4) != 0) {
     test_fail("Basic Frame", "Data Mismatch");
   }
 
@@ -77,10 +77,10 @@ void test_empty_information() {
     atc_hdlc_input_byte(&ctx, mock_output_buffer[i]);
   }
 
-  if (on_frame_call_count != 1) {
+  if (on_data_call_count != 1) {
     test_fail("Empty Frame", "Frame not received");
   }
-  if (last_received_frame.information_len != 0) {
+  if (last_data_len != 0) {
     test_fail("Empty Frame", "Information length not zero");
   }
 
@@ -131,12 +131,12 @@ void test_byte_stuffing_heavy() {
     atc_hdlc_input_byte(&ctx, mock_output_buffer[i]);
   }
 
-  if (on_frame_call_count != 1) {
+  if (on_data_call_count != 1) {
     test_fail("Stuffing", "Frame decode failed");
   }
   
-  if (last_received_frame.information_len != sizeof(special) ||
-      memcmp(last_received_frame.information, special, sizeof(special)) != 0) {
+  if (last_data_len != sizeof(special) ||
+      memcmp(last_data_payload, special, sizeof(special)) != 0) {
       test_fail("Stuffing", "Decoded payload mismatch");
   }
 
@@ -176,7 +176,7 @@ void test_garbage_noise() {
   // 3. Feed More Garbage
   for(size_t i=0; i<sizeof(noise); i++) atc_hdlc_input_byte(&ctx, noise[i]);
 
-  if (on_frame_call_count != 1) {
+  if (on_data_call_count != 1) {
       test_fail("Garbage Noise", "Valid frame not extracted from noise");
   }
   
@@ -211,9 +211,9 @@ void test_consecutive_flags() {
   for(int i=0; i<frame_len; i++) atc_hdlc_input_byte(&ctx, frame_bytes[i]);
   atc_hdlc_input_byte(&ctx, 0x7E);
 
-  if (on_frame_call_count != 2) {
+  if (on_data_call_count != 2) {
       char msg[64];
-      sprintf(msg, "Expected 2 frames, got %d", on_frame_call_count);
+      sprintf(msg, "Expected 2 frames, got %d", on_data_call_count);
       test_fail("Consecutive Flags", msg);
   }
   
@@ -236,7 +236,7 @@ void test_min_size_rejection() {
   atc_hdlc_input_byte(&ctx, 0xFF); // Just address
   atc_hdlc_input_byte(&ctx, 0x7E);
   
-  if (on_frame_call_count != 0) {
+  if (on_data_call_count != 0) {
       test_fail("Min Size", "Short frame accepted");
   }
   
@@ -267,7 +267,7 @@ void test_aborted_frame() {
   // The previous frame 'AB' is incomplete (no FCS). Should be discarded.
   atc_hdlc_input_byte(&ctx, 0x7E);
   
-  if (on_frame_call_count != 0) {
+  if (on_data_call_count != 0) {
       test_fail("Aborted Frame", "Incomplete frame reported as valid");
   }
   
@@ -300,7 +300,7 @@ void test_crc_error_injection() {
   int loop_len = mock_output_len;
   for(int i=0; i<loop_len; i++) atc_hdlc_input_byte(&ctx, mock_output_buffer[i]);
   
-  if (on_frame_call_count != 0) {
+  if (on_data_call_count != 0) {
       test_fail("CRC Error", "Corrupted frame accepted");
   }
   
@@ -325,9 +325,17 @@ void test_input_buffer_overflow() {
   
   atc_hdlc_u8 small_rx_buf[10];
   atc_hdlc_context_t small_ctx;
-  atc_hdlc_init(&small_ctx, small_rx_buf, sizeof(small_rx_buf), 
-                NULL, 0, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, ATC_HDLC_DEFAULT_WINDOW_SIZE, 3,
-                mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
+  static const atc_hdlc_config_t small_cfg = {
+      .mode = ATC_HDLC_MODE_ABM, .address = 0x01, .window_size = 1,
+      .max_frame_size = 8, .max_retries = 3,
+      .t1_ms = 1000, .t2_ms = 10, .t3_ms = 30000, .use_extended = false,
+  };
+  static const atc_hdlc_platform_t small_plat = {
+      .send = mock_send_cb, .on_data = mock_on_data_cb,
+      .on_event = NULL, .user_ctx = NULL,
+  };
+  atc_hdlc_rx_buffer_t small_rx = { .buffer = small_rx_buf, .capacity = sizeof(small_rx_buf) };
+  atc_hdlc_init(&small_ctx, &small_cfg, &small_plat, NULL, &small_rx);
   
   // Feed 20 bytes (Start + 20 bytes + End)
   atc_hdlc_input_byte(&small_ctx, 0x7E);
@@ -335,7 +343,7 @@ void test_input_buffer_overflow() {
   atc_hdlc_input_byte(&small_ctx, 0x7E);
   
   // Should NOT callback (overflowed)
-  if (on_frame_call_count != 0) {
+  if (on_data_call_count != 0) {
       test_fail("Buffer Overflow", "Overflowed frame accepted");
   }
   
@@ -370,18 +378,18 @@ void test_streaming_large_payload(void) {
             atc_hdlc_input_byte(&ctx, mock_output_buffer[i]);
         }
 
-        if (on_frame_call_count != 1) {
+        if (on_data_call_count != 1) {
             printf("[FAIL]\n");
             test_fail("Streaming", "Frame not received");
         }
-        if (last_received_frame.information_len != size) {
-            printf("[FAIL] Got %d\n", last_received_frame.information_len);
+        if (last_data_len != size) {
+            printf("[FAIL] Got %d\n", last_data_len);
             test_fail("Streaming", "Length mismatch");
         }
         
         // Verify data content
         for(int i=0; i<size; i++) {
-            if (last_received_frame.information[i] != (atc_hdlc_u8)(i & 0xFF)) {
+            if (last_data_payload[i] != (atc_hdlc_u8)(i & 0xFF)) {
                 test_fail("Streaming", "Data corruption");
             }
         }
@@ -466,12 +474,12 @@ void test_ui_frame_transmission(void) {
     
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02); // My=0x01, Peer=0x02
+    ctx.peer_address = 0x02; /* peer address set directly for test */
 
     const char *payload = "HELLO";
-    bool res = atc_hdlc_output_frame_ui(&ctx, ATC_HDLC_BROADCAST_ADDRESS, (const atc_hdlc_u8*)payload, 5);
+    atc_hdlc_error_t res = atc_hdlc_output_frame_ui(&ctx, ATC_HDLC_BROADCAST_ADDRESS, (const atc_hdlc_u8*)payload, 5);
     
-    if (res && mock_output_len >= 11) {
+    if (res == ATC_HDLC_OK && mock_output_len >= 11) {
          // Check Control Field for UI (0x03 or 0x13)
         // Addr=0xFF (Broadcast)
         if (mock_output_buffer[1] == ATC_HDLC_BROADCAST_ADDRESS && (mock_output_buffer[2] & 0xEF) == 0x03) {
@@ -490,7 +498,7 @@ void test_ui_frame_reception(void) {
     
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02); // My=0x01, Peer=0x02
+    ctx.peer_address = 0x02; /* peer address set directly for test */
 
     // Construct a valid UI frame addressed to ME (0x01)
     // Addr=0x01, Ctrl=0x03 (UI, P=0), Data="WORLD"
@@ -503,13 +511,10 @@ void test_ui_frame_reception(void) {
         atc_hdlc_input_byte(&ctx, mock_output_buffer[i]);
     }
     
-    if (on_frame_call_count == 1 && 
-        last_received_frame.type == ATC_HDLC_FRAME_U &&
-        last_received_frame.address == 0x01 &&
-        (last_received_frame.control & 0xEF) == 0x03 &&
-        last_received_frame.information_len == 5 &&
-        memcmp(last_received_frame.information, "WORLD", 5) == 0 &&
-        atc_hdlc_get_u_frame_sub_type(last_received_frame.control) == ATC_HDLC_U_FRAME_TYPE_UI) {
+    /* UI frame: payload should be delivered via on_data */
+    if (on_data_call_count == 1 &&
+        last_data_len == 5 &&
+        memcmp(last_data_payload, "WORLD", 5) == 0) {
         test_pass("UI Frame Reception");
     } else {
         test_fail("UI Frame Reception", "Frame mismatch or not received");
@@ -522,7 +527,7 @@ void test_test_frame(void) {
     reset_test_state();
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
+    ctx.peer_address = 0x02; /* peer address set directly for test */
 
     // --- 1. Send TEST command ---
     atc_hdlc_u8 test_data[] = "LOOPBACK";
@@ -558,7 +563,7 @@ void test_test_frame(void) {
     // Verify:
     // 1. App callback? Usually TEST is processed internally and echoed.
     // Does hdlc_process_test trigger on_frame_cb? No, it just echoes.
-    // So on_frame_call_count might be 0?
+    // So on_data_call_count might be 0?
     // Let's check hdlc.c logic.
     // handle_u_frame -> hdlc_process_test.
     // It calls output_packet... to send response.

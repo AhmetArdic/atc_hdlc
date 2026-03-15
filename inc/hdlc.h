@@ -19,10 +19,14 @@
  * @file hdlc.h
  * @author ahmettardic - Ahmet Talha ARDIC
  * @date 02.02.2026
- * @brief Public API for the HDLC Library.
- * 
- * Provides function prototypes for initializing the library, packing/unpacking frames,
- * feeding received bytes into the parser, and handling frame transmission.
+ * @brief Public API for the HDLC library.
+ *
+ * Single include for all application-facing functionality:
+ *   - Station lifecycle (init, tick, connect, disconnect, reset)
+ *   - Data transfer (I-frame, UI, TEST)
+ *   - Streaming frame output (start / data / end)
+ *   - Stateless frame serialisation (pack / unpack)
+ *   - Status queries
  */
 
 #ifndef ATC_HDLC_H
@@ -35,300 +39,424 @@
 extern "C" {
 #endif
 
-/* 
+/*
  * --------------------------------------------------------------------------
- * CORE API
+ * STATION LIFECYCLE
  * --------------------------------------------------------------------------
  */
 
 /**
- * @brief Initialize the HDLC Context.
- * 
- * Sets up the HDLC instance, clears internal state, resets statistics,
- * and binds the user-provided callbacks.
- * 
- * @param ctx                   Pointer to the @ref atc_hdlc_context_t structure to initialize.
- * @param input_buffer          Pointer to the user-supplied Input buffer.
- * @param input_buffer_len      Length of the user-supplied Input buffer.
- * @param retransmit_buffer     Pointer to buffer for storing unacknowledged frames (for retransmission).
- *                              The buffer is divided into window_size equal slots internally.
- * @param retransmit_buffer_len Total length of the retransmit buffer.
- * @param retransmit_timeout    Retransmission timeout in ticks (use ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT for default).
- * @param window_size           Transmit window size, 1..7 (use ATC_HDLC_DEFAULT_WINDOW_SIZE for default).
- * @param max_retry_count       Maximum number of retransmissions before considering the link failed (N2).
- * @param output_cb             Callback function for sending a byte to the hardware.
- * @param on_frame_cb           Callback function for receiving valid frames.
- * @param on_state_change_cb    Callback function for connection state changes (Optional, can be NULL).
- * @param user_data             Optional user pointer to pass to the callbacks.
+ * @brief Initialise an HDLC station context.
+ *
+ * Clears the context, validates all parameters, stores the injected
+ * references, and sets the state machine to DISCONNECTED.
+ *
+ * @param ctx       Station context to initialise (user-allocated).
+ * @param config    Protocol configuration. Must remain valid for the lifetime
+ *                  of @p ctx.
+ * @param platform  Platform integration callbacks. Must remain valid for the
+ *                  lifetime of @p ctx. @c send is mandatory; @c on_data and
+ *                  @c on_event are optional (may be NULL).
+ * @param tx_window TX retransmit window descriptor (may be NULL to disable
+ *                  reliable I-frame transmission).
+ * @param rx_buf    RX buffer descriptor (mandatory).
+ *
+ * @return @ref ATC_HDLC_OK on success.
+ * @return @ref ATC_HDLC_ERR_INVALID_PARAM if any mandatory pointer is NULL or
+ *         a parameter is out of range.
+ * @return @ref ATC_HDLC_ERR_UNSUPPORTED_MODE if @c config->mode != ABM or
+ *         @c config->use_extended is true.
+ * @return @ref ATC_HDLC_ERR_INCONSISTENT_BUFFER if buffer geometry constraints
+ *         are violated (see §4 of the architecture document).
  */
-void atc_hdlc_init(atc_hdlc_context_t *ctx, 
-                      atc_hdlc_u8 *input_buffer, atc_hdlc_u32 input_buffer_len,
-                      atc_hdlc_u8 *retransmit_buffer, atc_hdlc_u32 retransmit_buffer_len,
-                      atc_hdlc_u32 retransmit_timeout,
-                      atc_hdlc_u32 ack_delay_timeout,
-                      atc_hdlc_u8 window_size,
-                      atc_hdlc_u8 max_retry_count,
-                      atc_hdlc_output_byte_cb_t output_cb,
-                      atc_hdlc_on_frame_cb_t on_frame_cb,
-                      atc_hdlc_on_state_change_cb_t on_state_change_cb,
-                      void *user_data);
+atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t        *ctx,
+                                 const atc_hdlc_config_t   *config,
+                                 const atc_hdlc_platform_t *platform,
+                                 atc_hdlc_tx_window_t      *tx_window,
+                                 atc_hdlc_rx_buffer_t      *rx_buf);
 
 /**
- * @brief Configure the operational mode, role, and addresses for the HDLC node.
- * 
- * Must be called before `atc_hdlc_link_setup()`.
- * 
- * @param ctx   Pointer to the initialized HDLC context.
- * @param role  The operational role (e.g., COMBINED, PRIMARY, SECONDARY).
- * @param mode  The operational mode (e.g., ABM, NRM, ARM).
- * @param my_addr  Local node address.
- * @param peer_addr Remote node address to communicate with.
- */
-void atc_hdlc_configure_station(atc_hdlc_context_t *ctx, atc_hdlc_station_role_t role, atc_hdlc_link_mode_t mode, atc_hdlc_u8 my_addr, atc_hdlc_u8 peer_addr);
-
-/**
- * @brief Initiate a connection with the peer node (Link Setup).
- * 
- * Based on the configured `mode`, this function sends the appropriate
- * setup command (e.g., SABM for ABM). Retries automatically on timeout.
- * 
- * @param ctx Pointer to the initialized HDLC context.
- * @return true if the connection process successfully started.
- */
-atc_hdlc_bool atc_hdlc_link_setup(atc_hdlc_context_t *ctx);
-
-/**
- * @brief Terminate a Logical Connection (DISC).
+ * @brief Drive all internal timers by one tick.
  *
- * Sends a Disconnect (DISC) frame to the peer and transitions
- * to the ATC_HDLC_PROTOCOL_STATE_DISCONNECTING state.
+ * Must be called periodically at a fixed rate. The tick period (in ms) is
+ * implied by the call frequency and must be consistent with @c config->t1_ms,
+ * @c config->t2_ms, and @c config->t3_ms.
  *
- * @param ctx Pointer to the initialized HDLC context.
- * @return true if command sent successfully.
- */
-atc_hdlc_bool atc_hdlc_disconnect(atc_hdlc_context_t *ctx);
-
-/**
- * @brief Check if Connected.
+ * Handles T1 retransmission, T2 delayed-ACK, T3 keep-alive, and SABM/DISC
+ * retry logic for CONNECTING and DISCONNECTING states.
  *
- * @param ctx Pointer to the initialized HDLC context.
- * @return true if state is ATC_HDLC_PROTOCOL_STATE_CONNECTED, false otherwise.
- */
-atc_hdlc_bool atc_hdlc_is_connected(atc_hdlc_context_t *ctx);
-
-/**
- * @brief Periodic Tick for Timers.
- *
- * Must be called periodically to drive internal timers for
- * retransmission and delayed ACK. Each call decrements the timer
- * by 1 tick. The user defines the tick period by choosing the call
- * frequency (e.g., every 1ms, 10ms, or 100ms).
- *
- * @param ctx Pointer to the initialized HDLC context.
+ * @param ctx Initialised station context.
  */
 void atc_hdlc_tick(atc_hdlc_context_t *ctx);
 
+/*
+ * --------------------------------------------------------------------------
+ * CONNECTION MANAGEMENT
+ * --------------------------------------------------------------------------
+ */
+
 /**
- * @brief Input a received byte into the HDLC Parser.
+ * @brief Initiate a connection with the peer (sends SABM).
  *
- * Checks for delimiters, handles byte-unstuffing, and buffers data.
+ * Transitions from DISCONNECTED to CONNECTING and starts T1.
  *
- * @warning **CRITICAL TIMING NOTE**: When the closing flag (0x7E) is received,
- * this function performs **O(N)** operations synchronously, including:
- * 1. CRC verification over the full frame.
- * 2. Execution of the user `on_frame_cb`.
+ * @param ctx       Initialised station context.
+ * @param peer_addr Remote station address.
  *
- * **DO NOT CALL FROM ISR** directly unless your baud rate is low, your frames
- * are short, and you understand the timing implications. For high-performance
- * applications, push bytes to a Ring Buffer from the ISR and call this function
- * from a lower-priority thread or main loop.
+ * @return @ref ATC_HDLC_OK on success.
+ * @return @ref ATC_HDLC_ERR_INVALID_STATE if not in DISCONNECTED state.
+ * @return @ref ATC_HDLC_ERR_UNSUPPORTED_MODE if mode is not ABM.
+ */
+atc_hdlc_error_t atc_hdlc_link_setup(atc_hdlc_context_t *ctx,
+                                       atc_hdlc_u8 peer_addr);
+
+/**
+ * @brief Terminate the logical connection (sends DISC).
  *
- * @param ctx  Pointer to the initialized HDLC context.
- * @param byte The raw byte received from the physical medium.
+ * Transitions to DISCONNECTING and starts T1.
+ *
+ * @param ctx Initialised station context.
+ *
+ * @return @ref ATC_HDLC_OK on success.
+ * @return @ref ATC_HDLC_ERR_INVALID_STATE if not in CONNECTED or FRMR_ERROR.
+ */
+atc_hdlc_error_t atc_hdlc_disconnect(atc_hdlc_context_t *ctx);
+
+/**
+ * @brief Reset the link and re-establish the connection.
+ *
+ * Performs an internal state reset followed by a new SABM. This is the
+ * primary recovery path after @ref ATC_HDLC_STATE_FRMR_ERROR. Fires
+ * @ref ATC_HDLC_EVENT_RESET. Valid in any state.
+ *
+ * @param ctx Initialised station context.
+ *
+ * @return @ref ATC_HDLC_OK always.
+ */
+atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_context_t *ctx);
+
+/**
+ * @brief Return true if the station has an active logical connection.
+ *
+ * Returns true when @c current_state == @ref ATC_HDLC_STATE_CONNECTED.
+ * Sub-conditions (remote_busy, local_busy, rej_exception) do not affect
+ * this result — the connection is still active.
+ *
+ * @param ctx Initialised station context.
+ * @return @c true if connected, @c false otherwise.
+ */
+atc_hdlc_bool atc_hdlc_is_connected(const atc_hdlc_context_t *ctx);
+
+/**
+ * @brief Assert or clear the local busy condition.
+ *
+ * When @p busy is true, the station sets the @c local_busy flag and responds
+ * to incoming I-frames with RNR instead of RR. When @p busy is false, the
+ * flag is cleared and an RR is sent to resume peer transmission. The station
+ * remains in CONNECTED throughout.
+ *
+ * @param ctx  Initialised station context.
+ * @param busy @c true to assert busy, @c false to clear it.
+ *
+ * @return @ref ATC_HDLC_OK on success.
+ * @return @ref ATC_HDLC_ERR_INVALID_STATE if not in CONNECTED state.
+ */
+atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_context_t *ctx,
+                                           atc_hdlc_bool busy);
+
+/*
+ * --------------------------------------------------------------------------
+ * DATA TRANSFER
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Transmit a reliable Information (I) frame.
+ *
+ * Copies @p data into the TX window, assigns V(S), and sends the frame.
+ * The frame is buffered for automatic retransmission until acknowledged.
+ *
+ * @param ctx  Initialised station context.
+ * @param data Payload to transmit.
+ * @param len  Payload length in octets.
+ *
+ * @return @ref ATC_HDLC_OK on success.
+ * @return @ref ATC_HDLC_ERR_INVALID_STATE if not in CONNECTED state.
+ * @return @ref ATC_HDLC_ERR_REMOTE_BUSY if peer sent RNR.
+ * @return @ref ATC_HDLC_ERR_WINDOW_FULL if all TX slots are occupied.
+ * @return @ref ATC_HDLC_ERR_FRAME_TOO_LARGE if @p len > @c max_frame_size.
+ * @return @ref ATC_HDLC_ERR_NO_BUFFER if no TX window was provided at init.
+ */
+atc_hdlc_error_t atc_hdlc_output_frame_i(atc_hdlc_context_t *ctx,
+                                           const atc_hdlc_u8  *data,
+                                           atc_hdlc_u32        len);
+
+/**
+ * @brief Transmit an Unnumbered Information (UI) frame.
+ *
+ * Connectionless, unacknowledged delivery. Connection state is irrelevant.
+ *
+ * @param ctx     Initialised station context.
+ * @param address Destination address (@ref ATC_HDLC_BROADCAST_ADDRESS for broadcast).
+ * @param data    Payload (may be NULL if @p len is 0).
+ * @param len     Payload length in octets.
+ *
+ * @return @ref ATC_HDLC_OK on success.
+ * @return @ref ATC_HDLC_ERR_FRAME_TOO_LARGE if @p len > @c max_frame_size.
+ */
+atc_hdlc_error_t atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx,
+                                            atc_hdlc_u8         address,
+                                            const atc_hdlc_u8  *data,
+                                            atc_hdlc_u32        len);
+
+/**
+ * @brief Transmit a TEST frame and wait for the echo response.
+ *
+ * Sends TEST(P=1), stores @p data as the expected echo pattern, and starts
+ * T1. The result is reported via @ref ATC_HDLC_EVENT_TEST_RESULT. Only one
+ * TEST may be outstanding at a time. Connection state is irrelevant.
+ *
+ * @param ctx     Initialised station context.
+ * @param address Destination address.
+ * @param data    Test pattern (may be NULL for an empty pattern).
+ * @param len     Pattern length in octets.
+ *
+ * @return @ref ATC_HDLC_OK on success.
+ * @return @ref ATC_HDLC_ERR_TEST_PENDING if a TEST is already in flight.
+ * @return @ref ATC_HDLC_ERR_FRAME_TOO_LARGE if @p len > @c max_frame_size.
+ */
+atc_hdlc_error_t atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx,
+                                              atc_hdlc_u8         address,
+                                              const atc_hdlc_u8  *data,
+                                              atc_hdlc_u32        len);
+
+/*
+ * --------------------------------------------------------------------------
+ * INPUT (RECEIVE PATH)
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Feed a single received octet into the RX parser.
+ *
+ * Handles flag detection, byte un-stuffing, CRC verification, and frame
+ * dispatch. When the closing flag (0x7E) is received, this function
+ * performs CRC verification and all frame-processing synchronously.
+ *
+ * @warning Do not call directly from an ISR. Use an intermediate ring buffer
+ *          and process from the main context. See §9 of the architecture doc.
+ *
+ * @param ctx  Initialised station context.
+ * @param byte Raw octet from the physical medium.
  */
 void atc_hdlc_input_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte);
 
 /**
- * @brief Input multiple received bytes into the HDLC Parser.
+ * @brief Feed multiple received octets into the RX parser.
  *
- * Convenience wrapper that feeds an array of bytes into the parser
- * by calling @ref atc_hdlc_input_byte for each element.
+ * Convenience wrapper around @ref atc_hdlc_input_byte.
  *
- * @warning Same ISR safety considerations as @ref atc_hdlc_input_byte apply.
- *
- * @param ctx  Pointer to the initialized HDLC context.
- * @param data Pointer to the byte array to process.
- * @param len  Number of bytes in the array.
+ * @param ctx  Initialised station context.
+ * @param data Pointer to the octet array.
+ * @param len  Number of octets.
  */
-void atc_hdlc_input_bytes(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
+void atc_hdlc_input_bytes(atc_hdlc_context_t *ctx,
+                           const atc_hdlc_u8  *data,
+                           atc_hdlc_u32        len);
 
+/*
+ * --------------------------------------------------------------------------
+ * STREAMING FRAME OUTPUT (FRAME LAYER — STATELESS)
+ * --------------------------------------------------------------------------
+ * Use this sequence for memory-constrained devices where constructing a
+ * complete atc_hdlc_frame_t in RAM is not feasible:
+ *   atc_hdlc_output_frame_start()
+ *   atc_hdlc_output_frame_information_byte() / _bytes()  [zero or more]
+ *   atc_hdlc_output_frame_end()
+ */
 
 /**
- * @brief Pack (Serialize) a frame into a memory buffer.
- * 
- * Serializes the frame into the provided buffer. This is useful for users who
- * want to control transmission scheduling or use a different transport layer.
- * 
- * @param frame      Pointer to the frame to pack.
- * @param buffer     Destination buffer.
- * @param buffer_len Size of the destination buffer.
- * @param encoded_len Output pointer for the actual packed length.
- * @return true if successful, false if buffer is too small.
+ * @brief Begin streaming a frame — emit the opening flag, address, and control.
+ *
+ * Resets the FCS accumulator and sends the opening 0x7E flag followed by the
+ * address and control octets (escaped and FCS-updated).
+ *
+ * @param ctx     Initialised station context.
+ * @param address Address octet.
+ * @param control Control octet.
  */
-atc_hdlc_bool atc_hdlc_frame_pack(const atc_hdlc_frame_t *frame, atc_hdlc_u8 *buffer, atc_hdlc_u32 buffer_len, atc_hdlc_u32 *encoded_len);
+void atc_hdlc_output_frame_start(atc_hdlc_context_t *ctx,
+                                  atc_hdlc_u8 address,
+                                  atc_hdlc_u8 control);
+
+/** @brief Convenience starter for a UI frame (address + control pre-set). */
+void atc_hdlc_output_frame_start_ui(atc_hdlc_context_t *ctx,
+                                     atc_hdlc_u8 address);
+
+/** @brief Convenience starter for a TEST frame (address + control pre-set). */
+void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx,
+                                       atc_hdlc_u8 address);
 
 /**
- * @brief Unpack (Deserialize) a raw HDLC frame from a buffer.
+ * @brief Append a single information octet to the frame being streamed.
  *
- * Parses a raw byte buffer containing a full HDLC frame (with Flags and FCS),
- * validates the CRC, un-escapes the content, and populates the frame structure.
+ * Updates the FCS and applies byte stuffing if necessary.
  *
- * @param buffer          Source buffer containing the raw HDLC frame (including 0x7E flags).
- * @param buffer_len      Length of the source buffer.
- * @param frame           Pointer to the frame structure to populate.
- * @param flat_buffer     Destination buffer to store the decoded (linearized) data (Addr, Ctrl, Info).
- * @param flat_buffer_len Length of the destination buffer.
- * @return true if frame is valid (CRC match, correct formatting), false otherwise.
+ * @param ctx              Initialised station context.
+ * @param information_byte Octet to append.
  */
-atc_hdlc_bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer, atc_hdlc_u32 buffer_len, atc_hdlc_frame_t *frame, atc_hdlc_u8 *flat_buffer, atc_hdlc_u32 flat_buffer_len);
+void atc_hdlc_output_frame_information_byte(atc_hdlc_context_t *ctx,
+                                             atc_hdlc_u8 information_byte);
 
 /**
- * @brief Output an Unnumbered Information (UI) Frame.
- * 
- * Used for connectionless, unacknowledged data transfer.
- * Can be sent to a specific peer or broadcast (`ATC_HDLC_BROADCAST_ADDRESS`).
- * 
- * @param ctx  Pointer to the initialized HDLC context.
- * @param address Destination address (e.g., `ATC_HDLC_BROADCAST_ADDRESS`).
- * @param data Pointer to the payload buffer.
- * @param len  Length of the payload in bytes.
- * @return true if successful, false otherwise.
+ * @brief Append an array of information octets to the frame being streamed.
+ *
+ * @param ctx               Initialised station context.
+ * @param information_bytes Pointer to the octet array.
+ * @param len               Number of octets.
  */
-atc_hdlc_bool atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
+void atc_hdlc_output_frame_information_bytes(atc_hdlc_context_t *ctx,
+                                              const atc_hdlc_u8  *information_bytes,
+                                              atc_hdlc_u32        len);
 
 /**
- * @brief Output a TEST command frame.
+ * @brief Finalise the streamed frame — emit FCS and closing flag.
  *
- * Transmits a TEST frame using the streaming interface.
- * The remote station should echo this data back in a TEST response.
- * Used for link integrity verification.
+ * Sends the two FCS octets (escaped) and the closing 0x7E flag. Increments
+ * the TX frame counter.
  *
- * @param ctx  Pointer to the initialized HDLC context.
- * @param address Destination address (e.g., `ATC_HDLC_BROADCAST_ADDRESS`).
- * @param data Pointer to the test data payload (can be NULL).
- * @param len  Length of the test data payload.
- * @return true if the frame was output successfully, false otherwise.
- */
-atc_hdlc_bool atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
-
-/**
- * @brief Output an Information (I) frame (Reliable).
- *
- * Transmits an I-frame containing the provided data.
- * The frame is assigned the current V(S) sequence number and buffered
- * for retransmission until acknowledged by the peer.
- *
- * @note Requires a retransmission buffer configured via atc_hdlc_init().
- * The data is copied into the retransmit buffer for automatic retransmission
- * if the peer does not acknowledge within the timeout period.
- *
- * @param ctx  Pointer to the initialized HDLC context.
- * @param data Pointer to the data payload.
- * @param len  Length of the data payload.
- * @return true if the frame was accepted (window open), false otherwise.
- */
-atc_hdlc_bool atc_hdlc_output_frame_i(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
-
-/**
- * @brief Start a Frame Output.
- *
- * Begins a new frame transmission by sending the Start Flag (`0x7E`)
- * and initializing the internal Output CRC engine.
- *
- * Use this API sequence for memory-constrained devices where constructing
- * a full `atc_hdlc_frame_t` in RAM is not feasible.
- *
- * @param ctx Pointer to the initialized HDLC context.
- * @param address The address byte to send.
- * @param control The control byte to send.
- */
-void atc_hdlc_output_frame_start(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 control);
-
-/**
- * @brief Output a Information Byte.
- *
- * Sends a single byte of the frame content (Address, Control, or Data).
- * Automatically calculates CRC and performs Byte Stuffing (Escaping)
- * on the fly if the byte matches Flag/Escape characters.
- *
- * @param ctx Pointer to the initialized HDLC context.
- * @param information_byte The payload byte to send.
- */
-void atc_hdlc_output_frame_information_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 information_byte);
-
-/**
- * @brief Output a Information Bytes Array.
- *
- * Sends a bytes array of the frame content (Address, Control, or Data).
- * Automatically calculates CRC and performs Byte Stuffing (Escaping)
- * on the fly if the byte matches Flag/Escape characters.
- *
- * @param ctx Pointer to the initialized HDLC context.
- * @param information_bytes The payload bytes array to send.
- * @param len The length of payload bytes array to send.
- */
-void atc_hdlc_output_frame_information_bytes(atc_hdlc_context_t *ctx, const atc_hdlc_u8* information_bytes, atc_hdlc_u32 len);
-
-/**
- * @brief Finalize Frame Output.
- *
- * Completes the current frame transmission by sending the computed
- * CRC-16 (FCS) and the End Flag (`0x7E`). Increments the TX frame counter.
- *
- * @param ctx Pointer to the initialized HDLC context.
+ * @param ctx Initialised station context.
  */
 void atc_hdlc_output_frame_end(atc_hdlc_context_t *ctx);
 
-/**
- * @brief Start a UI Frame Output (Streaming).
- * 
- * Starts streaming a UI frame. Follow with 
- * `atc_hdlc_output_frame_information_byte(s)` and finally `atc_hdlc_output_frame_end()`.
- * 
- * @param ctx Pointer to the initialized HDLC context.
- * @param address Destination address (e.g., `ATC_HDLC_BROADCAST_ADDRESS`).
+/*
+ * --------------------------------------------------------------------------
+ * STATELESS FRAME SERIALISATION (FRAME LAYER)
+ * --------------------------------------------------------------------------
  */
-void atc_hdlc_output_frame_start_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address);
 
 /**
- * @brief Start a TEST Frame Output (Streaming).
- * 
- * Starts streaming a TEST frame. Follow with 
- * `atc_hdlc_output_frame_information_byte(s)` and finally `atc_hdlc_output_frame_end()`.
- * 
- * @param ctx Pointer to the initialized HDLC context.
- * @param address Destination address (e.g., `ATC_HDLC_BROADCAST_ADDRESS`).
+ * @brief Serialise an @ref atc_hdlc_frame_t into a byte buffer.
+ *
+ * Produces a complete wire-format HDLC frame (flags, escaped content, FCS).
+ * Does not require a station context — usable standalone.
+ *
+ * @param frame       Frame to serialise.
+ * @param buffer      Destination buffer.
+ * @param buffer_len  Destination buffer size in octets.
+ * @param encoded_len Output: number of octets written.
+ *
+ * @return @c true on success, @c false if the buffer is too small.
  */
-void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx, atc_hdlc_u8 address);
-
-
+atc_hdlc_bool atc_hdlc_frame_pack(const atc_hdlc_frame_t *frame,
+                                    atc_hdlc_u8            *buffer,
+                                    atc_hdlc_u32            buffer_len,
+                                    atc_hdlc_u32           *encoded_len);
 
 /**
- * @brief Get the S-Frame sub-type from a control field.
- * @param control The control field byte to evaluate.
- * @return S-Frame sub-type (e.g., RR, RNR) or UNKNOWN if invalid.
+ * @brief Deserialise a raw HDLC frame from a byte buffer.
+ *
+ * Performs de-stuffing, FCS verification, and field extraction. Does not
+ * require a station context — usable standalone.
+ *
+ * @param buffer          Source buffer (wire-format frame, including 0x7E flags).
+ * @param buffer_len      Source buffer length in octets.
+ * @param frame           Output frame structure.
+ * @param flat_buffer     Scratch buffer for de-stuffed content (Addr + Ctrl + Info).
+ * @param flat_buffer_len Scratch buffer size in octets.
+ *
+ * @return @c true if the frame is valid (CRC match, minimum length met).
+ * @return @c false otherwise.
+ */
+atc_hdlc_bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer,
+                                      atc_hdlc_u32       buffer_len,
+                                      atc_hdlc_frame_t  *frame,
+                                      atc_hdlc_u8       *flat_buffer,
+                                      atc_hdlc_u32       flat_buffer_len);
+
+/*
+ * --------------------------------------------------------------------------
+ * CONTROL FIELD HELPERS (FRAME LAYER — STATELESS)
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Decode the S-frame sub-type from a control field byte.
+ *
+ * @param control Control field byte.
+ * @return S-frame sub-type, or @ref ATC_HDLC_S_FRAME_TYPE_UNKNOWN.
  */
 atc_hdlc_s_frame_sub_type_t atc_hdlc_get_s_frame_sub_type(atc_hdlc_u8 control);
 
 /**
- * @brief Get the U-Frame sub-type from a control field.
- * @param control The control field byte to evaluate.
- * @return U-Frame sub-type (e.g., SABM, UA) or UNKNOWN if invalid.
+ * @brief Decode the U-frame sub-type from a control field byte.
+ *
+ * @param control Control field byte.
+ * @return U-frame sub-type, or @ref ATC_HDLC_U_FRAME_TYPE_UNKNOWN.
  */
 atc_hdlc_u_frame_sub_type_t atc_hdlc_get_u_frame_sub_type(atc_hdlc_u8 control);
+
+/*
+ * --------------------------------------------------------------------------
+ * STATUS QUERIES
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Return the current state machine state.
+ *
+ * @param ctx Initialised station context.
+ * @return Current @ref atc_hdlc_state_t value.
+ */
+atc_hdlc_state_t atc_hdlc_get_state(const atc_hdlc_context_t *ctx);
+
+/**
+ * @brief Return the number of free TX window slots.
+ *
+ * A value of 0 means the window is full and no more I-frames can be sent
+ * until the peer acknowledges outstanding frames.
+ *
+ * @param ctx Initialised station context.
+ * @return Free slot count (0 – window_size).
+ */
+atc_hdlc_u8 atc_hdlc_get_window_available(const atc_hdlc_context_t *ctx);
+
+/**
+ * @brief Return true if a received I-frame is pending acknowledgement.
+ *
+ * Indicates that T2 is running and a piggybacked or standalone RR has not
+ * yet been sent for the most recently accepted in-sequence I-frame.
+ *
+ * @param ctx Initialised station context.
+ * @return @c true if a pending ACK exists.
+ */
+atc_hdlc_bool atc_hdlc_has_pending_ack(const atc_hdlc_context_t *ctx);
+
+/**
+ * @brief Copy the current statistics snapshot.
+ *
+ * Thread-safe only when called from the same execution context as
+ * @ref atc_hdlc_tick and @ref atc_hdlc_input_byte.
+ *
+ * @param ctx Initialised station context.
+ * @param out Destination for the statistics snapshot.
+ */
+void atc_hdlc_get_stats(const atc_hdlc_context_t *ctx, atc_hdlc_stats_t *out);
+
+/**
+ * @brief Return the time in ticks until the nearest timer expiry.
+ *
+ * Allows tickless/low-power schedulers to sleep for the exact duration
+ * before calling @ref atc_hdlc_tick. Returns @c UINT32_MAX when no timers
+ * are active.
+ *
+ * @param ctx Initialised station context.
+ * @return Ticks until next expiry, or @c UINT32_MAX if none active.
+ */
+atc_hdlc_u32 atc_hdlc_get_next_timeout_ticks(const atc_hdlc_context_t *ctx);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // ATC_HDLC_H
+#endif /* ATC_HDLC_H */

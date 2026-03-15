@@ -8,10 +8,52 @@
 #include <stdlib.h>
 #include <string.h>
 
-// Scratch buffer for packing frames to feed into RX
+/* Scratch buffer for packing frames to feed into RX */
 static atc_hdlc_u8 temp_input_buffer[2048];
 
-// --- Tests ---
+/*
+ * make_ctx() — build a context with the given window_size and t1_ms,
+ * then set peer_address and mark as CONNECTED for unit tests.
+ */
+static atc_hdlc_u8  s_slots_rt[7 * 1024];
+static atc_hdlc_u32 s_lens_rt[7];
+static atc_hdlc_u8  s_seq_rt[7];
+
+static void make_ctx(atc_hdlc_context_t *ctx,
+                     atc_hdlc_u8 window_size,
+                     atc_hdlc_u32 t1_ms) {
+    static atc_hdlc_config_t cfg;
+    cfg.mode           = ATC_HDLC_MODE_ABM;
+    cfg.address        = 0x01;
+    cfg.window_size    = window_size;
+    cfg.max_frame_size = 1024;
+    cfg.max_retries    = 3;
+    cfg.t1_ms          = t1_ms;
+    cfg.t2_ms          = ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT;
+    cfg.t3_ms          = 30000;
+    cfg.use_extended   = false;
+
+    static const atc_hdlc_platform_t plat = {
+        .send = mock_send_cb, .on_data = mock_on_data_cb,
+        .on_event = NULL, .user_ctx = NULL,
+    };
+    static atc_hdlc_tx_window_t tw;
+    tw.slots         = s_slots_rt;
+    tw.slot_lens     = s_lens_rt;
+    tw.seq_to_slot   = s_seq_rt;
+    tw.slot_capacity = 1024;
+    tw.slot_count    = window_size;
+
+    static atc_hdlc_rx_buffer_t rx;
+    rx.buffer   = mock_rx_buffer;
+    rx.capacity = sizeof(mock_rx_buffer);
+
+    atc_hdlc_init(ctx, &cfg, &plat, &tw, &rx);
+    ctx->peer_address   = 0x02;
+    ctx->current_state  = ATC_HDLC_STATE_CONNECTED;
+}
+
+/* --- Tests --- */
 
 /**
  * @brief Test: Reliable Transmission (I-Frame + ACK).
@@ -22,18 +64,14 @@ void test_reliable_transmission(void) {
     reset_test_state();
     
     atc_hdlc_context_t ctx;
-    setup_test_context(&ctx);
-    
-    // Connect (simulate connected state)
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02); // Me=1, Peer=2
-    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+    make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
     
     // Send I-Frame
     mock_output_len = 0;
     atc_hdlc_u8 data[] = {0xAA, 0xBB};
-    bool res = atc_hdlc_output_frame_i(&ctx, data, sizeof(data));
+    atc_hdlc_error_t res = atc_hdlc_output_frame_i(&ctx, data, sizeof(data));
     
-    if (!res) test_fail("Reliable I-Frame", "Failed to send");
+    if (res != ATC_HDLC_OK) test_fail("Reliable I-Frame", "Failed to send");
     
     // Verify output (Check 3rd byte for Control 0x00? Need to decode to be sure)
     // 0x7E, Addr, Ctl ...
@@ -70,9 +108,7 @@ void test_reliable_retransmission(void) {
     reset_test_state();
     
     atc_hdlc_context_t ctx;
-    setup_test_context(&ctx);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
-    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
     
     // Send I-Frame
     atc_hdlc_u8 data[] = {0xCA, 0xFE};
@@ -96,9 +132,7 @@ void test_sequence_rollover(void) {
     reset_test_state();
     
     atc_hdlc_context_t ctx;
-    setup_test_context(&ctx);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
-    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
     
     atc_hdlc_u8 data[] = {0x00};
     
@@ -139,9 +173,7 @@ void test_duplicate_ack_ignored(void) {
     reset_test_state();
     
     atc_hdlc_context_t ctx;
-    setup_test_context(&ctx);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
-    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
     
     // Send I-Frame (VS becomes 1)
     atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8*)"A", 1);
@@ -168,9 +200,7 @@ void test_rej_retransmit(void) {
     reset_test_state();
     
     atc_hdlc_context_t ctx;
-    setup_test_context(&ctx);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
-    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
     
     // Send I-Frame [VS=0] -> VS becomes 1
     atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8*)"XY", 2);
@@ -195,9 +225,7 @@ void test_piggyback_ack(void) {
     reset_test_state();
     
     atc_hdlc_context_t ctx;
-    setup_test_context(&ctx);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
-    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
 
     // --- Phase 1: Outgoing Piggyback ---
     // Receive an I-frame from peer: N(S)=0, N(R)=0 (peer expects our frame 0)
@@ -225,8 +253,8 @@ void test_piggyback_ack(void) {
     // Send our own I-frame — this embeds N(R)=V(R)=1 as the piggyback ACK
     mock_output_len = 0;
     atc_hdlc_u8 our_data[] = "OK";
-    bool sent = atc_hdlc_output_frame_i(&ctx, our_data, sizeof(our_data) - 1);
-    if (!sent) {
+    atc_hdlc_error_t sent = atc_hdlc_output_frame_i(&ctx, our_data, sizeof(our_data) - 1);
+    if (sent != ATC_HDLC_OK) {
         test_fail("Piggyback", "output_i returned false");
         return;
     }
@@ -282,27 +310,24 @@ void test_window_size_2_basic(void) {
     // Manual init for custom window size 2
     // We use mock buffers from common where possible, but context needs its own pointers if we don't use setup_test_context
     // We can use mock_rx_buffer for rx
-    atc_hdlc_u8 retx_buf[128];
-    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), retx_buf, sizeof(retx_buf), ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 2, 3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
-    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+    make_ctx(&ctx, 2, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
 
     // 1. Send first I-frame (N(S)=0)
     atc_hdlc_u8 data1[] = "FRAME1";
-    bool ok1 = atc_hdlc_output_frame_i(&ctx, data1, sizeof(data1));
-    if (!ok1) { test_fail("Window2", "Send first failed"); return; }
+    atc_hdlc_error_t ok1 = atc_hdlc_output_frame_i(&ctx, data1, sizeof(data1));
+    if (ok1 != ATC_HDLC_OK) { test_fail("Window2", "Send first failed"); return; }
     if (ctx.vs != 1) { test_fail("Window2", "VS mismatch 1"); return; }
 
     // 2. Send second I-frame (N(S)=1) — window still open
     atc_hdlc_u8 data2[] = "FRAME2";
-    bool ok2 = atc_hdlc_output_frame_i(&ctx, data2, sizeof(data2));
-    if (!ok2) { test_fail("Window2", "Send second failed"); return; }
+    atc_hdlc_error_t ok2 = atc_hdlc_output_frame_i(&ctx, data2, sizeof(data2));
+    if (ok2 != ATC_HDLC_OK) { test_fail("Window2", "Send second failed"); return; }
     if (ctx.vs != 2) { test_fail("Window2", "VS mismatch 2"); return; }
 
     // 3. Window should now be full (2 outstanding, window_size=2)
     atc_hdlc_u8 data3[] = "BLOCKED";
-    bool ok3 = atc_hdlc_output_frame_i(&ctx, data3, sizeof(data3));
-    if (ok3) { test_fail("Window2", "Window overflow allowed!"); return; }
+    atc_hdlc_error_t ok3 = atc_hdlc_output_frame_i(&ctx, data3, sizeof(data3));
+    if (ok3 == ATC_HDLC_OK) { test_fail("Window2", "Window overflow allowed!"); return; }
     test_pass("Window2: Window full blocked send");
 
     // 4. ACK both with RR N(R)=2
@@ -319,8 +344,8 @@ void test_window_size_2_basic(void) {
     }
 
     // 5. Should be able to send again now
-    bool ok4 = atc_hdlc_output_frame_i(&ctx, data3, sizeof(data3));
-    if (!ok4) { test_fail("Window2", "Send after ACK failed"); return; }
+    atc_hdlc_error_t ok4 = atc_hdlc_output_frame_i(&ctx, data3, sizeof(data3));
+    if (ok4 != ATC_HDLC_OK) { test_fail("Window2", "Send after ACK failed"); return; }
     test_pass("Window2: Window reopened");
 }
 
@@ -333,11 +358,7 @@ void test_gobackn_retransmit(void) {
     reset_test_state();
     
     atc_hdlc_context_t ctx;
-    atc_hdlc_u8 retx_buf[192];
-    // Manual init for custom window size 3 and timeout 500
-    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), retx_buf, sizeof(retx_buf), 500, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 3, 3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
-    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+    make_ctx(&ctx, 3, 500);
 
     // Send 3 I-frames
     atc_hdlc_u8 d1[] = "AAA";
@@ -409,22 +430,15 @@ void test_window7_mid_rej(void) {
     reset_test_state();
 
     atc_hdlc_context_t ctx;
-    atc_hdlc_u8 retx_buf[512];
-    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer),
-                  retx_buf, sizeof(retx_buf),
-                  ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 7,
-                  3,
-                  mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
-    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+    make_ctx(&ctx, 7, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
 
     // --- Phase 1: Send 7 I-frames (fill the entire window) ---
     printf("   Phase 1: Sending 7 I-frames...\n");
     char payload[8];
     for (int i = 0; i < 7; i++) {
         sprintf(payload, "PKT_%d", i);
-        bool ok = atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8 *)payload, (atc_hdlc_u16)strlen(payload));
-        if (!ok) {
+        atc_hdlc_error_t ok = atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8 *)payload, (atc_hdlc_u16)strlen(payload));
+        if (ok != ATC_HDLC_OK) {
             char msg[64];
             sprintf(msg, "Failed to send frame %d", i);
             test_fail("Window7 REJ", msg);
@@ -446,8 +460,8 @@ void test_window7_mid_rej(void) {
 
     // --- Phase 2: Window should be full (8th frame must be blocked) ---
     printf("   Phase 2: Verifying window is full...\n");
-    bool overflow = atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8 *)"BLOCKED", 7);
-    if (overflow) {
+    atc_hdlc_error_t overflow = atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8 *)"BLOCKED", 7);
+    if (overflow == ATC_HDLC_OK) {
         test_fail("Window7 REJ", "Window overflow allowed — 8th frame should be blocked!");
         return;
     }
@@ -519,8 +533,8 @@ void test_window7_mid_rej(void) {
     test_pass("Window7 REJ: All frames acknowledged (VA == VS == 7)");
 
     // Window should be open again — sending a new frame should succeed
-    bool reopened = atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8 *)"REOPEN", 6);
-    if (!reopened) {
+    atc_hdlc_error_t reopened = atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8 *)"REOPEN", 6);
+    if (reopened != ATC_HDLC_OK) {
         test_fail("Window7 REJ", "Window did not reopen after full ACK");
         return;
     }
@@ -552,14 +566,7 @@ static bench_result_t run_throughput_bench(int window_size) {
     reset_test_state();
 
     atc_hdlc_context_t ctx;
-    atc_hdlc_u8 retx_buf[4096];
-    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer),
-                  retx_buf, sizeof(retx_buf),
-                  ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, (atc_hdlc_u8)window_size,
-                  3,
-                  mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
-    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+    make_ctx(&ctx, (atc_hdlc_u8)window_size, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
 
     // Prepare chunk payload (repeating pattern)
     atc_hdlc_u8 chunk[BENCH_CHUNK_SIZE];
@@ -571,8 +578,8 @@ static bench_result_t run_throughput_bench(int window_size) {
         // Send as many frames as the window allows
         int batch = 0;
         while (sent < BENCH_TOTAL_CHUNKS) {
-            bool ok = atc_hdlc_output_frame_i(&ctx, chunk, BENCH_CHUNK_SIZE);
-            if (!ok) break; // Window full
+            atc_hdlc_error_t ok = atc_hdlc_output_frame_i(&ctx, chunk, BENCH_CHUNK_SIZE);
+            if (ok != ATC_HDLC_OK) break; // Window full
             sent++;
             batch++;
         }
@@ -701,7 +708,7 @@ TxState_t process_tx_task(atc_hdlc_context_t *ctx, const uint8_t* data, size_t t
     }
 
     // Gönderim başarılı olursa veriyi ilerlet
-    if (atc_hdlc_output_frame_i(ctx, (atc_hdlc_u8*)&data[bytes_sent], (atc_hdlc_u16)chunk_size)) {
+    if (atc_hdlc_output_frame_i(ctx, (atc_hdlc_u8*)&data[bytes_sent], (atc_hdlc_u16)chunk_size) == ATC_HDLC_OK) {
         bytes_sent += chunk_size;
         
         // Bu paketten sonra veri bittiyse anında DONE dönebiliriz
@@ -721,15 +728,8 @@ void test_process_tx_task_simulation(void) {
     reset_test_state();
     
     atc_hdlc_context_t ctx;
-    atc_hdlc_u8 retx_buf[256];
-    // We use window size 2 so the task hits a "Window Full" state and returns TX_SENDING
-    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), 
-                  retx_buf, sizeof(retx_buf), 
-                  ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 2, 
-                  3,
-                  mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
-    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+    /* window_size=2 so the task hits Window Full and must wait */
+    make_ctx(&ctx, 2, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
 
     // We have 100 bytes. Chunk size is 32. It should take 4 chunks (32, 32, 32, 4)
     uint8_t test_data[100];
@@ -776,13 +776,7 @@ void test_nr_modulo_validation(void) {
     reset_test_state();
 
     atc_hdlc_context_t ctx;
-    atc_hdlc_u8 retx_buf[256];
-    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), 
-                  retx_buf, sizeof(retx_buf), 
-                  ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 7, 
-                  3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
-    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+    make_ctx(&ctx, 7, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
 
     // 1. Send 6 frames (0 to 5)
     char payload[8] = "DATA";
@@ -828,13 +822,7 @@ void test_nr_edge_cases(void) {
     reset_test_state();
 
     atc_hdlc_context_t ctx;
-    atc_hdlc_u8 retx_buf[256];
-    atc_hdlc_init(&ctx, mock_rx_buffer, sizeof(mock_rx_buffer), 
-                  retx_buf, sizeof(retx_buf), 
-                  1000, ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT, 7, 
-                  3, mock_output_byte_cb, mock_on_frame_cb, NULL, NULL);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
-    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+    make_ctx(&ctx, 7, 1000);
 
     typedef struct {
         uint8_t va;
@@ -910,9 +898,7 @@ void test_state_initialization(void) {
     reset_test_state();
 
     atc_hdlc_context_t ctx;
-    setup_test_context(&ctx);
-    atc_hdlc_configure_station(&ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
-    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
 
     // 1. Send an I-frame so that V(S) increments to 1
     atc_hdlc_output_frame_i(&ctx, (atc_hdlc_u8 *)"TEST", 4);

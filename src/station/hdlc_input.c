@@ -55,27 +55,27 @@ void atc_hdlc_input_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
 
         for (atc_hdlc_u32 i = 0; i < data_len; i++) {
           calced_crc =
-              atc_hdlc_crc_ccitt_update(calced_crc, ctx->input_buffer[i]);
+              atc_hdlc_crc_ccitt_update(calced_crc, ctx->rx_buf->buffer[i]);
         }
 
         // Extract Received FCS (Assuming MSB first order on wire -> Buffered as
         // Hi, Lo)
-        atc_hdlc_u16 rx_fcs = ((atc_hdlc_u16)ctx->input_buffer[data_len] << 8) | ctx->input_buffer[data_len + 1];
+        atc_hdlc_u16 rx_fcs = ((atc_hdlc_u16)ctx->rx_buf->buffer[data_len] << 8) | ctx->rx_buf->buffer[data_len + 1];
 
         if (calced_crc == rx_fcs) {
           // Valid Frame!
           ATC_HDLC_LOG_DEBUG("rx: Valid frame (Addr: 0x%02X, Ctrl: 0x%02X, Len: %lu)",
-                         ctx->input_buffer[0], ctx->input_buffer[1], data_len);
+                         ctx->rx_buf->buffer[0], ctx->rx_buf->buffer[1], data_len);
 
           /* Construct the temporary frame descriptor (Zero-Copy) */
-          ctx->input_frame_buffer.address = ctx->input_buffer[0];
-          ctx->input_frame_buffer.control = ctx->input_buffer[1];
+          ctx->input_frame_buffer.address = ctx->rx_buf->buffer[0];
+          ctx->input_frame_buffer.control = ctx->rx_buf->buffer[1];
           
           // Information starts after Header (Addr+Ctrl), length is Total - (Header+FCS) = Total - 4
           // But only if total >= 4 (checked above)
           // Header Len = Address(1) + Control(1) = 2
           if (data_len > ATC_HDLC_ADDRESS_LEN + ATC_HDLC_CONTROL_LEN) {
-             ctx->input_frame_buffer.information = &ctx->input_buffer[ATC_HDLC_ADDRESS_LEN + ATC_HDLC_CONTROL_LEN];
+             ctx->input_frame_buffer.information = &ctx->rx_buf->buffer[ATC_HDLC_ADDRESS_LEN + ATC_HDLC_CONTROL_LEN];
              ctx->input_frame_buffer.information_len = (atc_hdlc_u16)(data_len - (ATC_HDLC_ADDRESS_LEN + ATC_HDLC_CONTROL_LEN));
           } else {
              ctx->input_frame_buffer.information = NULL;
@@ -117,9 +117,9 @@ void atc_hdlc_input_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
 
   /* 3. Validation & Buffering */
 
-  if (ctx->input_index >= ctx->input_buffer_len) {
+  if (ctx->input_index >= ctx->rx_buf->capacity) {
     // Overflow protection: Drop invalid large frame and hunt for next flag
-    ATC_HDLC_LOG_WARN("rx: Buffer overflow! Max %lu bytes. Discarding.", (unsigned long)ctx->input_buffer_len);
+    ATC_HDLC_LOG_WARN("rx: Buffer overflow! Max %lu bytes. Discarding.", (unsigned long)ctx->rx_buf->capacity);
     ctx->input_state = HDLC_INPUT_STATE_HUNT;
     return;
   }
@@ -127,7 +127,7 @@ void atc_hdlc_input_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
 
 
   // Store byte in buffer
-  ctx->input_buffer[ctx->input_index++] = byte;
+  ctx->rx_buf->buffer[ctx->input_index++] = byte;
 
   // Early abort if Address byte is invalid
   if (ctx->input_index == 1) {

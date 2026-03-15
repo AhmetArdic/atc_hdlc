@@ -21,7 +21,9 @@ typedef struct {
     
     atc_hdlc_context_t ctx;
     atc_hdlc_u8 input_buffer[BUFFER_SIZE * 2];
-    atc_hdlc_u8 retransmit_buffer[BUFFER_SIZE * 2 * 8];    
+    atc_hdlc_u8 retransmit_slots[7 * 1024]; /* 7 slots x 1024 B */
+    atc_hdlc_u32 retransmit_lens[7];
+    atc_hdlc_u8  retransmit_seq[7];
     thread_t thread;
     volatile bool running;
     
@@ -40,45 +42,45 @@ typedef struct {
 } virtual_node_t;
 
 // Callbacks
-static void node_output_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data) {
+static int node_output_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data) {
     (void)flush;
     virtual_node_t *node = (virtual_node_t *)user_data;
     
     if (node->error_probability > 0) {
         if ((uint32_t)(rand() % 10000) < node->error_probability) {
-            // Intentionally drop the byte to simulate line corruption
-            return;
+            return 0; /* drop byte to simulate corruption */
         }
     }
     
     if (node->drop_next_i_frame) {
         if (byte == 0x7E) {
             node->drop_next_i_frame = false;
-            return; 
+            return 0;
         }
-        return; 
+        return 0;
     }
     
     pipe_write(node->tx_pipe, &byte, 1);
+    return 0;
 }
 
-static void node_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data) {
+static void node_on_data_cb(const atc_hdlc_u8 *payload, atc_hdlc_u16 len, void *user_data) {
     virtual_node_t *node = (virtual_node_t *)user_data;
-    if (frame->type == ATC_HDLC_FRAME_I) {
-        if (node->rx_data && (node->bytes_received + frame->information_len) <= node->rx_data_capacity) {
-            memcpy(node->rx_data + node->bytes_received, frame->information, frame->information_len);
-        }
-        node->bytes_received += frame->information_len;
-        node->frames_received++;
+    if (node->rx_data && (node->bytes_received + len) <= node->rx_data_capacity) {
+        memcpy(node->rx_data + node->bytes_received, payload, len);
     }
+    node->bytes_received += len;
+    node->frames_received++;
 }
 
-static void node_state_cb(atc_hdlc_state_t state, atc_hdlc_event_t event, void *user_data) {
-    (void)event;
+static void node_event_cb(atc_hdlc_event_t event, void *user_data) {
     virtual_node_t *node = (virtual_node_t *)user_data;
-    if (state == ATC_HDLC_STATE_CONNECTED) {
+    if (event == ATC_HDLC_EVENT_CONNECT_ACCEPTED ||
+        event == ATC_HDLC_EVENT_INCOMING_CONNECT) {
         node->connected = true;
-    } else {
+    } else if (event == ATC_HDLC_EVENT_DISCONNECT_COMPLETE ||
+               event == ATC_HDLC_EVENT_PEER_DISCONNECT    ||
+               event == ATC_HDLC_EVENT_LINK_FAILURE) {
         node->connected = false;
     }
 }
@@ -135,24 +137,43 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     node1->running = true;
     node2->running = true;
     
-    atc_hdlc_init(&node1->ctx, node1->input_buffer, sizeof(node1->input_buffer),
-              node1->retransmit_buffer, sizeof(node1->retransmit_buffer),
-              100, /* T1: Retransmit timeout — low for pipe (no real link latency) */
-              1,   /* T2: ACK delay — minimal for pipe speed */
-              window_size,
-              3, /* Max retries (N2) */
-              node_output_cb, node_on_frame_cb, node_state_cb, node1);
+    /* --- Node 1 init --- */
+    static atc_hdlc_config_t cfg1;
+    cfg1.mode = ATC_HDLC_MODE_ABM; cfg1.address = 0x01;
+    cfg1.window_size = (atc_hdlc_u8)window_size; cfg1.max_frame_size = 1024;
+    cfg1.max_retries = 3; cfg1.t1_ms = 100; cfg1.t2_ms = 1; cfg1.t3_ms = 30000;
+    cfg1.use_extended = false;
+    static atc_hdlc_platform_t plat1;
+    plat1.send = node_output_cb; plat1.on_data = node_on_data_cb;
+    plat1.on_event = node_event_cb; plat1.user_ctx = node1;
+    static atc_hdlc_tx_window_t tw1;
+    tw1.slots = node1->retransmit_slots; tw1.slot_lens = node1->retransmit_lens;
+    tw1.seq_to_slot = node1->retransmit_seq;
+    tw1.slot_capacity = 1024; tw1.slot_count = (atc_hdlc_u8)window_size;
+    static atc_hdlc_rx_buffer_t rx1;
+    rx1.buffer = node1->input_buffer; rx1.capacity = sizeof(node1->input_buffer);
+    atc_hdlc_init(&node1->ctx, &cfg1, &plat1, &tw1, &rx1);
 
-    atc_hdlc_init(&node2->ctx, node2->input_buffer, sizeof(node2->input_buffer),
-              node2->retransmit_buffer, sizeof(node2->retransmit_buffer),
-              100, /* T1: Retransmit timeout — low for pipe */
-              1,   /* T2: ACK delay — minimal for pipe speed */
-              window_size,
-              25, // max_retry_count
-              node_output_cb, node_on_frame_cb, node_state_cb, node2);
-              
-    atc_hdlc_configure_station(&node1->ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x01, 0x02);
-    atc_hdlc_configure_station(&node2->ctx, ATC_HDLC_ROLE_COMBINED, ATC_HDLC_MODE_ABM, 0x02, 0x01);
+    /* --- Node 2 init --- */
+    static atc_hdlc_config_t cfg2;
+    cfg2.mode = ATC_HDLC_MODE_ABM; cfg2.address = 0x02;
+    cfg2.window_size = (atc_hdlc_u8)window_size; cfg2.max_frame_size = 1024;
+    cfg2.max_retries = 25; cfg2.t1_ms = 100; cfg2.t2_ms = 1; cfg2.t3_ms = 30000;
+    cfg2.use_extended = false;
+    static atc_hdlc_platform_t plat2;
+    plat2.send = node_output_cb; plat2.on_data = node_on_data_cb;
+    plat2.on_event = node_event_cb; plat2.user_ctx = node2;
+    static atc_hdlc_tx_window_t tw2;
+    tw2.slots = node2->retransmit_slots; tw2.slot_lens = node2->retransmit_lens;
+    tw2.seq_to_slot = node2->retransmit_seq;
+    tw2.slot_capacity = 1024; tw2.slot_count = (atc_hdlc_u8)window_size;
+    static atc_hdlc_rx_buffer_t rx2;
+    rx2.buffer = node2->input_buffer; rx2.capacity = sizeof(node2->input_buffer);
+    atc_hdlc_init(&node2->ctx, &cfg2, &plat2, &tw2, &rx2);
+
+    /* Cross-link peer addresses */
+    node1->ctx.peer_address = 0x02;
+    node2->ctx.peer_address = 0x01;
 }
 
 static void node_pair_start(virtual_node_t *node1, virtual_node_t *node2) {
@@ -174,12 +195,12 @@ static void node_pair_cleanup(virtual_node_t *node1, virtual_node_t *node2, pipe
 static bool hdlc_test_connect(virtual_node_t *node, int timeout_ms) {
     int retries = timeout_ms;
     MUTEX_LOCK(&node->ctx_lock);
-    atc_hdlc_link_setup(&node->ctx);
+    atc_hdlc_link_setup(&node->ctx, node->ctx.peer_address);
     MUTEX_UNLOCK(&node->ctx_lock);
     while((!node->connected) && retries > 0) {
         if (retries % 1000 == 0) {
             MUTEX_LOCK(&node->ctx_lock);
-            atc_hdlc_link_setup(&node->ctx);
+            atc_hdlc_link_setup(&node->ctx, node->ctx.peer_address);
             MUTEX_UNLOCK(&node->ctx_lock);
         }
         SLEEP_MS(1);
