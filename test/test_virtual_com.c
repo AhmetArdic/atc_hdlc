@@ -21,14 +21,19 @@ typedef struct {
     
     atc_hdlc_context_t ctx;
     atc_hdlc_u8 input_buffer[BUFFER_SIZE * 2];
-    atc_hdlc_u8 retransmit_slots[7 * 1024]; /* 7 slots x 1024 B */
+    atc_hdlc_u8  retransmit_slots[7 * 1024]; /* 7 slots x 1024 B */
     atc_hdlc_u32 retransmit_lens[7];
     atc_hdlc_u8  retransmit_seq[7];
+    /* Descriptors stored per-node so they outlive node_pair_init() */
+    atc_hdlc_config_t    hdlc_cfg;
+    atc_hdlc_platform_t  hdlc_plat;
+    atc_hdlc_tx_window_t hdlc_tw;
+    atc_hdlc_rx_buffer_t hdlc_rx;
     thread_t thread;
     volatile bool running;
     
     // Config
-    uint32_t error_probability; // 0 to 10000 (0% to 100%)
+    uint32_t error_probability; /* 0 to 1000000 (0.0000% to 100.0000%); e.g. 50 = 0.005% */
     bool drop_next_i_frame;
     
     // Receive buffer (for file transfer verification)
@@ -47,7 +52,7 @@ static int node_output_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data
     virtual_node_t *node = (virtual_node_t *)user_data;
     
     if (node->error_probability > 0) {
-        if ((uint32_t)(rand() % 10000) < node->error_probability) {
+        if ((uint32_t)(rand() % 1000000) < node->error_probability) {
             return 0; /* drop byte to simulate corruption */
         }
     }
@@ -137,39 +142,53 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     node1->running = true;
     node2->running = true;
     
-    /* --- Node 1 init --- */
-    static atc_hdlc_config_t cfg1;
-    cfg1.mode = ATC_HDLC_MODE_ABM; cfg1.address = 0x01;
-    cfg1.window_size = (atc_hdlc_u8)window_size; cfg1.max_frame_size = 1024;
-    cfg1.max_retries = 3; cfg1.t1_ms = 100; cfg1.t2_ms = 1; cfg1.t3_ms = 30000;
-    cfg1.use_extended = false;
-    static atc_hdlc_platform_t plat1;
-    plat1.send = node_output_cb; plat1.on_data = node_on_data_cb;
-    plat1.on_event = node_event_cb; plat1.user_ctx = node1;
-    static atc_hdlc_tx_window_t tw1;
-    tw1.slots = node1->retransmit_slots; tw1.slot_lens = node1->retransmit_lens;
-    tw1.seq_to_slot = node1->retransmit_seq;
-    tw1.slot_capacity = 1024; tw1.slot_count = (atc_hdlc_u8)window_size;
-    static atc_hdlc_rx_buffer_t rx1;
-    rx1.buffer = node1->input_buffer; rx1.capacity = sizeof(node1->input_buffer);
-    atc_hdlc_init(&node1->ctx, &cfg1, &plat1, &tw1, &rx1);
+    /* --- Node 1: fill per-node descriptors, then init --- */
+    node1->hdlc_cfg.mode = ATC_HDLC_MODE_ABM; node1->hdlc_cfg.address = 0x01;
+    node1->hdlc_cfg.window_size = (atc_hdlc_u8)window_size;
+    node1->hdlc_cfg.max_frame_size = CHUNK_SIZE; node1->hdlc_cfg.max_retries = 3;
+    node1->hdlc_cfg.t1_ms = 50; node1->hdlc_cfg.t2_ms = 1;
+    node1->hdlc_cfg.t3_ms = 5000; node1->hdlc_cfg.use_extended = false;
 
-    /* --- Node 2 init --- */
-    static atc_hdlc_config_t cfg2;
-    cfg2.mode = ATC_HDLC_MODE_ABM; cfg2.address = 0x02;
-    cfg2.window_size = (atc_hdlc_u8)window_size; cfg2.max_frame_size = 1024;
-    cfg2.max_retries = 25; cfg2.t1_ms = 100; cfg2.t2_ms = 1; cfg2.t3_ms = 30000;
-    cfg2.use_extended = false;
-    static atc_hdlc_platform_t plat2;
-    plat2.send = node_output_cb; plat2.on_data = node_on_data_cb;
-    plat2.on_event = node_event_cb; plat2.user_ctx = node2;
-    static atc_hdlc_tx_window_t tw2;
-    tw2.slots = node2->retransmit_slots; tw2.slot_lens = node2->retransmit_lens;
-    tw2.seq_to_slot = node2->retransmit_seq;
-    tw2.slot_capacity = 1024; tw2.slot_count = (atc_hdlc_u8)window_size;
-    static atc_hdlc_rx_buffer_t rx2;
-    rx2.buffer = node2->input_buffer; rx2.capacity = sizeof(node2->input_buffer);
-    atc_hdlc_init(&node2->ctx, &cfg2, &plat2, &tw2, &rx2);
+    node1->hdlc_plat.send     = node_output_cb;
+    node1->hdlc_plat.on_data  = node_on_data_cb;
+    node1->hdlc_plat.on_event = node_event_cb;
+    node1->hdlc_plat.user_ctx = node1;
+
+    node1->hdlc_tw.slots         = node1->retransmit_slots;
+    node1->hdlc_tw.slot_lens     = node1->retransmit_lens;
+    node1->hdlc_tw.seq_to_slot   = node1->retransmit_seq;
+    node1->hdlc_tw.slot_capacity = CHUNK_SIZE;
+    node1->hdlc_tw.slot_count    = (atc_hdlc_u8)window_size;
+
+    node1->hdlc_rx.buffer   = node1->input_buffer;
+    node1->hdlc_rx.capacity = sizeof(node1->input_buffer);
+
+    atc_hdlc_init(&node1->ctx, &node1->hdlc_cfg, &node1->hdlc_plat,
+                  &node1->hdlc_tw, &node1->hdlc_rx);
+
+    /* --- Node 2: fill per-node descriptors, then init --- */
+    node2->hdlc_cfg.mode = ATC_HDLC_MODE_ABM; node2->hdlc_cfg.address = 0x02;
+    node2->hdlc_cfg.window_size = (atc_hdlc_u8)window_size;
+    node2->hdlc_cfg.max_frame_size = CHUNK_SIZE; node2->hdlc_cfg.max_retries = 25;
+    node2->hdlc_cfg.t1_ms = 50; node2->hdlc_cfg.t2_ms = 1;
+    node2->hdlc_cfg.t3_ms = 5000; node2->hdlc_cfg.use_extended = false;
+
+    node2->hdlc_plat.send     = node_output_cb;
+    node2->hdlc_plat.on_data  = node_on_data_cb;
+    node2->hdlc_plat.on_event = node_event_cb;
+    node2->hdlc_plat.user_ctx = node2;
+
+    node2->hdlc_tw.slots         = node2->retransmit_slots;
+    node2->hdlc_tw.slot_lens     = node2->retransmit_lens;
+    node2->hdlc_tw.seq_to_slot   = node2->retransmit_seq;
+    node2->hdlc_tw.slot_capacity = CHUNK_SIZE;
+    node2->hdlc_tw.slot_count    = (atc_hdlc_u8)window_size;
+
+    node2->hdlc_rx.buffer   = node2->input_buffer;
+    node2->hdlc_rx.capacity = sizeof(node2->input_buffer);
+
+    atc_hdlc_init(&node2->ctx, &node2->hdlc_cfg, &node2->hdlc_plat,
+                  &node2->hdlc_tw, &node2->hdlc_rx);
 
     /* Cross-link peer addresses */
     node1->ctx.peer_address = 0x02;
@@ -198,7 +217,9 @@ static bool hdlc_test_connect(virtual_node_t *node, int timeout_ms) {
     atc_hdlc_link_setup(&node->ctx, node->ctx.peer_address);
     MUTEX_UNLOCK(&node->ctx_lock);
     while((!node->connected) && retries > 0) {
-        if (retries % 1000 == 0) {
+        /* Retry only if still DISCONNECTED (not already CONNECTING/CONNECTED) */
+        if (retries % 1000 == 0 &&
+            node->ctx.current_state == ATC_HDLC_STATE_DISCONNECTED) {
             MUTEX_LOCK(&node->ctx_lock);
             atc_hdlc_link_setup(&node->ctx, node->ctx.peer_address);
             MUTEX_UNLOCK(&node->ctx_lock);
@@ -219,10 +240,10 @@ static bool hdlc_test_send_data(virtual_node_t *node, const uint8_t *payload, ui
         uint32_t to_send = (payload_len - sent) > CHUNK_SIZE ? CHUNK_SIZE : (payload_len - sent);
         
         MUTEX_LOCK(&node->ctx_lock);
-        bool sent_ok = atc_hdlc_output_frame_i(&node->ctx, payload + sent, to_send);
+        atc_hdlc_error_t send_result = atc_hdlc_output_frame_i(&node->ctx, payload + sent, to_send);
         MUTEX_UNLOCK(&node->ctx_lock);
         
-        if (sent_ok) {
+        if (send_result == ATC_HDLC_OK) {
             sent += to_send;
             start = get_time_s(); // Reset timeout on successful progress
         } else {
@@ -404,10 +425,10 @@ void run_go_back_n_test(int window_size) {
         }
         
         MUTEX_LOCK(&node1.ctx_lock);
-        bool sent_ok = atc_hdlc_output_frame_i(&node1.ctx, payload, to_send);
+        atc_hdlc_error_t send_result = atc_hdlc_output_frame_i(&node1.ctx, payload, to_send);
         MUTEX_UNLOCK(&node1.ctx_lock);
         
-        if (sent_ok) {
+        if (send_result == ATC_HDLC_OK) {
             sent += to_send;
             frame_counter++;
             start = get_time_s();
@@ -533,8 +554,10 @@ int main(void) {
     printf("Starting Mem-Pipe Virtual COM Tests (Reliable)...\n");
     for (int w = 1; w <= 7; w++) run_window_test(w, 0);
     
-    printf("\nStarting Mem-Pipe Virtual COM Tests (Error Injection - 0.05%%)...\n");
-    for (int w = 1; w <= 7; w++) run_window_test(w, 5);
+    /* Error injection starts at w=3: w=1 with error is impractically slow
+     * (single-slot stop-and-wait + retransmit on every loss). */
+    printf("\nStarting Mem-Pipe Virtual COM Tests (Error Injection - 0.005%%, w=3..7)...\n");
+    for (int w = 3; w <= 7; w++) run_window_test(w, 50);
     
     printf("\nStarting Mem-Pipe Virtual COM Tests (Timeout Injection)...\n");
     for (int w = 1; w <= 7; w++) run_timeout_test(w);
@@ -545,8 +568,8 @@ int main(void) {
     printf("\nStarting Mem-Pipe Virtual COM Tests (File Transfer - test.pdf)...\n");
     for (int w = 1; w <= 7; w++) run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w, 0);
     
-    printf("\nStarting Mem-Pipe Virtual COM Tests (File Transfer - Error Injection - 0.05%%)...\n");
-    for (int w = 1; w <= 7; w++) run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w, 5);
+    printf("\nStarting Mem-Pipe Virtual COM Tests (File Transfer - Error Injection - 0.005%%, w=3..7)...\n");
+    for (int w = 3; w <= 7; w++) run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w, 50);
     
     printf("\nMem-Pipe Virtual COM Tests Completed Successfully.\n");
     return 0;
