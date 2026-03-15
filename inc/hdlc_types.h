@@ -380,7 +380,7 @@ typedef void (*atc_hdlc_on_event_fn)(atc_hdlc_event_t event, void *user_ctx);
  * application does not require payload delivery or event notifications.
  */
 typedef struct {
-    atc_hdlc_send_fn     send;     /**< Physical byte-output function (mandatory). */
+    atc_hdlc_send_fn     on_send;   /**< Physical byte-output function (mandatory). */
     atc_hdlc_on_data_fn  on_data;  /**< Payload delivery to upper layer (optional). */
     atc_hdlc_on_event_fn on_event; /**< Event notification to upper layer (optional). */
     void                *user_ctx; /**< Opaque pointer forwarded to all callbacks. */
@@ -513,23 +513,23 @@ typedef struct {
     const atc_hdlc_u8 *test_pattern; /**< Pointer to the outgoing test payload (user-owned). */
 
     /* --- Inner structs --- */
-    atc_hdlc_frame_t       input_frame_buffer; /**< Temporary parsed-frame descriptor (RX path). */
-    atc_hdlc_stats_t       stats;              /**< Runtime statistics counters. */
-    atc_hdlc_test_result_t test_result;        /**< Result of the most recent TEST round-trip. */
+    atc_hdlc_frame_t       rx_frame;   /**< Temporary parsed-frame descriptor (RX path). */
+    atc_hdlc_stats_t       stats;      /**< Runtime statistics counters. */
+    atc_hdlc_test_result_t test_result;/**< Result of the most recent TEST round-trip. */
 
     /* --- 32-bit timers --- */
-    atc_hdlc_u32 ack_timer;        /**< T2 countdown (ticks until standalone RR is sent). */
+    atc_hdlc_u32 t2_timer;         /**< T2 countdown (ticks until standalone RR is sent). */
     atc_hdlc_u32 contention_timer; /**< Backoff countdown for SABM contention resolution. */
-    atc_hdlc_u32 retransmit_timer; /**< T1 countdown (ticks until retransmission). */
+    atc_hdlc_u32 t1_timer;         /**< T1 countdown (ticks until retransmission). */
     atc_hdlc_u32 t3_timer;         /**< T3 countdown (ticks until keep-alive RR). */
-    atc_hdlc_u32 input_index;      /**< Current write index into rx_buf->buffer. */
+    atc_hdlc_u32 rx_index;         /**< Current write index into rx_buf->buffer. */
 
     /* --- State machine --- */
     volatile atc_hdlc_state_t current_state; /**< Current station state. */
 
     /* --- 16-bit fields --- */
-    atc_hdlc_u16 output_crc;         /**< Running FCS accumulator for the streaming TX path. */
-    atc_hdlc_u16 test_pattern_len;   /**< Length of the outgoing test payload in octets. */
+    atc_hdlc_u16 tx_crc;            /**< Running FCS accumulator for the streaming TX path. */
+    atc_hdlc_u16 test_pattern_len;  /**< Length of the outgoing test payload in octets. */
 
     /* --- 8-bit sequence variables --- */
     atc_hdlc_u8 my_address;   /**< Local station address (set at init time). */
@@ -540,7 +540,7 @@ typedef struct {
     atc_hdlc_u8 window_size;  /**< TX window size cached from config (1–7). */
     atc_hdlc_u8 next_tx_slot; /**< Index of the next slot to allocate in tx_window. */
     atc_hdlc_u8 retry_count;  /**< Current retransmission attempt count. */
-    atc_hdlc_u8 input_state;  /**< RX byte-parser state (hdlc_input_state_t). */
+    atc_hdlc_u8 rx_state;     /**< RX byte-parser state (hdlc_rx_state_t). */
 
     /* --- Boolean sub-condition flags (all within CONNECTED state) --- */
     atc_hdlc_bool rej_exception; /**< REJ exception: suppresses duplicate REJ transmissions. */

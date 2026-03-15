@@ -101,7 +101,7 @@ void* node_thread_func(void* arg) {
         
         MUTEX_LOCK(&node->ctx_lock);
         if (n > 0) {
-            atc_hdlc_input_bytes(&node->ctx, buf, n);
+            atc_hdlc_data_in_bytes(&node->ctx, buf, n);
         }
         
         double now = get_time_s();
@@ -146,7 +146,7 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     node1->hdlc_cfg.t1_ms = 1000; node1->hdlc_cfg.t2_ms = 10;
     node1->hdlc_cfg.t3_ms = 5000; node1->hdlc_cfg.use_extended = false;
 
-    node1->hdlc_plat.send     = node_output_cb;
+    node1->hdlc_plat.on_send = node_output_cb;
     node1->hdlc_plat.on_data  = node_on_data_cb;
     node1->hdlc_plat.on_event = node_event_cb;
     node1->hdlc_plat.user_ctx = node1;
@@ -170,7 +170,7 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     node2->hdlc_cfg.t1_ms = 1000; node2->hdlc_cfg.t2_ms = 10;
     node2->hdlc_cfg.t3_ms = 5000; node2->hdlc_cfg.use_extended = false;
 
-    node2->hdlc_plat.send     = node_output_cb;
+    node2->hdlc_plat.on_send = node_output_cb;
     node2->hdlc_plat.on_data  = node_on_data_cb;
     node2->hdlc_plat.on_event = node_event_cb;
     node2->hdlc_plat.user_ctx = node2;
@@ -237,7 +237,7 @@ static bool hdlc_test_send_data(virtual_node_t *node, const uint8_t *payload, ui
         uint32_t to_send = (payload_len - sent) > CHUNK_SIZE ? CHUNK_SIZE : (payload_len - sent);
         
         MUTEX_LOCK(&node->ctx_lock);
-        atc_hdlc_error_t send_result = atc_hdlc_output_frame_i(&node->ctx, payload + sent, to_send);
+        atc_hdlc_error_t send_result = atc_hdlc_transmit_i(&node->ctx, payload + sent, to_send);
         MUTEX_UNLOCK(&node->ctx_lock);
         
         if (send_result == ATC_HDLC_OK) {
@@ -422,7 +422,7 @@ void run_go_back_n_test(int window_size) {
         }
         
         MUTEX_LOCK(&node1.ctx_lock);
-        atc_hdlc_error_t send_result = atc_hdlc_output_frame_i(&node1.ctx, payload, to_send);
+        atc_hdlc_error_t send_result = atc_hdlc_transmit_i(&node1.ctx, payload, to_send);
         MUTEX_UNLOCK(&node1.ctx_lock);
         
         if (send_result == ATC_HDLC_OK) {

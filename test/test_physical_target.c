@@ -354,7 +354,7 @@ static void rx_thread_body(physical_node_t *node)
         mutex_lock(&node->ctx_lock);
 
         if (n > 0) {
-            atc_hdlc_input_bytes(&node->ctx, buf, (atc_hdlc_u32)n);
+            atc_hdlc_data_in_bytes(&node->ctx, buf, (atc_hdlc_u32)n);
         }
 
         if (elapsed_ms >= 2) {
@@ -451,7 +451,7 @@ static uint32_t send_data(physical_node_t *node,
         while (!sent_ok && node->running) {
             mutex_lock(&node->ctx_lock);
             if (node->ctx.current_state == ATC_HDLC_STATE_CONNECTED) {
-                sent_ok = atc_hdlc_output_frame_i(&node->ctx, data + sent, chunk);
+                sent_ok = atc_hdlc_transmit_i(&node->ctx, data + sent, chunk);
             } else {
                 stuck_count++;
                 if (stuck_count % 1000 == 0) {
@@ -585,7 +585,7 @@ static bool node_init(physical_node_t *node, uint32_t recv_len, uint8_t window_s
     cfg.t2_ms = ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT; cfg.t3_ms = 30000;
     cfg.use_extended = false;
     static atc_hdlc_platform_t plat;
-    plat.send = node_output_cb; plat.on_data = node_on_data_cb;
+    plat.on_send = node_output_cb; plat.on_data = node_on_data_cb;
     plat.on_event = node_event_cb; plat.user_ctx = node;
     static atc_hdlc_tx_window_t tw;
     tw.slots = node->retransmit_slots; tw.slot_lens = node->retransmit_lens;

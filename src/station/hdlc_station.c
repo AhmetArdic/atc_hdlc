@@ -23,10 +23,10 @@
  *
  * Contains the public station API entry points and the periodic tick handler.
  * Frame I/O and protocol processing are in separate modules:
- *   - hdlc_input.c          (receive byte parser)
- *   - hdlc_output.c         (frame output / streaming API)
- *   - hdlc_frame.c          (stateless pack / unpack)
- *   - hdlc_frame_handlers.c (I/S/U frame processing)
+ *   - hdlc_in.c              (RX byte parser)
+ *   - hdlc_out.c             (TX streaming API)
+ *   - hdlc_frame.c           (stateless pack / unpack)
+ *   - hdlc_frame_handlers.c  (I/S/U frame processing)
  */
 
 #include "../../inc/hdlc.h"
@@ -60,7 +60,7 @@ atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t        *ctx,
     if (ctx == NULL || config == NULL || platform == NULL || rx_buf == NULL) {
         return ATC_HDLC_ERR_INVALID_PARAM;
     }
-    if (platform->send == NULL) {
+    if (platform->on_send == NULL) {
         return ATC_HDLC_ERR_INVALID_PARAM;
     }
     if (rx_buf->buffer == NULL) {
@@ -84,7 +84,7 @@ atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t        *ctx,
     if (rx_buf->capacity < config->max_frame_size) {
         return ATC_HDLC_ERR_INCONSISTENT_BUFFER;
     }
-    if (rx_buf->capacity < ATC_HDLC_MIN_FRAME_LEN) {
+    if (rx_buf->capacity < HDLC_MIN_FRAME_LEN) {
         return ATC_HDLC_ERR_INCONSISTENT_BUFFER;
     }
 
@@ -115,8 +115,8 @@ atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t        *ctx,
     ctx->my_address = config->address;
     ctx->window_size = config->window_size;
 
-    /* Initialise parser */
-    ctx->input_state = HDLC_INPUT_STATE_HUNT;
+    /* Initialise RX parser */
+    ctx->rx_state = HDLC_RX_STATE_HUNT;
 
     return ATC_HDLC_OK;
 }
@@ -145,7 +145,7 @@ atc_hdlc_error_t atc_hdlc_link_setup(atc_hdlc_context_t *ctx,
                       HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1);
 
     /* Start T1 retransmission timer */
-    ctx->retransmit_timer = ctx->config->t1_ms;
+    ctx->t1_timer = ctx->config->t1_ms;
 
     hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTING,
                              ATC_HDLC_EVENT_LINK_SETUP_REQUEST);
@@ -168,7 +168,7 @@ atc_hdlc_error_t atc_hdlc_disconnect(atc_hdlc_context_t *ctx) {
                       HDLC_U_MODIFIER_LO_DISC, HDLC_U_MODIFIER_HI_DISC, 1);
 
     /* Start T1 retransmission timer */
-    ctx->retransmit_timer = ctx->config->t1_ms;
+    ctx->t1_timer = ctx->config->t1_ms;
 
     hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTING,
                              ATC_HDLC_EVENT_DISCONNECT_REQUEST);
@@ -185,14 +185,12 @@ atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_context_t *ctx) {
     ATC_HDLC_LOG_DEBUG("state: Link reset initiated");
     hdlc_reset_connection_state(ctx);
 
-    /* Fire RESET event before transitioning to CONNECTING */
     hdlc_fire_event(ctx, ATC_HDLC_EVENT_RESET);
 
-    /* Re-send SABM */
     hdlc_send_u_frame(ctx, ctx->peer_address,
                       HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1);
-    ctx->retransmit_timer = ctx->config->t1_ms;
-    ctx->current_state    = ATC_HDLC_STATE_CONNECTING;
+    ctx->t1_timer      = ctx->config->t1_ms;
+    ctx->current_state = ATC_HDLC_STATE_CONNECTING;
 
     return ATC_HDLC_OK;
 }
@@ -245,9 +243,9 @@ void atc_hdlc_tick(atc_hdlc_context_t *ctx) {
     const atc_hdlc_u8 max_retries = ctx->config ? ctx->config->max_retries : 0;
 
     /* --- T2: Delayed ACK --- */
-    if (ctx->ack_timer > 0) {
-        ctx->ack_timer--;
-        if (ctx->ack_timer == 0) {
+    if (ctx->t2_timer > 0) {
+        ctx->t2_timer--;
+        if (ctx->t2_timer == 0) {
             hdlc_send_rr(ctx, 0);
         }
     }
@@ -260,15 +258,15 @@ void atc_hdlc_tick(atc_hdlc_context_t *ctx) {
             ATC_HDLC_LOG_DEBUG("tx: Contention backoff expired, retrying SABM");
             hdlc_send_u_frame(ctx, ctx->peer_address,
                               HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1);
-            ctx->retransmit_timer = ctx->config->t1_ms;
+            ctx->t1_timer = ctx->config->t1_ms;
         }
     }
 
     /* --- T1: Retransmission / polling --- */
-    if (ctx->retransmit_timer > 0) {
-        ctx->retransmit_timer--;
+    if (ctx->t1_timer > 0) {
+        ctx->t1_timer--;
 
-        if (ctx->retransmit_timer == 0) {
+        if (ctx->t1_timer == 0) {
             ctx->retry_count++;
             ctx->stats.timeout_count++;
 
@@ -288,7 +286,7 @@ void atc_hdlc_tick(atc_hdlc_context_t *ctx) {
                     hdlc_send_u_frame(ctx, ctx->peer_address,
                                       HDLC_U_MODIFIER_LO_SABM,
                                       HDLC_U_MODIFIER_HI_SABM, 1);
-                    ctx->retransmit_timer = ctx->config->t1_ms;
+                    ctx->t1_timer = ctx->config->t1_ms;
                     break;
 
                 case ATC_HDLC_STATE_DISCONNECTING:
@@ -297,16 +295,15 @@ void atc_hdlc_tick(atc_hdlc_context_t *ctx) {
                     hdlc_send_u_frame(ctx, ctx->peer_address,
                                       HDLC_U_MODIFIER_LO_DISC,
                                       HDLC_U_MODIFIER_HI_DISC, 1);
-                    ctx->retransmit_timer = ctx->config->t1_ms;
+                    ctx->t1_timer = ctx->config->t1_ms;
                     break;
 
                 case ATC_HDLC_STATE_CONNECTED:
                     if (ctx->va != ctx->vs) {
-                        /* Outstanding I-frames — send enquiry RR(P=1) */
                         ATC_HDLC_LOG_WARN("tx: T1 expired, enquiry RR(P=1) (%u/%u)",
                                           ctx->retry_count, max_retries);
                         hdlc_send_rr(ctx, 1);
-                        ctx->retransmit_timer = ctx->config->t1_ms;
+                        ctx->t1_timer = ctx->config->t1_ms;
                     }
                     break;
 
@@ -350,7 +347,7 @@ atc_hdlc_u8 atc_hdlc_get_window_available(const atc_hdlc_context_t *ctx) {
  */
 atc_hdlc_bool atc_hdlc_has_pending_ack(const atc_hdlc_context_t *ctx) {
     if (ctx == NULL) return false;
-    return (ctx->ack_timer > 0);
+    return (ctx->t2_timer > 0);
 }
 
 /**
@@ -369,9 +366,9 @@ void atc_hdlc_get_stats(const atc_hdlc_context_t *ctx, atc_hdlc_stats_t *out) {
 atc_hdlc_u32 atc_hdlc_get_next_timeout_ticks(const atc_hdlc_context_t *ctx) {
     if (ctx == NULL) return (atc_hdlc_u32)-1;
     atc_hdlc_u32 next = (atc_hdlc_u32)-1;
-    if (ctx->ack_timer        > 0 && ctx->ack_timer        < next) next = ctx->ack_timer;
-    if (ctx->retransmit_timer > 0 && ctx->retransmit_timer < next) next = ctx->retransmit_timer;
-    if (ctx->t3_timer         > 0 && ctx->t3_timer         < next) next = ctx->t3_timer;
+    if (ctx->t2_timer > 0 && ctx->t2_timer < next) next = ctx->t2_timer;
+    if (ctx->t1_timer > 0 && ctx->t1_timer < next) next = ctx->t1_timer;
+    if (ctx->t3_timer > 0 && ctx->t3_timer < next) next = ctx->t3_timer;
     return next;
 }
 
@@ -381,32 +378,15 @@ atc_hdlc_u32 atc_hdlc_get_next_timeout_ticks(const atc_hdlc_context_t *ctx) {
  * --------------------------------------------------------------------------
  */
 
-/**
- * @brief Fire an event via the platform on_event callback (if registered).
- *
- * @param ctx   Station context.
- * @param event Event to deliver.
- */
 static void hdlc_fire_event(atc_hdlc_context_t *ctx, atc_hdlc_event_t event) {
     if (ctx->platform && ctx->platform->on_event) {
         ctx->platform->on_event(event, ctx->platform->user_ctx);
     }
 }
 
-/**
- * @brief Transition to a new state and fire on_event if the state changed.
- *
- * Always fires the event when the incoming_connect event is signalled
- * (passive open) even if the state does not change (already CONNECTED
- * from a previous SABM).
- *
- * @param ctx       Station context.
- * @param new_state Target state.
- * @param event     Event that caused the transition.
- */
 void hdlc_set_protocol_state(atc_hdlc_context_t *ctx,
-                              atc_hdlc_state_t    new_state,
-                              atc_hdlc_event_t    event) {
+                               atc_hdlc_state_t    new_state,
+                               atc_hdlc_event_t    event) {
     atc_hdlc_bool state_changed = (ctx->current_state != new_state);
 
     if (state_changed || event == ATC_HDLC_EVENT_INCOMING_CONNECT) {

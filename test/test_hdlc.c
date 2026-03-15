@@ -28,7 +28,7 @@ void test_basic_frame() {
   atc_hdlc_frame_t frame_out = {
       .address = 0xFF, .control = 0x00, .information = payload, .information_len = 4};
 
-  atc_hdlc_output_frame(&ctx, &frame_out);
+  hdlc_transmit_frame(&ctx, &frame_out);
   print_hexdump("Output Buffer", mock_output_buffer, mock_output_len);
 
   // Validate Output Size
@@ -41,7 +41,7 @@ void test_basic_frame() {
   // Loopback: Feed output to input
   int loop_len = mock_output_len;
   for (int i = 0; i < loop_len; i++) {
-    atc_hdlc_input_byte(&ctx, mock_output_buffer[i]);
+    atc_hdlc_data_in(&ctx, mock_output_buffer[i]);
   }
 
   // Verify Reception
@@ -70,11 +70,11 @@ void test_empty_information() {
   atc_hdlc_frame_t frame_out = {
       .address = 0xFF, .control = 0x00, .information = NULL, .information_len = 0};
 
-  atc_hdlc_output_frame(&ctx, &frame_out);
+  hdlc_transmit_frame(&ctx, &frame_out);
   
   int loop_len = mock_output_len;
   for (int i = 0; i < loop_len; i++) {
-    atc_hdlc_input_byte(&ctx, mock_output_buffer[i]);
+    atc_hdlc_data_in(&ctx, mock_output_buffer[i]);
   }
 
   if (on_data_call_count != 1) {
@@ -111,7 +111,7 @@ void test_byte_stuffing_heavy() {
   atc_hdlc_frame_t frame_out = {
       .address = 0xFF, .control = 0x03, .information = special, .information_len = sizeof(special)};
 
-  atc_hdlc_output_frame(&ctx, &frame_out);
+  hdlc_transmit_frame(&ctx, &frame_out);
   // Verify escaping happened (size should be > raw size)
   // Raw: 7 (Flag) + 1 (Addr) + 1 (Ctrl) + 7 (Data) + 2 (FCS) + 1 (Flag) = 19
   // Escaped: 0x7E -> 7D 5E (2 bytes)
@@ -128,7 +128,7 @@ void test_byte_stuffing_heavy() {
   // Loopback
   int loop_len = mock_output_len;
   for (int i = 0; i < loop_len; i++) {
-    atc_hdlc_input_byte(&ctx, mock_output_buffer[i]);
+    atc_hdlc_data_in(&ctx, mock_output_buffer[i]);
   }
 
   if (on_data_call_count != 1) {
@@ -159,7 +159,7 @@ void test_garbage_noise() {
       .address = 0xFF, .control = 0x03, .information = (atc_hdlc_u8*)"DATA", .information_len = 4};
   
   mock_output_len = 0;
-  atc_hdlc_output_frame(&ctx, &valid_frame);
+  hdlc_transmit_frame(&ctx, &valid_frame);
   
   // Store valid frame bytes
   int valid_len = mock_output_len;
@@ -168,13 +168,13 @@ void test_garbage_noise() {
 
   // 1. Feed Garbage
   atc_hdlc_u8 noise[] = {0x00, 0x01, 0xFF, 0x55, 0xAA, 0x7D}; // No 0x7E
-  for(size_t i=0; i<sizeof(noise); i++) atc_hdlc_input_byte(&ctx, noise[i]);
+  for(size_t i=0; i<sizeof(noise); i++) atc_hdlc_data_in(&ctx, noise[i]);
   
   // 2. Feed Valid Frame
-  for(int i=0; i<valid_len; i++) atc_hdlc_input_byte(&ctx, valid_bytes[i]);
+  for(int i=0; i<valid_len; i++) atc_hdlc_data_in(&ctx, valid_bytes[i]);
   
   // 3. Feed More Garbage
-  for(size_t i=0; i<sizeof(noise); i++) atc_hdlc_input_byte(&ctx, noise[i]);
+  for(size_t i=0; i<sizeof(noise); i++) atc_hdlc_data_in(&ctx, noise[i]);
 
   if (on_data_call_count != 1) {
       test_fail("Garbage Noise", "Valid frame not extracted from noise");
@@ -196,20 +196,20 @@ void test_consecutive_flags() {
 
   mock_output_len = 0;
   atc_hdlc_frame_t f = {.address=0xFF, .control=0x03, .information=NULL, .information_len=0};
-  atc_hdlc_output_frame(&ctx, &f);
+  hdlc_transmit_frame(&ctx, &f);
   
   int frame_len = mock_output_len;
   atc_hdlc_u8 frame_bytes[256];
   memcpy(frame_bytes, mock_output_buffer, frame_len);
 
   // Input: 7E 7E 7E [Frame] 7E 7E [Frame] 7E
-  atc_hdlc_input_byte(&ctx, 0x7E);
-  atc_hdlc_input_byte(&ctx, 0x7E);
-  for(int i=0; i<frame_len; i++) atc_hdlc_input_byte(&ctx, frame_bytes[i]);
-  atc_hdlc_input_byte(&ctx, 0x7E);
-  atc_hdlc_input_byte(&ctx, 0x7E);
-  for(int i=0; i<frame_len; i++) atc_hdlc_input_byte(&ctx, frame_bytes[i]);
-  atc_hdlc_input_byte(&ctx, 0x7E);
+  atc_hdlc_data_in(&ctx, 0x7E);
+  atc_hdlc_data_in(&ctx, 0x7E);
+  for(int i=0; i<frame_len; i++) atc_hdlc_data_in(&ctx, frame_bytes[i]);
+  atc_hdlc_data_in(&ctx, 0x7E);
+  atc_hdlc_data_in(&ctx, 0x7E);
+  for(int i=0; i<frame_len; i++) atc_hdlc_data_in(&ctx, frame_bytes[i]);
+  atc_hdlc_data_in(&ctx, 0x7E);
 
   if (on_data_call_count != 2) {
       char msg[64];
@@ -232,9 +232,9 @@ void test_min_size_rejection() {
 
   // Min size is usually ~4 bytes (Addr+Ctrl+FCS). 
   // Send 0x7E 0xFF 0x7E (Too short)
-  atc_hdlc_input_byte(&ctx, 0x7E);
-  atc_hdlc_input_byte(&ctx, 0xFF); // Just address
-  atc_hdlc_input_byte(&ctx, 0x7E);
+  atc_hdlc_data_in(&ctx, 0x7E);
+  atc_hdlc_data_in(&ctx, 0xFF); // Just address
+  atc_hdlc_data_in(&ctx, 0x7E);
   
   if (on_data_call_count != 0) {
       test_fail("Min Size", "Short frame accepted");
@@ -257,15 +257,15 @@ void test_aborted_frame() {
   setup_test_context(&ctx);
 
   // Send start of frame: 7E Addr Ctrl Data...
-  atc_hdlc_input_byte(&ctx, 0x7E);
-  atc_hdlc_input_byte(&ctx, 0xFF);
-  atc_hdlc_input_byte(&ctx, 0x00);
-  atc_hdlc_input_byte(&ctx, 'A');
-  atc_hdlc_input_byte(&ctx, 'B');
+  atc_hdlc_data_in(&ctx, 0x7E);
+  atc_hdlc_data_in(&ctx, 0xFF);
+  atc_hdlc_data_in(&ctx, 0x00);
+  atc_hdlc_data_in(&ctx, 'A');
+  atc_hdlc_data_in(&ctx, 'B');
   
   // Then unexpected Flag (Terminates previous, starts new or empty)
   // The previous frame 'AB' is incomplete (no FCS). Should be discarded.
-  atc_hdlc_input_byte(&ctx, 0x7E);
+  atc_hdlc_data_in(&ctx, 0x7E);
   
   if (on_data_call_count != 0) {
       test_fail("Aborted Frame", "Incomplete frame reported as valid");
@@ -287,7 +287,7 @@ void test_crc_error_injection() {
 
   // Generate valid frame
   atc_hdlc_frame_t f = {.address=0xFF, .control=0x00, .information=(atc_hdlc_u8*)"123", .information_len=3};
-  atc_hdlc_output_frame(&ctx, &f);
+  hdlc_transmit_frame(&ctx, &f);
   
   // Corrupt it: Flip bit in data
   // 7E Addr Ctrl [Data] FCS FCS 7E
@@ -298,7 +298,7 @@ void test_crc_error_injection() {
   
   // Feed back
   int loop_len = mock_output_len;
-  for(int i=0; i<loop_len; i++) atc_hdlc_input_byte(&ctx, mock_output_buffer[i]);
+  for(int i=0; i<loop_len; i++) atc_hdlc_data_in(&ctx, mock_output_buffer[i]);
   
   if (on_data_call_count != 0) {
       test_fail("CRC Error", "Corrupted frame accepted");
@@ -331,16 +331,16 @@ void test_input_buffer_overflow() {
       .t1_ms = 1000, .t2_ms = 10, .t3_ms = 30000, .use_extended = false,
   };
   static const atc_hdlc_platform_t small_plat = {
-      .send = mock_send_cb, .on_data = mock_on_data_cb,
+      .on_send = mock_send_cb, .on_data = mock_on_data_cb,
       .on_event = NULL, .user_ctx = NULL,
   };
   atc_hdlc_rx_buffer_t small_rx = { .buffer = small_rx_buf, .capacity = sizeof(small_rx_buf) };
   atc_hdlc_init(&small_ctx, &small_cfg, &small_plat, NULL, &small_rx);
   
   // Feed 20 bytes (Start + 20 bytes + End)
-  atc_hdlc_input_byte(&small_ctx, 0x7E);
-  for(int i=0; i<20; i++) atc_hdlc_input_byte(&small_ctx, 0xAA);
-  atc_hdlc_input_byte(&small_ctx, 0x7E);
+  atc_hdlc_data_in(&small_ctx, 0x7E);
+  for(int i=0; i<20; i++) atc_hdlc_data_in(&small_ctx, 0xAA);
+  atc_hdlc_data_in(&small_ctx, 0x7E);
   
   // Should NOT callback (overflowed)
   if (on_data_call_count != 0) {
@@ -366,16 +366,16 @@ void test_streaming_large_payload(void) {
         int size = sizes[s];
         printf("   Testing payload size: %d bytes... ", size);
         
-        atc_hdlc_output_frame_start(&ctx, 0xFF, 0x03);
+        atc_hdlc_transmit_start(&ctx, 0xFF, 0x03);
         for (int i = 0; i < size; i++) {
-            atc_hdlc_output_frame_information_byte(&ctx, (atc_hdlc_u8)(i & 0xFF));
+            atc_hdlc_transmit_data_byte(&ctx, (atc_hdlc_u8)(i & 0xFF));
         }
-        atc_hdlc_output_frame_end(&ctx);
+        atc_hdlc_transmit_end(&ctx);
 
         // Feed back
         int loop_len = mock_output_len;
         for (int i = 0; i < loop_len; i++) {
-            atc_hdlc_input_byte(&ctx, mock_output_buffer[i]);
+            atc_hdlc_data_in(&ctx, mock_output_buffer[i]);
         }
 
         if (on_data_call_count != 1) {
@@ -418,10 +418,10 @@ void test_control_field_i(void) {
    */
 
   // Construct I-Frame: N(S)=3, N(R)=5, P=1.
-  atc_hdlc_frame_t f = {.address=0xFF, .control=atc_hdlc_create_i_ctrl(3, 5, 1), .information=NULL, .information_len=0};
+  atc_hdlc_frame_t f = {.address=0xFF, .control=hdlc_create_i_ctrl(3, 5, 1), .information=NULL, .information_len=0};
   
   mock_output_len = 0;
-  atc_hdlc_output_frame(&ctx, &f);
+  hdlc_transmit_frame(&ctx, &f);
   
   atc_hdlc_frame_t parsed_frame;
   atc_hdlc_u8 info_buf[256];
@@ -447,9 +447,9 @@ void test_control_field_s(void) {
   setup_test_context(&ctx);
 
   // Construct S-Frame: REJ (S=10 -> 2), N(R)=7, P/F=0
-  atc_hdlc_frame_t f = {.address=0xFF, .control=atc_hdlc_create_s_ctrl(0x02, 7, 0), .information=NULL, .information_len=0};
+  atc_hdlc_frame_t f = {.address=0xFF, .control=hdlc_create_s_ctrl(0x02, 7, 0), .information=NULL, .information_len=0};
   
-  atc_hdlc_output_frame(&ctx, &f);
+  hdlc_transmit_frame(&ctx, &f);
   
   atc_hdlc_frame_t parsed_frame;
   atc_hdlc_u8 info_buf[256];
@@ -477,7 +477,7 @@ void test_ui_frame_transmission(void) {
     ctx.peer_address = 0x02; /* peer address set directly for test */
 
     const char *payload = "HELLO";
-    atc_hdlc_error_t res = atc_hdlc_output_frame_ui(&ctx, ATC_HDLC_BROADCAST_ADDRESS, (const atc_hdlc_u8*)payload, 5);
+    atc_hdlc_error_t res = atc_hdlc_transmit_ui(&ctx, ATC_HDLC_BROADCAST_ADDRESS, (const atc_hdlc_u8*)payload, 5);
     
     if (res == ATC_HDLC_OK && mock_output_len >= 11) {
          // Check Control Field for UI (0x03 or 0x13)
@@ -502,13 +502,13 @@ void test_ui_frame_reception(void) {
 
     // Construct a valid UI frame addressed to ME (0x01)
     // Addr=0x01, Ctrl=0x03 (UI, P=0), Data="WORLD"
-    atc_hdlc_output_frame_start(&ctx, 0x01, 0x03); 
-    atc_hdlc_output_frame_information_bytes(&ctx, (atc_hdlc_u8*)"WORLD", 5);
-    atc_hdlc_output_frame_end(&ctx);
+    atc_hdlc_transmit_start(&ctx, 0x01, 0x03); 
+    atc_hdlc_transmit_data_bytes(&ctx, (atc_hdlc_u8*)"WORLD", 5);
+    atc_hdlc_transmit_end(&ctx);
     
     // Now Feed it back
     for (int i = 0, limit = mock_output_len; i < limit; i++) {
-        atc_hdlc_input_byte(&ctx, mock_output_buffer[i]);
+        atc_hdlc_data_in(&ctx, mock_output_buffer[i]);
     }
     
     /* UI frame: payload should be delivered via on_data */
@@ -531,7 +531,7 @@ void test_test_frame(void) {
 
     // --- 1. Send TEST command ---
     atc_hdlc_u8 test_data[] = "LOOPBACK";
-    atc_hdlc_output_frame_test(&ctx, ctx.peer_address, test_data, 8);
+    atc_hdlc_transmit_test(&ctx, ctx.peer_address, test_data, 8);
 
     if (mock_output_len == 0) test_fail("TEST Send", "No output produced");
 
@@ -546,7 +546,7 @@ void test_test_frame(void) {
     // Create TEST command addressed to ME
     atc_hdlc_frame_t test_cmd = {
         .address = 0x01,
-        .control = atc_hdlc_create_u_ctrl(0, 7, 1), // TEST P=1
+        .control = hdlc_create_u_ctrl(0, 7, 1), // TEST P=1
         .information = (atc_hdlc_u8*)"PING",
         .information_len = 4,
         .type = ATC_HDLC_FRAME_U
@@ -558,7 +558,7 @@ void test_test_frame(void) {
     atc_hdlc_frame_pack(&test_cmd, packed, sizeof(packed), &packed_len);
     
     // Feed to input
-    atc_hdlc_input_bytes(&ctx, packed, packed_len);
+    atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
     
     // Verify:
     // 1. App callback? Usually TEST is processed internally and echoed.

@@ -69,7 +69,7 @@ void setup_context(void) {
         .t3_ms = 30000, .use_extended = false,
     };
     static const atc_hdlc_platform_t plat = {
-        .send     = mock_send_cb,
+        .on_send = mock_send_cb,
         .on_data  = mock_on_data_cb,
         .on_event = on_state_change,
         .user_ctx = NULL,
@@ -165,7 +165,7 @@ void test_connect_complete_on_ua(void) {
     atc_hdlc_frame_pack(&ua_frame, packed, sizeof(packed), &packed_len);
 
     // Feed bytes
-    atc_hdlc_input_bytes(&ctx, packed, packed_len);
+    atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
 
     // Verify State Change
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
@@ -217,7 +217,7 @@ void test_disconnect_flow(void) {
     uint8_t packed[32];
     uint32_t packed_len = 0;
     atc_hdlc_frame_pack(&ua_frame, packed, sizeof(packed), &packed_len);
-    atc_hdlc_input_bytes(&ctx, packed, packed_len);
+    atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
 
     // Check State
     if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED)
@@ -243,7 +243,7 @@ void test_passive_open(void) {
     uint32_t packed_len = 0;
     atc_hdlc_frame_pack(&sabm_frame, packed, sizeof(packed), &packed_len);
     
-    atc_hdlc_input_bytes(&ctx, packed, packed_len);
+    atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
 
     // 1. Should be CONNECTED
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
@@ -278,7 +278,7 @@ void test_frmr_reception(void) {
 
     atc_hdlc_frame_t frmr_frame;
     frmr_frame.address = 0x02; // From Peer
-    frmr_frame.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_FRMR, HDLC_U_MODIFIER_HI_FRMR, 0); // F=0
+    frmr_frame.control = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_FRMR, HDLC_U_MODIFIER_HI_FRMR, 0); // F=0
     frmr_frame.information = frmr_payload;
     frmr_frame.information_len = sizeof(frmr_payload);
     frmr_frame.type = ATC_HDLC_FRAME_U;
@@ -288,7 +288,7 @@ void test_frmr_reception(void) {
     atc_hdlc_frame_pack(&frmr_frame, packed, sizeof(packed), &packed_len);
 
     // Feed bytes
-    atc_hdlc_input_bytes(&ctx, packed, packed_len);
+    atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
 
     // Verify State Change -> DISCONNECTED
     if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED)
@@ -309,7 +309,7 @@ void test_mode_rejection(void) {
     
     atc_hdlc_frame_t params_frame;
     params_frame.address = 0x01; // To Me
-    params_frame.control = atc_hdlc_create_u_ctrl(0, 4, 1); // SNRM, P=1, Hi=4, Lo=0
+    params_frame.control = hdlc_create_u_ctrl(0, 4, 1); // SNRM, P=1, Hi=4, Lo=0
     params_frame.information = NULL;
     params_frame.information_len = 0;
     params_frame.type = ATC_HDLC_FRAME_U;
@@ -322,7 +322,7 @@ void test_mode_rejection(void) {
     mock_output_len = 0;
 
     // Feed bytes
-    atc_hdlc_input_bytes(&ctx, packed, packed_len);
+    atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
     
     // Inspect captured bytes dump using helper
     print_hexdump("Captured TX", mock_output_buffer, mock_output_len);
@@ -352,7 +352,7 @@ void test_extended_mode_rejection(void) {
     {
         atc_hdlc_frame_t frame_in;
         frame_in.address = 0x01;
-        frame_in.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SABME, HDLC_U_MODIFIER_HI_SABME, 1);
+        frame_in.control = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SABME, HDLC_U_MODIFIER_HI_SABME, 1);
         frame_in.information = NULL;
         frame_in.information_len = 0;
         frame_in.type = ATC_HDLC_FRAME_U;
@@ -362,7 +362,7 @@ void test_extended_mode_rejection(void) {
         atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
 
         mock_output_len = 0;
-        atc_hdlc_input_bytes(&ctx, packed, packed_len);
+        atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
 
         atc_hdlc_frame_t frame_out;
         uint8_t flat[32];
@@ -376,7 +376,7 @@ void test_extended_mode_rejection(void) {
     {
         atc_hdlc_frame_t frame_in;
         frame_in.address = 0x01;
-        frame_in.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SNRME, HDLC_U_MODIFIER_HI_SNRME, 1);
+        frame_in.control = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SNRME, HDLC_U_MODIFIER_HI_SNRME, 1);
         frame_in.information = NULL;
         frame_in.information_len = 0;
         frame_in.type = ATC_HDLC_FRAME_U;
@@ -386,7 +386,7 @@ void test_extended_mode_rejection(void) {
         atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
 
         mock_output_len = 0;
-        atc_hdlc_input_bytes(&ctx, packed, packed_len);
+        atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
 
         atc_hdlc_frame_t frame_out;
         uint8_t flat[32];
@@ -400,7 +400,7 @@ void test_extended_mode_rejection(void) {
     {
         atc_hdlc_frame_t frame_in;
         frame_in.address = 0x01;
-        frame_in.control = atc_hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SARME, HDLC_U_MODIFIER_HI_SARME, 1);
+        frame_in.control = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SARME, HDLC_U_MODIFIER_HI_SARME, 1);
         frame_in.information = NULL;
         frame_in.information_len = 0;
         frame_in.type = ATC_HDLC_FRAME_U;
@@ -410,7 +410,7 @@ void test_extended_mode_rejection(void) {
         atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
 
         mock_output_len = 0;
-        atc_hdlc_input_bytes(&ctx, packed, packed_len);
+        atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
 
         atc_hdlc_frame_t frame_out;
         uint8_t flat[32];
@@ -451,7 +451,7 @@ void test_contention_resolution_winner(void) {
     uint32_t packed_len = 0;
     atc_hdlc_frame_pack(&sabm_frame, packed, sizeof(packed), &packed_len);
     
-    atc_hdlc_input_bytes(&ctx, packed, packed_len);
+    atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
     
     // We are higher address (2 > 1), so we WIN.
     // Winner behaviour: Immediately reply with UA, and transition to CONNECTED.
@@ -493,7 +493,7 @@ void test_contention_resolution_loser(void) {
     uint32_t packed_len = 0;
     atc_hdlc_frame_pack(&sabm_frame, packed, sizeof(packed), &packed_len);
     
-    atc_hdlc_input_bytes(&ctx, packed, packed_len);
+    atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
     
     // We are lower address (1 < 2), so we LOSE.
     // Loser behaviour: Do NOT send UA. Set contention timer. State remains CONNECTING.

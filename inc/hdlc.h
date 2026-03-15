@@ -24,9 +24,14 @@
  * Single include for all application-facing functionality:
  *   - Station lifecycle (init, tick, connect, disconnect, reset)
  *   - Data transfer (I-frame, UI, TEST)
- *   - Streaming frame output (start / data / end)
+ *   - Streaming frame transmit (start / data / end)
  *   - Stateless frame serialisation (pack / unpack)
  *   - Status queries
+ *
+ * Naming convention:
+ *   - atc_hdlc_data_in*      : Feed received bytes into the RX parser.
+ *   - atc_hdlc_transmit_*    : Build and send frames to the peer.
+ *   - atc_hdlc_transmit_start/data/end : Streaming TX (zero-copy path).
  */
 
 #ifndef ATC_HDLC_H
@@ -55,7 +60,7 @@ extern "C" {
  * @param config    Protocol configuration. Must remain valid for the lifetime
  *                  of @p ctx.
  * @param platform  Platform integration callbacks. Must remain valid for the
- *                  lifetime of @p ctx. @c send is mandatory; @c on_data and
+ *                  lifetime of @p ctx. @c on_send is mandatory; @c on_data and
  *                  @c on_event are optional (may be NULL).
  * @param tx_window TX retransmit window descriptor (may be NULL to disable
  *                  reliable I-frame transmission).
@@ -166,7 +171,7 @@ atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_context_t *ctx,
 
 /*
  * --------------------------------------------------------------------------
- * DATA TRANSFER
+ * DATA TRANSFER (TX PATH)
  * --------------------------------------------------------------------------
  */
 
@@ -187,9 +192,9 @@ atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_context_t *ctx,
  * @return @ref ATC_HDLC_ERR_FRAME_TOO_LARGE if @p len > @c max_frame_size.
  * @return @ref ATC_HDLC_ERR_NO_BUFFER if no TX window was provided at init.
  */
-atc_hdlc_error_t atc_hdlc_output_frame_i(atc_hdlc_context_t *ctx,
-                                           const atc_hdlc_u8  *data,
-                                           atc_hdlc_u32        len);
+atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t *ctx,
+                                       const atc_hdlc_u8  *data,
+                                       atc_hdlc_u32        len);
 
 /**
  * @brief Transmit an Unnumbered Information (UI) frame.
@@ -204,10 +209,10 @@ atc_hdlc_error_t atc_hdlc_output_frame_i(atc_hdlc_context_t *ctx,
  * @return @ref ATC_HDLC_OK on success.
  * @return @ref ATC_HDLC_ERR_FRAME_TOO_LARGE if @p len > @c max_frame_size.
  */
-atc_hdlc_error_t atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx,
-                                            atc_hdlc_u8         address,
-                                            const atc_hdlc_u8  *data,
-                                            atc_hdlc_u32        len);
+atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_context_t *ctx,
+                                        atc_hdlc_u8         address,
+                                        const atc_hdlc_u8  *data,
+                                        atc_hdlc_u32        len);
 
 /**
  * @brief Transmit a TEST frame and wait for the echo response.
@@ -225,14 +230,14 @@ atc_hdlc_error_t atc_hdlc_output_frame_ui(atc_hdlc_context_t *ctx,
  * @return @ref ATC_HDLC_ERR_TEST_PENDING if a TEST is already in flight.
  * @return @ref ATC_HDLC_ERR_FRAME_TOO_LARGE if @p len > @c max_frame_size.
  */
-atc_hdlc_error_t atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx,
-                                              atc_hdlc_u8         address,
-                                              const atc_hdlc_u8  *data,
-                                              atc_hdlc_u32        len);
+atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_context_t *ctx,
+                                          atc_hdlc_u8         address,
+                                          const atc_hdlc_u8  *data,
+                                          atc_hdlc_u32        len);
 
 /*
  * --------------------------------------------------------------------------
- * INPUT (RECEIVE PATH)
+ * RX PATH — Feed received bytes into the parser
  * --------------------------------------------------------------------------
  */
 
@@ -249,30 +254,30 @@ atc_hdlc_error_t atc_hdlc_output_frame_test(atc_hdlc_context_t *ctx,
  * @param ctx  Initialised station context.
  * @param byte Raw octet from the physical medium.
  */
-void atc_hdlc_input_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte);
+void atc_hdlc_data_in(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte);
 
 /**
  * @brief Feed multiple received octets into the RX parser.
  *
- * Convenience wrapper around @ref atc_hdlc_input_byte.
+ * Convenience wrapper around @ref atc_hdlc_data_in.
  *
  * @param ctx  Initialised station context.
  * @param data Pointer to the octet array.
  * @param len  Number of octets.
  */
-void atc_hdlc_input_bytes(atc_hdlc_context_t *ctx,
-                           const atc_hdlc_u8  *data,
-                           atc_hdlc_u32        len);
+void atc_hdlc_data_in_bytes(atc_hdlc_context_t *ctx,
+                              const atc_hdlc_u8  *data,
+                              atc_hdlc_u32        len);
 
 /*
  * --------------------------------------------------------------------------
- * STREAMING FRAME OUTPUT (FRAME LAYER — STATELESS)
+ * STREAMING FRAME TRANSMIT (FRAME LAYER — STATELESS)
  * --------------------------------------------------------------------------
  * Use this sequence for memory-constrained devices where constructing a
  * complete atc_hdlc_frame_t in RAM is not feasible:
- *   atc_hdlc_output_frame_start()
- *   atc_hdlc_output_frame_information_byte() / _bytes()  [zero or more]
- *   atc_hdlc_output_frame_end()
+ *   atc_hdlc_transmit_start()
+ *   atc_hdlc_transmit_data_byte() / atc_hdlc_transmit_data_bytes()  [zero or more]
+ *   atc_hdlc_transmit_end()
  */
 
 /**
@@ -285,39 +290,39 @@ void atc_hdlc_input_bytes(atc_hdlc_context_t *ctx,
  * @param address Address octet.
  * @param control Control octet.
  */
-void atc_hdlc_output_frame_start(atc_hdlc_context_t *ctx,
-                                  atc_hdlc_u8 address,
-                                  atc_hdlc_u8 control);
+void atc_hdlc_transmit_start(atc_hdlc_context_t *ctx,
+                               atc_hdlc_u8 address,
+                               atc_hdlc_u8 control);
 
 /** @brief Convenience starter for a UI frame (address + control pre-set). */
-void atc_hdlc_output_frame_start_ui(atc_hdlc_context_t *ctx,
-                                     atc_hdlc_u8 address);
+void atc_hdlc_transmit_start_ui(atc_hdlc_context_t *ctx,
+                                  atc_hdlc_u8 address);
 
 /** @brief Convenience starter for a TEST frame (address + control pre-set). */
-void atc_hdlc_output_frame_start_test(atc_hdlc_context_t *ctx,
-                                       atc_hdlc_u8 address);
+void atc_hdlc_transmit_start_test(atc_hdlc_context_t *ctx,
+                                    atc_hdlc_u8 address);
 
 /**
- * @brief Append a single information octet to the frame being streamed.
+ * @brief Append a single data octet to the frame being streamed.
  *
  * Updates the FCS and applies byte stuffing if necessary.
  *
- * @param ctx              Initialised station context.
- * @param information_byte Octet to append.
+ * @param ctx  Initialised station context.
+ * @param byte Octet to append.
  */
-void atc_hdlc_output_frame_information_byte(atc_hdlc_context_t *ctx,
-                                             atc_hdlc_u8 information_byte);
+void atc_hdlc_transmit_data_byte(atc_hdlc_context_t *ctx,
+                                   atc_hdlc_u8 byte);
 
 /**
- * @brief Append an array of information octets to the frame being streamed.
+ * @brief Append an array of data octets to the frame being streamed.
  *
- * @param ctx               Initialised station context.
- * @param information_bytes Pointer to the octet array.
- * @param len               Number of octets.
+ * @param ctx  Initialised station context.
+ * @param data Pointer to the octet array.
+ * @param len  Number of octets.
  */
-void atc_hdlc_output_frame_information_bytes(atc_hdlc_context_t *ctx,
-                                              const atc_hdlc_u8  *information_bytes,
-                                              atc_hdlc_u32        len);
+void atc_hdlc_transmit_data_bytes(atc_hdlc_context_t *ctx,
+                                    const atc_hdlc_u8  *data,
+                                    atc_hdlc_u32        len);
 
 /**
  * @brief Finalise the streamed frame — emit FCS and closing flag.
@@ -327,7 +332,7 @@ void atc_hdlc_output_frame_information_bytes(atc_hdlc_context_t *ctx,
  *
  * @param ctx Initialised station context.
  */
-void atc_hdlc_output_frame_end(atc_hdlc_context_t *ctx);
+void atc_hdlc_transmit_end(atc_hdlc_context_t *ctx);
 
 /*
  * --------------------------------------------------------------------------
@@ -436,7 +441,7 @@ atc_hdlc_bool atc_hdlc_has_pending_ack(const atc_hdlc_context_t *ctx);
  * @brief Copy the current statistics snapshot.
  *
  * Thread-safe only when called from the same execution context as
- * @ref atc_hdlc_tick and @ref atc_hdlc_input_byte.
+ * @ref atc_hdlc_tick and @ref atc_hdlc_data_in.
  *
  * @param ctx Initialised station context.
  * @param out Destination for the statistics snapshot.

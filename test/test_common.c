@@ -65,7 +65,7 @@ void mock_on_data_cb(const atc_hdlc_u8 *payload, atc_hdlc_u16 len, void *user_ct
 }
 
 static const atc_hdlc_platform_t s_default_platform = {
-    .send     = mock_send_cb,
+    .on_send = mock_send_cb,
     .on_data  = mock_on_data_cb,
     .on_event = NULL,
     .user_ctx = NULL,
