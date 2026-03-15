@@ -32,8 +32,8 @@
  *   - hdlc_frame_handlers.c (I/S/U frame processing)
  */
 
-#include "../inc/hdlc.h"
-#include "hdlc_private.h"
+#include "../../inc/hdlc.h"
+#include "../hdlc_private.h"
 #include <string.h>
 
 /*

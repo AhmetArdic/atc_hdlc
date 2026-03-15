@@ -25,9 +25,9 @@
  * wrappers for UI/TEST/I frames.
  */
 
-#include "../inc/hdlc.h"
-#include "hdlc_crc.h"
-#include "hdlc_private.h"
+#include "../../inc/hdlc.h"
+#include "../frame/hdlc_crc.h"
+#include "../hdlc_private.h"
 #include <string.h>
 
 /*

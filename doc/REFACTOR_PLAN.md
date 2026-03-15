@@ -60,11 +60,11 @@ test/test_connection_management.c → same
 
 ---
 
-## PHASE 0 — Directory Reorganisation 🔄
+## PHASE 0 — Directory Reorganisation ✅
 
 **Goal:** Reflect the two-layer architecture (Frame + Station) in the physical directory structure.
 
-**Status:** `PENDING`
+**Status:** `COMPLETE`
 
 ### New Directory Structure
 
@@ -108,12 +108,12 @@ src/
 | `test/test_connection_management.c` | same | (unchanged) |
 
 ### Tasks
-- [ ] Create `src/frame/` and `src/station/` directories
-- [ ] Move/rename files
-- [ ] Update all `#include` paths listed above
-- [ ] Update `src/CMakeLists.txt` (add subdirectories, update source list)
-- [ ] Verify build: `cmake --build`
-- [ ] Verify all existing tests pass
+- [x] Create `src/frame/` and `src/station/` directories
+- [x] Move/rename files
+- [x] Update all `#include` paths listed above
+- [x] Update `src/CMakeLists.txt` (add subdirectories, update source list)
+- [x] Verify build: `cmake --build` — **PASS** (clean build, 0 errors)
+- [x] Verify all existing tests pass — **3/3 PASS** (HDLC_Unit_Tests, ConnectionManagementTest, ReliableTransmissionTest)
 
 ### Files Changed
 `src/CMakeLists.txt`, all `src/*.c`, `src/hdlc_crc.h`, `src/hdlc_private.h`
@@ -850,7 +850,7 @@ atc_hdlc_u8 *atc_hdlc_swap_rx_buffer(atc_hdlc_context_t *ctx,
 
 | Phase | Description | Status | Build | Tests |
 |-------|-------------|--------|-------|-------|
-| 0 | Directory reorganisation | ⬜ Pending | — | — |
+| 0 | Directory reorganisation | ✅ Complete | PASS | 3/3 PASS |
 | 1 | Core type system | ⬜ Pending | — | — |
 | 2 | Init / reset refactor | ⬜ Pending | — | — |
 | 3 | State machine expansion | ⬜ Pending | — | — |
@@ -870,3 +870,4 @@ atc_hdlc_u8 *atc_hdlc_swap_rx_buffer(atc_hdlc_context_t *ctx,
 | Date | Phase | Change |
 |------|-------|--------|
 | 2026-03-15 | — | Initial plan created |
+| 2026-03-15 | 0 | Directory reorganisation complete: `src/frame/`, `src/station/`, `hdlc.c` → `hdlc_station.c`, all include paths updated, clean build + 3/3 tests pass |

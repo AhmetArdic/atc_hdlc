@@ -25,8 +25,8 @@
  * frames, including connection management commands and sequence number logic.
  */
 
-#include "../inc/hdlc.h"
-#include "hdlc_private.h"
+#include "../../inc/hdlc.h"
+#include "../hdlc_private.h"
 #include <string.h>
 
 /* Forward declarations for static helpers */

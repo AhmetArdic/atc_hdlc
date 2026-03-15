@@ -22,9 +22,9 @@
  * @brief HDLC Frame Serialization (Pack / Unpack).
  */
 
-#include "../inc/hdlc.h"
+#include "../../inc/hdlc.h"
 #include "hdlc_crc.h"
-#include "hdlc_private.h"
+#include "../hdlc_private.h"
 
 /* --- Encoding Helpers --- */
 

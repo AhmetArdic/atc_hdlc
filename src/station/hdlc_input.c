@@ -25,9 +25,9 @@
  * byte un-stuffing, CRC verification, and triggers frame processing.
  */
 
-#include "../inc/hdlc.h"
-#include "hdlc_crc.h"
-#include "hdlc_private.h"
+#include "../../inc/hdlc.h"
+#include "../frame/hdlc_crc.h"
+#include "../hdlc_private.h"
 #include <string.h>
 /**
  * @brief Input a received byte into the HDLC Parser.

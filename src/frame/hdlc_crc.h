@@ -27,7 +27,7 @@
 #ifndef ATC_HDLC_CRC_H
 #define ATC_HDLC_CRC_H
 
-#include "../inc/hdlc_types.h"
+#include "../../inc/hdlc_types.h"
 
  /**
  * @brief FCS initialization value.
