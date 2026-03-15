@@ -44,6 +44,12 @@ typedef struct {
     volatile uint32_t bytes_received;
     volatile uint32_t frames_received;
     volatile bool connected;
+
+    /* Timer simulation timestamps (set by platform callbacks) */
+    volatile double t1_started_at;
+    volatile double t2_started_at;
+    volatile bool   t1_pending;
+    volatile bool   t2_pending;
 } virtual_node_t;
 
 // Callbacks
@@ -78,6 +84,28 @@ static void node_on_data_cb(const atc_hdlc_u8 *payload, atc_hdlc_u16 len, void *
     node->frames_received++;
 }
 
+/* --- Timer platform callbacks --- */
+static void node_t1_start_cb(atc_hdlc_u32 ms, void *user_data) {
+    (void)ms;
+    virtual_node_t *node = (virtual_node_t *)user_data;
+    node->t1_started_at = get_time_s();
+    node->t1_pending    = true;
+}
+static void node_t1_stop_cb(void *user_data) {
+    virtual_node_t *node = (virtual_node_t *)user_data;
+    node->t1_pending = false;
+}
+static void node_t2_start_cb(atc_hdlc_u32 ms, void *user_data) {
+    (void)ms;
+    virtual_node_t *node = (virtual_node_t *)user_data;
+    node->t2_started_at = get_time_s();
+    node->t2_pending    = true;
+}
+static void node_t2_stop_cb(void *user_data) {
+    virtual_node_t *node = (virtual_node_t *)user_data;
+    node->t2_pending = false;
+}
+
 static void node_event_cb(atc_hdlc_event_t event, void *user_data) {
     virtual_node_t *node = (virtual_node_t *)user_data;
     if (event == ATC_HDLC_EVENT_CONNECT_ACCEPTED ||
@@ -94,8 +122,6 @@ void* node_thread_func(void* arg) {
     virtual_node_t *node = (virtual_node_t *)arg;
 
     uint8_t buf[1024];
-    double last_t1 = get_time_s();
-    double last_t2 = get_time_s();
 
     while(node->running) {
         int n = pipe_read(node->rx_pipe, buf, sizeof(buf));
@@ -107,26 +133,28 @@ void* node_thread_func(void* arg) {
 
         double now = get_time_s();
 
-        /* Simulate T1 expiry based on wall-clock time */
-        double elapsed_t1_ms = (now - last_t1) * 1000.0;
-        if (node->ctx.t1_active && elapsed_t1_ms >= (double)node->hdlc_cfg.t1_ms) {
-            last_t1 = now;
-            atc_hdlc_t1_expired(&node->ctx);
+        /* T1: fire if started and duration has elapsed */
+        if (node->t1_pending) {
+            double elapsed_ms = (now - node->t1_started_at) * 1000.0;
+            if (elapsed_ms >= (double)node->hdlc_cfg.t1_ms) {
+                node->t1_pending = false;
+                atc_hdlc_t1_expired(&node->ctx);
+            }
         }
 
-        /* Simulate T2 expiry based on wall-clock time */
-        double elapsed_t2_ms = (now - last_t2) * 1000.0;
-        if (node->ctx.t2_active && elapsed_t2_ms >= (double)node->hdlc_cfg.t2_ms) {
-            last_t2 = now;
-            atc_hdlc_t2_expired(&node->ctx);
-        } else if (!node->ctx.t2_active) {
-            last_t2 = now; /* Reset baseline when T2 not active */
+        /* T2: fire if started and duration has elapsed */
+        if (node->t2_pending) {
+            double elapsed_ms = (now - node->t2_started_at) * 1000.0;
+            if (elapsed_ms >= (double)node->hdlc_cfg.t2_ms) {
+                node->t2_pending = false;
+                atc_hdlc_t2_expired(&node->ctx);
+            }
         }
 
         MUTEX_UNLOCK(&node->ctx_lock);
 
         if (n == 0) {
-            SLEEP_MS(1);
+            YIELD_THREAD();
         }
     }
     return NULL;
@@ -160,10 +188,14 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     node1->hdlc_cfg.t1_ms = 1000; node1->hdlc_cfg.t2_ms = 10;
     node1->hdlc_cfg.t3_ms = 5000; node1->hdlc_cfg.use_extended = false;
 
-    node1->hdlc_plat.on_send = node_output_cb;
-    node1->hdlc_plat.on_data  = node_on_data_cb;
-    node1->hdlc_plat.on_event = node_event_cb;
-    node1->hdlc_plat.user_ctx = node1;
+    node1->hdlc_plat.on_send   = node_output_cb;
+    node1->hdlc_plat.on_data   = node_on_data_cb;
+    node1->hdlc_plat.on_event  = node_event_cb;
+    node1->hdlc_plat.user_ctx  = node1;
+    node1->hdlc_plat.t1_start  = node_t1_start_cb;
+    node1->hdlc_plat.t1_stop   = node_t1_stop_cb;
+    node1->hdlc_plat.t2_start  = node_t2_start_cb;
+    node1->hdlc_plat.t2_stop   = node_t2_stop_cb;
 
     node1->hdlc_tw.slots         = node1->retransmit_slots;
     node1->hdlc_tw.slot_lens     = node1->retransmit_lens;
@@ -184,10 +216,14 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     node2->hdlc_cfg.t1_ms = 1000; node2->hdlc_cfg.t2_ms = 10;
     node2->hdlc_cfg.t3_ms = 5000; node2->hdlc_cfg.use_extended = false;
 
-    node2->hdlc_plat.on_send = node_output_cb;
-    node2->hdlc_plat.on_data  = node_on_data_cb;
-    node2->hdlc_plat.on_event = node_event_cb;
-    node2->hdlc_plat.user_ctx = node2;
+    node2->hdlc_plat.on_send   = node_output_cb;
+    node2->hdlc_plat.on_data   = node_on_data_cb;
+    node2->hdlc_plat.on_event  = node_event_cb;
+    node2->hdlc_plat.user_ctx  = node2;
+    node2->hdlc_plat.t1_start  = node_t1_start_cb;
+    node2->hdlc_plat.t1_stop   = node_t1_stop_cb;
+    node2->hdlc_plat.t2_start  = node_t2_start_cb;
+    node2->hdlc_plat.t2_stop   = node_t2_stop_cb;
 
     node2->hdlc_tw.slots         = node2->retransmit_slots;
     node2->hdlc_tw.slot_lens     = node2->retransmit_lens;
