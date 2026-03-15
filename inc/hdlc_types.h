@@ -149,26 +149,33 @@ typedef struct {
  */
 
 /**
- * @brief Extended HDLC station state machine states.
+ * @brief HDLC station state machine states (ISO/IEC 13239 §6).
  *
- * Full 8-state model covering all transient and error conditions defined in
- * the architectural design document (ISO/IEC 13239, SS 6).
+ * Five primary states reflecting the true connection lifecycle. Transient
+ * conditions that occur *within* CONNECTED (peer busy, local busy,
+ * reject-recovery) are modelled as boolean flags in the context struct
+ * (@ref atc_hdlc_context_t::remote_busy, ::local_busy, ::rej_exception)
+ * rather than separate states, which matches the standard more faithfully.
  *
- * Transition rules:
- * - U-frames drive major state transitions (CONNECTING <-> CONNECTED <-> DISCONNECTED).
- * - S-frames drive sub-state transitions (CONNECTED <-> REMOTE_BUSY <-> REJECT_RECOVERY).
- * - T1/T3 expiry can trigger retries or link failure.
- * - FRMR_ERROR is a lock-down state: only link_reset() or disconnect() are valid.
+ * | State          | Meaning                                                    |
+ * |----------------|------------------------------------------------------------|
+ * | DISCONNECTED   | No logical connection; only SABM/UI/TEST are processed.   |
+ * | CONNECTING     | SABM sent, awaiting UA; T1 running.                       |
+ * | CONNECTED      | Active session; all I/S/U frames processed normally.       |
+ * | FRMR_ERROR     | Irrecoverable protocol error; only reset/disconnect valid. |
+ * | DISCONNECTING  | DISC sent, awaiting UA; T1 running.                       |
+ *
+ * Sub-conditions inside CONNECTED are tracked by context flags:
+ *  - @ref atc_hdlc_context_t::remote_busy  — peer sent RNR, TX suspended.
+ *  - @ref atc_hdlc_context_t::local_busy   — local RNR sent, peer TX throttled.
+ *  - @ref atc_hdlc_context_t::rej_exception — REJ sent, Go-Back-N in progress.
  */
 typedef enum {
-    ATC_HDLC_STATE_DISCONNECTED,    /**< No logical connection; ignores all frames except SABM/UI/TEST. */
-    ATC_HDLC_STATE_CONNECTING,      /**< SABM sent, awaiting UA; T1 running. */
-    ATC_HDLC_STATE_CONNECTED,       /**< Active data transfer; I/S/U frames processed normally. */
-    ATC_HDLC_STATE_REMOTE_BUSY,     /**< Peer sent RNR; outgoing I-frames suspended until RR received. */
-    ATC_HDLC_STATE_LOCAL_BUSY,      /**< Local RX resources exhausted; RNR sent to peer. */
-    ATC_HDLC_STATE_REJECT_RECOVERY, /**< Out-of-sequence I-frame detected; REJ sent, retransmission pending. */
-    ATC_HDLC_STATE_FRMR_ERROR,      /**< Irrecoverable protocol error; only reset or disconnect allowed. */
-    ATC_HDLC_STATE_DISCONNECTING,   /**< DISC sent, awaiting UA; T1 running. */
+    ATC_HDLC_STATE_DISCONNECTED,   /**< No logical connection. */
+    ATC_HDLC_STATE_CONNECTING,     /**< SABM sent, awaiting UA; T1 running. */
+    ATC_HDLC_STATE_CONNECTED,      /**< Active data transfer. */
+    ATC_HDLC_STATE_FRMR_ERROR,     /**< Irrecoverable error; only reset or disconnect allowed. */
+    ATC_HDLC_STATE_DISCONNECTING,  /**< DISC sent, awaiting UA; T1 running. */
 } atc_hdlc_state_t;
 
 /**

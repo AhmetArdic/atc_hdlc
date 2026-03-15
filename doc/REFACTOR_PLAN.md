@@ -253,15 +253,17 @@ typedef struct {
 ### Extended State Enum (replaces existing 4-state enum)
 ```c
 typedef enum {
-    ATC_HDLC_STATE_DISCONNECTED,    /**< No logical connection */
-    ATC_HDLC_STATE_CONNECTING,      /**< SABM sent, waiting for UA */
-    ATC_HDLC_STATE_CONNECTED,       /**< Active data transfer */
-    ATC_HDLC_STATE_REMOTE_BUSY,     /**< Peer sent RNR; outgoing I-frames suspended */
-    ATC_HDLC_STATE_LOCAL_BUSY,      /**< Local RX resources exhausted; RNR sent to peer */
-    ATC_HDLC_STATE_REJECT_RECOVERY, /**< REJ sent; awaiting Go-Back-N retransmission */
-    ATC_HDLC_STATE_FRMR_ERROR,      /**< Irrecoverable protocol error; only reset/disconnect valid */
-    ATC_HDLC_STATE_DISCONNECTING,   /**< DISC sent, waiting for UA */
+    ATC_HDLC_STATE_DISCONNECTED,   /**< No logical connection */
+    ATC_HDLC_STATE_CONNECTING,     /**< SABM sent, waiting for UA; T1 running */
+    ATC_HDLC_STATE_CONNECTED,      /**< Active data transfer */
+    ATC_HDLC_STATE_FRMR_ERROR,     /**< Irrecoverable protocol error; only reset/disconnect valid */
+    ATC_HDLC_STATE_DISCONNECTING,  /**< DISC sent, waiting for UA; T1 running */
 } atc_hdlc_state_t;
+/* Sub-conditions within CONNECTED are context boolean flags:
+ *   remote_busy    — peer sent RNR; TX I-frames suspended
+ *   local_busy     — local RNR sent; peer TX throttled
+ *   rej_exception  — REJ sent; Go-Back-N retransmission in progress
+ */
 ```
 
 ### Extended Event Enum (additive)
@@ -391,9 +393,24 @@ atc_hdlc_error_t atc_hdlc_link_setup(atc_hdlc_context_t *ctx, atc_hdlc_u8 peer_a
 
 ## PHASE 3 — State Machine Expansion ⬜
 
-**Goal:** Expand from 4 to 8 states. Enforce FRMR lock-down. Implement transition guards.
+**Goal:** Implement FRMR lock-down and transition guards. Sub-conditions within
+CONNECTED (remote busy, local busy, reject-recovery) are modelled as boolean
+flags in the context, not as separate states — consistent with ISO/IEC 13239.
 
 **Status:** `PENDING`
+
+### State Model (5 states)
+
+```
+DISCONNECTED → CONNECTING → CONNECTED → DISCONNECTING → DISCONNECTED
+                                ↕ (lock-down)
+                           FRMR_ERROR
+```
+
+Sub-conditions within CONNECTED (tracked by context boolean flags):
+- `remote_busy`   — peer sent RNR; TX I-frames suspended.
+- `local_busy`    — local RNR sent; peer TX throttled.
+- `rej_exception` — REJ sent; Go-Back-N retransmission in progress.
 
 ### State Transition Rules
 
@@ -403,29 +420,29 @@ atc_hdlc_error_t atc_hdlc_link_setup(atc_hdlc_context_t *ctx, atc_hdlc_u8 peer_a
 | CONNECTING | UA received | CONNECTED | Resets V(S)/V(R)/V(A) |
 | CONNECTING | SABM received | CONNECTED | Contention winner; sends UA |
 | CONNECTING | DM received | DISCONNECTED | Peer rejected |
-| CONNECTING | T1 expires | CONNECTING | SABM retry; or DISCONNECTED on N2 |
-| CONNECTED | I-frame OOS | REJECT_RECOVERY | Sends REJ |
-| CONNECTED | RNR received | REMOTE_BUSY | Suspends TX |
-| CONNECTED | `set_local_busy(true)` | LOCAL_BUSY | Sends RNR |
+| CONNECTING | T1 expires ≤ N2 | CONNECTING | SABM retry + T1 restart |
+| CONNECTING | T1 expires > N2 | DISCONNECTED | Link failure event |
+| CONNECTED | RNR received | CONNECTED | Sets `remote_busy` flag |
+| CONNECTED | RR received (after RNR) | CONNECTED | Clears `remote_busy` flag |
+| CONNECTED | `set_local_busy(true)` | CONNECTED | Sets `local_busy`, sends RNR |
+| CONNECTED | `set_local_busy(false)` | CONNECTED | Clears `local_busy`, sends RR |
+| CONNECTED | I-frame OOS | CONNECTED | Sets `rej_exception`, sends REJ |
+| CONNECTED | V(A) advances past REJ | CONNECTED | Clears `rej_exception` |
 | CONNECTED | FRMR received | FRMR_ERROR | Lock-down |
-| CONNECTED | DISC received | DISCONNECTED | Sends UA |
-| CONNECTED | `disconnect()` | DISCONNECTING | Sends DISC(P=1) |
-| REMOTE_BUSY | RR received | CONNECTED | Resumes TX |
-| LOCAL_BUSY | `set_local_busy(false)` | CONNECTED | Sends RR |
-| REJECT_RECOVERY | Go-Back-N complete (V(A) advances) | CONNECTED | Clears REJ exception |
+| CONNECTED | DISC received | DISCONNECTED | Sends UA, resets state |
+| CONNECTED | `disconnect()` | DISCONNECTING | Sends DISC(P=1), starts T1 |
 | FRMR_ERROR | `link_reset()` | CONNECTING | Only valid operation |
 | FRMR_ERROR | `disconnect()` | DISCONNECTING | Only valid operation |
 | FRMR_ERROR | anything else | FRMR_ERROR | Returns `ERR_INVALID_STATE` |
 | DISCONNECTING | UA received | DISCONNECTED | |
-| DISCONNECTING | T1 expires | DISCONNECTING | DISC retry; or DISCONNECTED on N2 |
+| DISCONNECTING | T1 expires ≤ N2 | DISCONNECTING | DISC retry + T1 restart |
+| DISCONNECTING | T1 expires > N2 | DISCONNECTED | Link failure event |
 
 ### Tasks
-- [ ] Replace `atc_hdlc_protocol_state_t` with `atc_hdlc_state_t` throughout codebase
 - [ ] Update `hdlc_set_protocol_state()` to enforce transition guards
 - [ ] `hdlc_process_frmr()`: transition to `STATE_FRMR_ERROR` (was: `DISCONNECTED`)
 - [ ] Add `FRMR_ERROR` guard in all public API entry points
-- [ ] Update `atc_hdlc_is_connected()`: return true for CONNECTED | REMOTE_BUSY | LOCAL_BUSY | REJECT_RECOVERY
-- [ ] I-frame OOS handling: set `REJECT_RECOVERY`; clear on V(A) advance
+- [ ] Update `atc_hdlc_is_connected()`: return true only for `CONNECTED`
 - [ ] Update all references to old state enum values in tests
 
 ### Files Changed
@@ -475,7 +492,7 @@ if DISCONNECTING:
     T1 countdown → if expired: retry DISC or fail
 if T2 active:
     countdown → send standalone RR
-if CONNECTED (or REMOTE/LOCAL/REJECT):
+if CONNECTED (any sub-condition flag):
     T3 countdown → if expired: send RR(P=1), start T1
     if outstanding frames:
         T1 countdown → retry enquiry
@@ -503,21 +520,24 @@ if CONNECTED (or REMOTE/LOCAL/REJECT):
 
 **Status:** `PENDING`
 
-### New Context Fields
+### Context Fields (already added in Phase 1)
 ```c
 atc_hdlc_bool remote_busy; /**< true when peer sent RNR and has not yet sent RR */
 atc_hdlc_bool local_busy;  /**< true when local RX resources are exhausted */
 ```
+Both flags are sub-conditions of CONNECTED; the station state remains
+CONNECTED while either flag is set.
 
 ### New Public API
 ```c
 /**
  * @brief Notify the station of a local busy condition.
  *
- * When @p busy is true, the station transitions to LOCAL_BUSY and responds
- * to incoming I-frames with RNR instead of RR. The payload is still delivered
- * to on_data but flow is throttled at the peer.
- * When @p busy is false, the station sends RR and returns to CONNECTED.
+ * When @p busy is true, the station sets local_busy and responds to incoming
+ * I-frames with RNR instead of RR. The payload is still delivered to on_data
+ * but peer transmission is throttled.
+ * When @p busy is false, local_busy is cleared and RR is sent to resume peer.
+ * The station remains in CONNECTED throughout; only the flag changes.
  *
  * @param ctx  Initialised station context.
  * @param busy true to assert local busy, false to clear it.
@@ -527,8 +547,8 @@ atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_context_t *ctx, atc_hdlc_bool 
 ```
 
 ### Behaviour Changes
-- **S-frame handler — RNR received:** Set `remote_busy = true`, fire `EVENT_REMOTE_BUSY_ON`, transition to `REMOTE_BUSY`
-- **S-frame handler — RR received:** If `remote_busy`, clear it, fire `EVENT_REMOTE_BUSY_OFF`, transition to `CONNECTED`
+- **S-frame handler — RNR received:** Set `remote_busy = true`, fire `EVENT_REMOTE_BUSY_ON` (state stays CONNECTED)
+- **S-frame handler — RR received:** If `remote_busy`, clear it, fire `EVENT_REMOTE_BUSY_OFF` (state stays CONNECTED)
 - **I-frame handler — `local_busy` active:** Send RNR response instead of RR; do NOT deliver payload via `on_data`
 - **`atc_hdlc_output_frame_i()` — `remote_busy` active:** Return `ERR_REMOTE_BUSY` immediately
 - **`atc_hdlc_set_local_busy(false)`:** Send `RR(F=0)` to resume peer
@@ -776,8 +796,8 @@ Fire in `hdlc_process_nr()` when at least one TX slot is freed (V(A) advances fr
 | Function | Allowed states | Error if not |
 |----------|---------------|-------------|
 | `atc_hdlc_link_setup()` | DISCONNECTED | `ERR_INVALID_STATE` |
-| `atc_hdlc_disconnect()` | CONNECTED, REMOTE_BUSY, LOCAL_BUSY, REJECT_RECOVERY, FRMR_ERROR | `ERR_INVALID_STATE` |
-| `atc_hdlc_output_frame_i()` | CONNECTED, REMOTE_BUSY (caught earlier), LOCAL_BUSY, REJECT_RECOVERY | `ERR_INVALID_STATE` |
+| `atc_hdlc_disconnect()` | CONNECTED, FRMR_ERROR | `ERR_INVALID_STATE` |
+| `atc_hdlc_output_frame_i()` | CONNECTED (remote_busy caught by `ERR_REMOTE_BUSY` first) | `ERR_INVALID_STATE` |
 | `atc_hdlc_link_reset()` | any | always allowed |
 
 ### Tasks
