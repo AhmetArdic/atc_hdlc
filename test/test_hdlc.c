@@ -323,7 +323,8 @@ void test_input_buffer_overflow() {
   // We can't easily overflow 16k without looping huge data.
   // Instead, we initialize a context with SMALL buffer locally.
   
-  atc_hdlc_u8 small_rx_buf[10];
+  /* RX buffer must hold: max_frame_size(8) + addr(1)+ctrl(1)+fcs(2) = 12 bytes minimum */
+  atc_hdlc_u8 small_rx_buf[12];
   atc_hdlc_context_t small_ctx;
   static const atc_hdlc_config_t small_cfg = {
       .mode = ATC_HDLC_MODE_ABM, .address = 0x01, .window_size = 1,
@@ -335,7 +336,9 @@ void test_input_buffer_overflow() {
       .on_event = NULL, .user_ctx = NULL,
   };
   atc_hdlc_rx_buffer_t small_rx = { .buffer = small_rx_buf, .capacity = sizeof(small_rx_buf) };
-  atc_hdlc_init(&small_ctx, &small_cfg, &small_plat, NULL, &small_rx);
+  atc_hdlc_error_t init_err = atc_hdlc_init(&small_ctx, &small_cfg, &small_plat, NULL, &small_rx);
+  if (init_err != ATC_HDLC_OK)
+      test_fail("Buffer Overflow", "small_ctx init failed unexpectedly");
   
   // Feed 20 bytes (Start + 20 bytes + End)
   atc_hdlc_data_in(&small_ctx, 0x7E);
@@ -587,6 +590,94 @@ void test_test_frame(void) {
     }
 }
 
+/**
+ * @brief Test: atc_hdlc_get_u_frame_sub_type() — all U-frame modifier combinations.
+ */
+void test_u_frame_sub_type(void) {
+    printf("TEST: U-Frame Sub-Type Decoder\n");
+
+    struct { atc_hdlc_u8 m_lo; atc_hdlc_u8 m_hi; atc_hdlc_u_frame_sub_type_t expected; const char *name; } cases[] = {
+        { HDLC_U_MODIFIER_LO_SABM,  HDLC_U_MODIFIER_HI_SABM,  ATC_HDLC_U_FRAME_TYPE_SABM,  "SABM"  },
+        { HDLC_U_MODIFIER_LO_SNRM,  HDLC_U_MODIFIER_HI_SNRM,  ATC_HDLC_U_FRAME_TYPE_SNRM,  "SNRM"  },
+        { HDLC_U_MODIFIER_LO_SABME, HDLC_U_MODIFIER_HI_SABME, ATC_HDLC_U_FRAME_TYPE_SABME, "SABME" },
+        { HDLC_U_MODIFIER_LO_SNRME, HDLC_U_MODIFIER_HI_SNRME, ATC_HDLC_U_FRAME_TYPE_SNRME, "SNRME" },
+        { HDLC_U_MODIFIER_LO_SARME, HDLC_U_MODIFIER_HI_SARME, ATC_HDLC_U_FRAME_TYPE_SARME, "SARME" },
+        { HDLC_U_MODIFIER_LO_DISC,  HDLC_U_MODIFIER_HI_DISC,  ATC_HDLC_U_FRAME_TYPE_DISC,  "DISC"  },
+        { HDLC_U_MODIFIER_LO_UA,    HDLC_U_MODIFIER_HI_UA,    ATC_HDLC_U_FRAME_TYPE_UA,    "UA"    },
+        { HDLC_U_MODIFIER_LO_DM,    HDLC_U_MODIFIER_HI_DM,    ATC_HDLC_U_FRAME_TYPE_DM,    "DM"    },
+        { HDLC_U_MODIFIER_LO_FRMR,  HDLC_U_MODIFIER_HI_FRMR,  ATC_HDLC_U_FRAME_TYPE_FRMR,  "FRMR"  },
+        { HDLC_U_MODIFIER_LO_UI,    HDLC_U_MODIFIER_HI_UI,    ATC_HDLC_U_FRAME_TYPE_UI,    "UI"    },
+        { HDLC_U_MODIFIER_LO_TEST,  HDLC_U_MODIFIER_HI_TEST,  ATC_HDLC_U_FRAME_TYPE_TEST,  "TEST"  },
+    };
+    int n = (int)(sizeof(cases) / sizeof(cases[0]));
+    for (int i = 0; i < n; i++) {
+        atc_hdlc_u8 ctrl = hdlc_create_u_ctrl(cases[i].m_lo, cases[i].m_hi, 0);
+        atc_hdlc_u_frame_sub_type_t got = atc_hdlc_get_u_frame_sub_type(ctrl);
+        if (got != cases[i].expected) {
+            char msg[64];
+            sprintf(msg, "%s: expected %d got %d", cases[i].name, cases[i].expected, (int)got);
+            test_fail("U-Frame Sub-Type", msg);
+        }
+        printf("   %s -> ctrl=0x%02X sub_type=%d %sOK%s\n",
+               cases[i].name, ctrl, (int)got, COL_GREEN, COL_RESET);
+    }
+    /* Unknown modifier returns UNKNOWN */
+    atc_hdlc_u8 bad_ctrl = 0xFF; /* all bits set, not a valid U-frame encoding */
+    /* Note: 0xFF has type bits = 0x03 (U-frame) but m_lo/m_hi may not match any known type */
+    /* Just verify it doesn't crash */
+    (void)atc_hdlc_get_u_frame_sub_type(bad_ctrl);
+
+    test_pass("U-Frame Sub-Type Decoder");
+}
+
+/**
+ * @brief Test: timer mock callbacks are invoked by the library at correct moments.
+ *        Verifies that T1 starts on link_setup, stops on UA receipt, and that
+ *        T2 starts when an I-frame is received.
+ */
+void test_timer_callbacks(void) {
+    printf("TEST: Timer Platform Callbacks\n");
+
+    atc_hdlc_context_t ctx;
+    setup_test_context(&ctx);
+    ctx.peer_address = 0x02;
+
+    /* T1 should start when link_setup sends SABM */
+    int t1_before = mock_t1_start_count;
+    atc_hdlc_link_setup(&ctx, 0x02);
+    if (mock_t1_start_count != t1_before + 1)
+        test_fail("Timer Callbacks", "T1 not started on link_setup");
+
+    /* Feed UA(F=1) from peer — T1 should stop */
+    int t1_stop_before = mock_t1_stop_count;
+    atc_hdlc_u8 ua_ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_UA, HDLC_U_MODIFIER_HI_UA, 1);
+    atc_hdlc_frame_t ua = { .address = 0x02, .control = ua_ctrl,
+                             .information = NULL, .information_len = 0 };
+    atc_hdlc_u8 ua_raw[32]; atc_hdlc_u32 ua_len = 0;
+    atc_hdlc_frame_pack(&ua, ua_raw, sizeof(ua_raw), &ua_len);
+    reset_test_state(); /* keep context alive */
+    atc_hdlc_data_in_bytes(&ctx, ua_raw, ua_len);
+    if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
+        test_fail("Timer Callbacks", "Not CONNECTED after UA");
+    if (mock_t1_stop_count <= t1_stop_before)
+        test_fail("Timer Callbacks", "T1 not stopped on UA");
+
+    /* Send an I-frame — T2 should start when peer sends one back */
+    atc_hdlc_u8 i_payload[] = {0xAA, 0xBB};
+    atc_hdlc_u8 i_ctrl = hdlc_create_i_ctrl(0, 0, 0);
+    atc_hdlc_frame_t iframe = { .address = 0x01, .control = i_ctrl,
+                                  .information = i_payload, .information_len = 2 };
+    atc_hdlc_u8 i_raw[64]; atc_hdlc_u32 i_len = 0;
+    atc_hdlc_frame_pack(&iframe, i_raw, sizeof(i_raw), &i_len);
+    int t2_before = mock_t2_start_count;
+    reset_test_state();
+    atc_hdlc_data_in_bytes(&ctx, i_raw, i_len);
+    if (mock_t2_start_count <= t2_before)
+        test_fail("Timer Callbacks", "T2 not started on I-frame reception");
+
+    test_pass("Timer Platform Callbacks");
+}
+
 int main(void) {
   printf("\n%sSTARTING HDLC CORE SUITE%s\n", COL_YELLOW, COL_RESET);
   printf("----------------------------------------\n\n");
@@ -606,6 +697,8 @@ int main(void) {
   test_ui_frame_transmission();
   test_ui_frame_reception();
   test_test_frame();
+  test_u_frame_sub_type();
+  test_timer_callbacks();
   
   printf("\n%sALL HDLC CORE TESTS PASSED!%s\n", COL_GREEN, COL_RESET);
   return 0;

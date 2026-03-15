@@ -541,7 +541,196 @@ int main(void) {
     test_extended_mode_rejection();
     test_contention_resolution_winner();
     test_contention_resolution_loser();
-    
+    test_link_reset();
+    test_peer_disconnect();
+    test_event_callbacks();
+    test_t1_timer_callbacks();
+
     printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
     return 0;
+}
+
+/* ================================================================
+ *  New tests — added in Phase 2
+ * ================================================================ */
+
+/**
+ * @brief Test: atc_hdlc_link_reset() resets state and sends SABM.
+ */
+void test_link_reset(void) {
+    printf("TEST: Link Reset\n");
+    atc_hdlc_context_t ctx;
+    setup_test_context(&ctx);
+
+    /* Force CONNECTED state */
+    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+    ctx.vs = 3; ctx.vr = 2; ctx.va = 1;
+    ctx.peer_address = 0x02;
+
+    reset_test_state();
+    atc_hdlc_error_t err = atc_hdlc_link_reset(&ctx);
+    if (err != ATC_HDLC_OK)
+        test_fail("Link Reset", "Return value not OK");
+
+    /* State must be CONNECTING after reset */
+    if (ctx.current_state != ATC_HDLC_STATE_CONNECTING)
+        test_fail("Link Reset", "State not CONNECTING after reset");
+
+    /* Sequence variables must be zeroed */
+    if (ctx.vs != 0 || ctx.vr != 0 || ctx.va != 0)
+        test_fail("Link Reset", "Sequence variables not zeroed");
+
+    /* RESET event must fire */
+    if (last_event != ATC_HDLC_EVENT_RESET)
+        test_fail("Link Reset", "RESET event not fired");
+
+    /* SABM must have been sent */
+    if (mock_output_len < 6)
+        test_fail("Link Reset", "No SABM frame in output");
+
+    /* T1 must be started */
+    if (!ctx.t1_active)
+        test_fail("Link Reset", "T1 not active after link_reset");
+    if (mock_t1_start_count < 1)
+        test_fail("Link Reset", "T1 start callback not invoked");
+
+    test_pass("Link Reset");
+}
+
+/**
+ * @brief Test: receiving DISC from peer while CONNECTED.
+ *        Verifies UA response and PEER_DISCONNECT event.
+ */
+void test_peer_disconnect(void) {
+    printf("TEST: Peer Disconnect (receive DISC)\n");
+    atc_hdlc_context_t ctx;
+    setup_test_context(&ctx);
+    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+    ctx.peer_address  = 0x02;
+
+    /* Build DISC(P=1) addressed to me (0x01) */
+    atc_hdlc_u8 disc_ctrl = hdlc_create_u_ctrl(
+        HDLC_U_MODIFIER_LO_DISC, HDLC_U_MODIFIER_HI_DISC, 1);
+    atc_hdlc_frame_t disc_frame = {
+        .address = 0x01, .control = disc_ctrl,
+        .information = NULL, .information_len = 0 };
+    atc_hdlc_u8 disc_raw[32]; atc_hdlc_u32 disc_len = 0;
+    atc_hdlc_frame_pack(&disc_frame, disc_raw, sizeof(disc_raw), &disc_len);
+
+    reset_test_state();
+    atc_hdlc_data_in_bytes(&ctx, disc_raw, disc_len);
+
+    /* Must transition to DISCONNECTED */
+    if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED)
+        test_fail("Peer Disconnect", "State not DISCONNECTED");
+
+    /* Must fire PEER_DISCONNECT event */
+    if (last_event != ATC_HDLC_EVENT_PEER_DISCONNECT)
+        test_fail("Peer Disconnect", "PEER_DISCONNECT event not fired");
+
+    /* UA(F=1) must have been sent back */
+    if (mock_output_len < 6)
+        test_fail("Peer Disconnect", "No UA response in output");
+
+    /* Verify UA type in response */
+    atc_hdlc_u8 resp_buf[64]; atc_hdlc_u32 resp_len = 0;
+    atc_hdlc_frame_t resp; atc_hdlc_u8 resp_flat[64];
+    memcpy(resp_buf, mock_output_buffer, mock_output_len);
+    if (atc_hdlc_frame_unpack(resp_buf, mock_output_len, &resp, resp_flat, sizeof(resp_flat))) {
+        atc_hdlc_u_frame_sub_type_t sub = atc_hdlc_get_u_frame_sub_type(resp.control);
+        if (sub != ATC_HDLC_U_FRAME_TYPE_UA)
+            test_fail("Peer Disconnect", "Response is not UA");
+    }
+
+    test_pass("Peer Disconnect (receive DISC)");
+}
+
+/**
+ * @brief Test: on_event callback fires with correct event codes.
+ *        Verifies LINK_SETUP_REQUEST, CONNECT_ACCEPTED, DISCONNECT_REQUEST,
+ *        DISCONNECT_COMPLETE sequences.
+ */
+void test_event_callbacks(void) {
+    printf("TEST: Event Callback Sequence\n");
+    atc_hdlc_context_t ctx;
+    setup_test_context(&ctx);
+    ctx.peer_address = 0x02;
+
+    /* link_setup → LINK_SETUP_REQUEST */
+    reset_test_state();
+    atc_hdlc_link_setup(&ctx, 0x02);
+    if (last_event != ATC_HDLC_EVENT_LINK_SETUP_REQUEST)
+        test_fail("Event Callbacks", "LINK_SETUP_REQUEST not fired");
+    if (on_event_call_count != 1)
+        test_fail("Event Callbacks", "on_event called wrong number of times");
+
+    /* Feed UA → CONNECT_ACCEPTED */
+    atc_hdlc_u8 ua_ctrl = hdlc_create_u_ctrl(
+        HDLC_U_MODIFIER_LO_UA, HDLC_U_MODIFIER_HI_UA, 1);
+    atc_hdlc_frame_t ua = { .address = 0x02, .control = ua_ctrl,
+                             .information = NULL, .information_len = 0 };
+    atc_hdlc_u8 ua_raw[32]; atc_hdlc_u32 ua_len = 0;
+    atc_hdlc_frame_pack(&ua, ua_raw, sizeof(ua_raw), &ua_len);
+    reset_test_state();
+    atc_hdlc_data_in_bytes(&ctx, ua_raw, ua_len);
+    if (last_event != ATC_HDLC_EVENT_CONNECT_ACCEPTED)
+        test_fail("Event Callbacks", "CONNECT_ACCEPTED not fired");
+
+    /* disconnect → DISCONNECT_REQUEST */
+    reset_test_state();
+    atc_hdlc_disconnect(&ctx);
+    if (last_event != ATC_HDLC_EVENT_DISCONNECT_REQUEST)
+        test_fail("Event Callbacks", "DISCONNECT_REQUEST not fired");
+
+    /* Feed UA → DISCONNECT_COMPLETE */
+    reset_test_state();
+    atc_hdlc_data_in_bytes(&ctx, ua_raw, ua_len);
+    if (last_event != ATC_HDLC_EVENT_DISCONNECT_COMPLETE)
+        test_fail("Event Callbacks", "DISCONNECT_COMPLETE not fired");
+
+    test_pass("Event Callback Sequence");
+}
+
+/**
+ * @brief Test: T1 platform callbacks are invoked at protocol-correct moments.
+ *        link_setup → t1_start; UA received → t1_stop; T1 expiry in
+ *        CONNECTING → SABM retransmit + t1_start again.
+ */
+void test_t1_timer_callbacks(void) {
+    printf("TEST: T1 Timer Callbacks\n");
+    atc_hdlc_context_t ctx;
+    setup_test_context(&ctx);
+    ctx.peer_address = 0x02;
+
+    /* link_setup must call t1_start once */
+    reset_test_state();
+    atc_hdlc_link_setup(&ctx, 0x02);
+    if (mock_t1_start_count != 1)
+        test_fail("T1 Callbacks", "T1 not started on link_setup");
+    if (mock_t1_last_ms != ctx.config->t1_ms)
+        test_fail("T1 Callbacks", "T1 started with wrong duration");
+
+    /* T1 expiry in CONNECTING → retry SABM + t1_start again */
+    int t1_start_before = mock_t1_start_count;
+    atc_hdlc_t1_expired(&ctx);
+    if (mock_t1_start_count != t1_start_before + 1)
+        test_fail("T1 Callbacks", "T1 not restarted after expiry in CONNECTING");
+    if (mock_output_len < 6)
+        test_fail("T1 Callbacks", "No SABM retransmitted after T1 expiry");
+
+    /* Feed UA → t1_stop */
+    atc_hdlc_u8 ua_ctrl = hdlc_create_u_ctrl(
+        HDLC_U_MODIFIER_LO_UA, HDLC_U_MODIFIER_HI_UA, 1);
+    atc_hdlc_frame_t ua = { .address = 0x02, .control = ua_ctrl,
+                             .information = NULL, .information_len = 0 };
+    atc_hdlc_u8 ua_raw[32]; atc_hdlc_u32 ua_len = 0;
+    atc_hdlc_frame_pack(&ua, ua_raw, sizeof(ua_raw), &ua_len);
+    reset_test_state();
+    atc_hdlc_data_in_bytes(&ctx, ua_raw, ua_len);
+    if (mock_t1_stop_count < 1)
+        test_fail("T1 Callbacks", "T1 not stopped on UA");
+    if (ctx.t1_active)
+        test_fail("T1 Callbacks", "t1_active still set after UA");
+
+    test_pass("T1 Timer Callbacks");
 }

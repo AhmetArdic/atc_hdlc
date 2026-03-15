@@ -10,6 +10,14 @@ add_executable(test_reliable_transmission test_reliable_transmission.c test_comm
 target_link_libraries(test_reliable_transmission PRIVATE hdlc)
 add_test(NAME ReliableTransmissionTest COMMAND test_reliable_transmission)
 
+add_executable(test_init_validation test_init_validation.c test_common.c)
+target_link_libraries(test_init_validation PRIVATE hdlc)
+add_test(NAME InitValidationTest COMMAND test_init_validation)
+
+add_executable(test_error_codes test_error_codes.c test_common.c)
+target_link_libraries(test_error_codes PRIVATE hdlc)
+add_test(NAME ErrorCodeTest COMMAND test_error_codes)
+
 find_package(Threads REQUIRED)
 add_executable(test_virtual_com test_virtual_com.c test_common.c test_virtual_pipe.c)
 target_link_libraries(test_virtual_com PRIVATE hdlc Threads::Threads)

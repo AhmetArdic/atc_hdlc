@@ -151,8 +151,20 @@ static bool handle_s_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *fram
 
   ATC_HDLC_LOG_DEBUG("rx: S-Frame S=%u, N(R)=%u, P/F=%u", mode, msg_nr, msg_pf);
 
-  if (mode == HDLC_S_RR || mode == HDLC_S_RNR) {
+  if (mode == HDLC_S_RR) {
       hdlc_process_nr(ctx, msg_nr);
+      /* RR clears any remote-busy condition */
+      if (ctx->remote_busy) {
+          ctx->remote_busy = false;
+          ATC_HDLC_LOG_DEBUG("flow: Remote busy cleared by RR");
+      }
+  } else if (mode == HDLC_S_RNR) {
+      hdlc_process_nr(ctx, msg_nr);
+      /* RNR sets remote-busy — outgoing I-frames suspended */
+      if (!ctx->remote_busy) {
+          ctx->remote_busy = true;
+          ATC_HDLC_LOG_DEBUG("flow: Remote busy set by RNR");
+      }
   } else if (mode == HDLC_S_REJ) {
       hdlc_process_nr(ctx, msg_nr);
 
