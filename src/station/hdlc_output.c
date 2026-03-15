@@ -55,7 +55,7 @@ void atc_hdlc_output_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *fram
 
   /* Stats: This path uses frame_pack_core which does NOT call
      atc_hdlc_output_frame_end(), so we increment here. */
-  ctx->stats_output_frames++;
+  ctx->stats.tx_i_frames++;
 }
 
 /**
@@ -137,7 +137,7 @@ void atc_hdlc_output_frame_end(atc_hdlc_context_t *ctx) {
 
   /* Stats: This path is for streaming API (start/data/end).
      atc_hdlc_output_frame() has its own separate increment. */
-  ctx->stats_output_frames++;
+  ctx->stats.tx_i_frames++;
 }
 
 /*

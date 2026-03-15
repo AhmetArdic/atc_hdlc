@@ -123,11 +123,11 @@ None — public API (`inc/`) is untouched.
 
 ---
 
-## PHASE 1 — Core Type System ⬜
+## PHASE 1 — Core Type System ✅
 
 **Goal:** Define all new structural types required by the architecture document. No existing code is changed — only additive.
 
-**Status:** `PENDING`
+**Status:** `COMPLETE`
 
 ### New Types in `inc/hdlc_types.h`
 
@@ -275,16 +275,19 @@ ATC_HDLC_EVENT_TEST_RESULT,     /**< TEST frame round-trip complete (see test_re
 ```
 
 ### Tasks
-- [ ] Add `atc_hdlc_error_t` to `hdlc_types.h`
-- [ ] Add `atc_hdlc_config_t` to `hdlc_types.h`
-- [ ] Add `atc_hdlc_platform_t` + callback typedefs to `hdlc_types.h`
-- [ ] Add `atc_hdlc_tx_window_t` and `atc_hdlc_rx_buffer_t` to `hdlc_types.h`
-- [ ] Add `atc_hdlc_stats_t` to `hdlc_types.h`
-- [ ] Add `atc_hdlc_test_result_t` to `hdlc_types.h`
-- [ ] Replace 4-state enum with 8-state `atc_hdlc_state_t` in `hdlc_types.h`
-- [ ] Extend event enum with new events in `hdlc_types.h`
-- [ ] Update `atc_hdlc_context_t` to reference new structs (config ptr, platform ptr, tx_window ptr, rx_buffer ptr, stats inline, test_result inline)
-- [ ] Verify build: compile only, no functional change yet
+- [x] Add `atc_hdlc_error_t` to `hdlc_types.h`
+- [x] Add `atc_hdlc_config_t` to `hdlc_types.h`
+- [x] Add `atc_hdlc_platform_t` + callback typedefs to `hdlc_types.h`
+- [x] Add `atc_hdlc_tx_window_t` and `atc_hdlc_rx_buffer_t` to `hdlc_types.h`
+- [x] Add `atc_hdlc_stats_t` to `hdlc_types.h`
+- [x] Add `atc_hdlc_test_result_t` to `hdlc_types.h`
+- [x] Replace 4-state enum with 8-state `atc_hdlc_state_t` in `hdlc_types.h`; legacy `atc_hdlc_protocol_state_t` kept as typedef alias + macro shims for backward compat
+- [x] Extend event enum with new events (`RESET`, `REMOTE_BUSY_ON/OFF`, `WINDOW_OPEN`, `TEST_RESULT`)
+- [x] Update `atc_hdlc_context_t` with new pointer fields, `stats`, `test_result`, `remote_busy`, `local_busy`, `test_pending`, `t3_timer`; old flat fields kept (`@deprecated`) until Phase 2
+- [x] Migrate `ctx->stats_*` flat fields → `ctx->stats.*` in all `src/station/*.c`
+- [x] Migrate state enum values in `src/station/*.c`, `src/hdlc_private.h`, affected test files
+- [x] Verify build: **PASS** (0 errors, 0 new warnings)
+- [x] Verify tests: **3/3 PASS**
 
 ### Files Changed
 `inc/hdlc_types.h`
@@ -851,7 +854,7 @@ atc_hdlc_u8 *atc_hdlc_swap_rx_buffer(atc_hdlc_context_t *ctx,
 | Phase | Description | Status | Build | Tests |
 |-------|-------------|--------|-------|-------|
 | 0 | Directory reorganisation | ✅ Complete | PASS | 3/3 PASS |
-| 1 | Core type system | ⬜ Pending | — | — |
+| 1 | Core type system | ✅ Complete | PASS | 3/3 PASS |
 | 2 | Init / reset refactor | ⬜ Pending | — | — |
 | 3 | State machine expansion | ⬜ Pending | — | — |
 | 4 | T3 timer + T1 retry | ⬜ Pending | — | — |
@@ -871,3 +874,4 @@ atc_hdlc_u8 *atc_hdlc_swap_rx_buffer(atc_hdlc_context_t *ctx,
 |------|-------|--------|
 | 2026-03-15 | — | Initial plan created |
 | 2026-03-15 | 0 | Directory reorganisation complete: `src/frame/`, `src/station/`, `hdlc.c` → `hdlc_station.c`, all include paths updated, clean build + 3/3 tests pass |
+| 2026-03-15 | 1 | Core type system complete: `atc_hdlc_error_t`, `atc_hdlc_state_t` (8-state), `atc_hdlc_config_t`, `atc_hdlc_platform_t`, `atc_hdlc_tx_window_t`, `atc_hdlc_rx_buffer_t`, `atc_hdlc_stats_t`, `atc_hdlc_test_result_t` added; context expanded; stats/state migration done; clean build + 3/3 tests pass |

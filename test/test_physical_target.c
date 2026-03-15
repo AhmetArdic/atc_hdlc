@@ -331,13 +331,13 @@ static void node_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data)
 }
 
 /** @brief Connection state change callback. */
-static void node_state_cb(atc_hdlc_protocol_state_t state, atc_hdlc_event_t event, void *user_data)
+static void node_state_cb(atc_hdlc_state_t state, atc_hdlc_event_t event, void *user_data)
 {
     (void)user_data;
     (void)event;
-    if (state == ATC_HDLC_PROTOCOL_STATE_CONNECTED)
+    if (state == ATC_HDLC_STATE_CONNECTED)
         printf("\nLogical connection established!\n");
-    else if (state == ATC_HDLC_PROTOCOL_STATE_DISCONNECTED)
+    else if (state == ATC_HDLC_STATE_DISCONNECTED)
         printf("\n[Error] Logical connection dropped!\n");
 }
 
@@ -426,7 +426,7 @@ static bool wait_for_connection(physical_node_t *node, int timeout_ms)
     mutex_unlock(&node->ctx_lock);
 
     int retries = timeout_ms;
-    while (node->ctx.current_state != ATC_HDLC_PROTOCOL_STATE_CONNECTED && retries > 0) {
+    while (node->ctx.current_state != ATC_HDLC_STATE_CONNECTED && retries > 0) {
         sleep_ms(1);
         if (retries % 1000 == 0) {
             mutex_lock(&node->ctx_lock);
@@ -435,7 +435,7 @@ static bool wait_for_connection(physical_node_t *node, int timeout_ms)
         }
         retries--;
     }
-    return node->ctx.current_state == ATC_HDLC_PROTOCOL_STATE_CONNECTED;
+    return node->ctx.current_state == ATC_HDLC_STATE_CONNECTED;
 }
 
 /** @brief Send the entire payload as I-frames in CHUNK_SIZE pieces. */
@@ -454,7 +454,7 @@ static uint32_t send_data(physical_node_t *node,
         /* Retry until the I-frame is accepted (window open) */
         while (!sent_ok && node->running) {
             mutex_lock(&node->ctx_lock);
-            if (node->ctx.current_state == ATC_HDLC_PROTOCOL_STATE_CONNECTED) {
+            if (node->ctx.current_state == ATC_HDLC_STATE_CONNECTED) {
                 sent_ok = atc_hdlc_output_frame_i(&node->ctx, data + sent, chunk);
             } else {
                 stuck_count++;
@@ -502,7 +502,7 @@ static void wait_for_echoes(physical_node_t *node, uint32_t expected, int timeou
     if (timeout_ms <= 0 && node->bytes_received < expected) {
         printf("\n[Warning] Timeout waiting for final echoes.\n");
         printf("  -> Stats: RX Frames parsed=%u, CRC Errors=%u\n",
-               node->ctx.stats_input_frames, node->ctx.stats_crc_errors);
+               node->ctx.stats.rx_i_frames, node->ctx.stats.fcs_errors);
     }
 }
 

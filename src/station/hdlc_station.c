@@ -121,7 +121,7 @@ atc_hdlc_bool atc_hdlc_link_setup(atc_hdlc_context_t *ctx) {
   ATC_HDLC_LOG_DEBUG("tx: Sending SABM to peer 0x%02X", ctx->peer_address);
   hdlc_send_u_frame(ctx, ctx->peer_address, HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1); // P=1
 
-  hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_CONNECTING, ATC_HDLC_EVENT_LINK_SETUP_REQUEST);
+  hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTING, ATC_HDLC_EVENT_LINK_SETUP_REQUEST);
   return true;
 }
 
@@ -136,7 +136,7 @@ atc_hdlc_bool atc_hdlc_disconnect(atc_hdlc_context_t *ctx) {
   ATC_HDLC_LOG_DEBUG("tx: Sending DISC to peer 0x%02X", ctx->peer_address);
   hdlc_send_u_frame(ctx, ctx->peer_address, HDLC_U_MODIFIER_LO_DISC, HDLC_U_MODIFIER_HI_DISC, 1); // P=1
 
-  hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTING, ATC_HDLC_EVENT_DISCONNECT_REQUEST);
+  hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTING, ATC_HDLC_EVENT_DISCONNECT_REQUEST);
   return true;
 }
 
@@ -145,7 +145,7 @@ atc_hdlc_bool atc_hdlc_disconnect(atc_hdlc_context_t *ctx) {
  * @see hdlc.h
  */
 atc_hdlc_bool atc_hdlc_is_connected(atc_hdlc_context_t *ctx) {
-  return (ctx != NULL && ctx->current_state == ATC_HDLC_PROTOCOL_STATE_CONNECTED);
+  return (ctx != NULL && ctx->current_state == ATC_HDLC_STATE_CONNECTED);
 }
 
 /**
@@ -156,7 +156,7 @@ void atc_hdlc_tick(atc_hdlc_context_t *ctx) {
     if (ctx == NULL) return;
 
     // Contention Timer for SABM collision resolution
-    if (ctx->current_state == ATC_HDLC_PROTOCOL_STATE_CONNECTING) {
+    if (ctx->current_state == ATC_HDLC_STATE_CONNECTING) {
         if (ctx->contention_timer > 0) {
             ctx->contention_timer--;
             if (ctx->contention_timer == 0) {
@@ -187,7 +187,7 @@ void atc_hdlc_tick(atc_hdlc_context_t *ctx) {
                     ATC_HDLC_LOG_DEBUG("tx: State before reset -> V(S)=%u, V(R)=%u, V(A)=%u", ctx->vs, ctx->vr, ctx->va);
                     
                     /* 1. Veri aktarimi durumu durdurulmali */
-                    hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED, ATC_HDLC_EVENT_LINK_FAILURE);
+                    hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_LINK_FAILURE);
                     
                     /* 2. Gonderim, alim degiskenleri ve tamponlar sifirlanmali */
                     hdlc_reset_connection_state(ctx);
@@ -216,7 +216,7 @@ void atc_hdlc_tick(atc_hdlc_context_t *ctx) {
  * @param ctx       HDLC Context.
  * @param new_state New Protocol State to transition to.
  */
-void hdlc_set_protocol_state(atc_hdlc_context_t *ctx, atc_hdlc_protocol_state_t new_state, atc_hdlc_event_t event) {
+void hdlc_set_protocol_state(atc_hdlc_context_t *ctx, atc_hdlc_state_t new_state, atc_hdlc_event_t event) {
   bool state_changed = (ctx->current_state != new_state);
   
   /* Always notify if the state actually changes, OR if the link is being reset 

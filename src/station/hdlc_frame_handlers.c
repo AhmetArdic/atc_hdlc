@@ -65,7 +65,7 @@ void process_complete_frame(atc_hdlc_context_t *ctx) {
     ctx->on_frame_cb(&ctx->input_frame_buffer, ctx->user_data);
   }
 
-  ctx->stats_input_frames++;
+  ctx->stats.rx_i_frames++;
 }
 
 /*
@@ -203,7 +203,7 @@ void hdlc_reset_connection_state(atc_hdlc_context_t *ctx) {
 }
 
 static void hdlc_process_sabm(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    if (ctx->current_state == ATC_HDLC_PROTOCOL_STATE_CONNECTING) {
+    if (ctx->current_state == ATC_HDLC_STATE_CONNECTING) {
         // Contention Resolution: Both sides sent SABM simultaneously.
         // Higher address wins and sends UA. Lower address backs off.
         if (ctx->peer_address > ctx->my_address) {
@@ -217,7 +217,7 @@ static void hdlc_process_sabm(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *f
     }
 
     hdlc_reset_connection_state(ctx);
-    hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_CONNECTED, ATC_HDLC_EVENT_INCOMING_CONNECT);
+    hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_INCOMING_CONNECT);
     hdlc_send_ua(ctx, HDLC_CTRL_PF(frame->control));
 }
 
@@ -242,23 +242,23 @@ static void hdlc_process_sarme(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *
 }
 
 static void hdlc_process_disc(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED, ATC_HDLC_EVENT_PEER_DISCONNECT);
+    hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_PEER_DISCONNECT);
     hdlc_send_ua(ctx, HDLC_CTRL_PF(frame->control));
 }
 
 static void hdlc_process_ua(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
     (void)frame;
-    if (ctx->current_state == ATC_HDLC_PROTOCOL_STATE_CONNECTING) {
+    if (ctx->current_state == ATC_HDLC_STATE_CONNECTING) {
         hdlc_reset_connection_state(ctx);
-        hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_CONNECTED, ATC_HDLC_EVENT_CONNECT_ACCEPTED);
-    } else if (ctx->current_state == ATC_HDLC_PROTOCOL_STATE_DISCONNECTING) {
-        hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED, ATC_HDLC_EVENT_DISCONNECT_COMPLETE);
+        hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_CONNECT_ACCEPTED);
+    } else if (ctx->current_state == ATC_HDLC_STATE_DISCONNECTING) {
+        hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_DISCONNECT_COMPLETE);
     }
 }
 
 static void hdlc_process_dm(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
     (void)frame;
-    hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED, ATC_HDLC_EVENT_PEER_REJECT);
+    hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_PEER_REJECT);
 }
 
 static void hdlc_process_frmr(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
@@ -288,7 +288,7 @@ static void hdlc_process_frmr(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *f
    }
 
    ATC_HDLC_LOG_DEBUG("state: FRMR caused disconnect");
-   hdlc_set_protocol_state(ctx, ATC_HDLC_PROTOCOL_STATE_DISCONNECTED, ATC_HDLC_EVENT_PROTOCOL_ERROR);
+   hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_PROTOCOL_ERROR);
 }
 
 

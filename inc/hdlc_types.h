@@ -19,11 +19,12 @@
  * @file hdlc_types.h
  * @author ahmettardic - Ahmet Talha ARDIC
  * @date 02.02.2026
- * @brief Core Data Types and Structures for the HDLC Library.
+ * @brief Core data types and structures for the HDLC library.
  *
- * This file defines the fundamental data types, enumerations, and structures
- * used throughout the HDLC protocol stack, including Frame structures,
- * Control Field definitions, and the main Context structure.
+ * Defines all fundamental types, enumerations, and structures used
+ * throughout the HDLC protocol stack: primitive types, frame descriptors,
+ * error codes, configuration, platform integration, buffer descriptors,
+ * statistics, and the main station context.
  */
 
 #ifndef ATC_HDLC_TYPES_H
@@ -148,38 +149,123 @@ typedef struct {
  */
 
 /**
- * @brief HDLC Protocol States.
+ * @brief Extended HDLC station state machine states.
  *
- * Defines the connection state of the HDLC station.
+ * Full 8-state model covering all transient and error conditions defined in
+ * the architectural design document (ISO/IEC 13239, SS 6).
+ *
+ * Transition rules:
+ * - U-frames drive major state transitions (CONNECTING <-> CONNECTED <-> DISCONNECTED).
+ * - S-frames drive sub-state transitions (CONNECTED <-> REMOTE_BUSY <-> REJECT_RECOVERY).
+ * - T1/T3 expiry can trigger retries or link failure.
+ * - FRMR_ERROR is a lock-down state: only link_reset() or disconnect() are valid.
  */
 typedef enum {
-    ATC_HDLC_PROTOCOL_STATE_DISCONNECTED, /**< No logical connection. Messages ignored except SABM. */
-    ATC_HDLC_PROTOCOL_STATE_CONNECTING,   /**< SABM sent, waiting for UA. */
-    ATC_HDLC_PROTOCOL_STATE_CONNECTED,    /**< Logical connection established. Ready for I-frames. */
-    ATC_HDLC_PROTOCOL_STATE_DISCONNECTING /**< DISC sent, waiting for UA. */
-} atc_hdlc_protocol_state_t;
+    ATC_HDLC_STATE_DISCONNECTED,    /**< No logical connection; ignores all frames except SABM/UI/TEST. */
+    ATC_HDLC_STATE_CONNECTING,      /**< SABM sent, awaiting UA; T1 running. */
+    ATC_HDLC_STATE_CONNECTED,       /**< Active data transfer; I/S/U frames processed normally. */
+    ATC_HDLC_STATE_REMOTE_BUSY,     /**< Peer sent RNR; outgoing I-frames suspended until RR received. */
+    ATC_HDLC_STATE_LOCAL_BUSY,      /**< Local RX resources exhausted; RNR sent to peer. */
+    ATC_HDLC_STATE_REJECT_RECOVERY, /**< Out-of-sequence I-frame detected; REJ sent, retransmission pending. */
+    ATC_HDLC_STATE_FRMR_ERROR,      /**< Irrecoverable protocol error; only reset or disconnect allowed. */
+    ATC_HDLC_STATE_DISCONNECTING,   /**< DISC sent, awaiting UA; T1 running. */
+} atc_hdlc_state_t;
 
 /**
- * @brief HDLC State Change Event Types.
+ * @brief Legacy state enum value aliases.
  *
- * Provides the reason/cause for a protocol state transition,
- * allowing the application to distinguish between different
- * scenarios that lead to the same state.
+ * @deprecated Use @ref atc_hdlc_state_t values directly.
+ * Provided for source compatibility with existing code that uses the old
+ * four-state names. Will be removed after Phase 2 migration.
+ */
+#define ATC_HDLC_PROTOCOL_STATE_DISCONNECTED  ATC_HDLC_STATE_DISCONNECTED
+#define ATC_HDLC_PROTOCOL_STATE_CONNECTING    ATC_HDLC_STATE_CONNECTING
+#define ATC_HDLC_PROTOCOL_STATE_CONNECTED     ATC_HDLC_STATE_CONNECTED
+#define ATC_HDLC_PROTOCOL_STATE_DISCONNECTING ATC_HDLC_STATE_DISCONNECTING
+
+/** @deprecated Type alias for source compatibility. Use @ref atc_hdlc_state_t. */
+typedef atc_hdlc_state_t atc_hdlc_protocol_state_t;
+
+/**
+ * @brief HDLC asynchronous event types.
+ *
+ * Delivered via @ref atc_hdlc_platform_t::on_event to notify the upper layer
+ * of connection lifecycle changes, flow control transitions, and diagnostic
+ * results. The @c on_event callback receives one of these values every time a
+ * noteworthy condition occurs inside the station.
  */
 typedef enum {
-    /* Connection Events */
-    ATC_HDLC_EVENT_LINK_SETUP_REQUEST, /**< Local: atc_hdlc_link_setup() was called. */
+    /* Connection lifecycle */
+    ATC_HDLC_EVENT_LINK_SETUP_REQUEST, /**< Local: atc_hdlc_link_setup() called; SABM sent. */
     ATC_HDLC_EVENT_CONNECT_ACCEPTED,   /**< UA received in response to our SABM. */
-    ATC_HDLC_EVENT_INCOMING_CONNECT,   /**< Peer sent SABM — passive open. */
-
-    /* Disconnection Events */
-    ATC_HDLC_EVENT_DISCONNECT_REQUEST, /**< Local: atc_hdlc_disconnect() was called. */
+    ATC_HDLC_EVENT_INCOMING_CONNECT,   /**< Peer sent SABM — passive open accepted. */
+    ATC_HDLC_EVENT_RESET,              /**< Link reset initiated (new SABM sent after internal reset). */
+    ATC_HDLC_EVENT_DISCONNECT_REQUEST, /**< Local: atc_hdlc_disconnect() called; DISC sent. */
     ATC_HDLC_EVENT_DISCONNECT_COMPLETE,/**< UA received in response to our DISC. */
-    ATC_HDLC_EVENT_PEER_DISCONNECT,    /**< Peer sent DISC. */
+    ATC_HDLC_EVENT_PEER_DISCONNECT,    /**< Peer sent DISC — connection closed by remote. */
     ATC_HDLC_EVENT_PEER_REJECT,        /**< Peer sent DM — connection rejected. */
+
+    /* Error events */
     ATC_HDLC_EVENT_PROTOCOL_ERROR,     /**< Peer sent FRMR — irrecoverable protocol violation. */
-    ATC_HDLC_EVENT_LINK_FAILURE,       /**< Max retry count (N2) exceeded — link timeout. */
+    ATC_HDLC_EVENT_LINK_FAILURE,       /**< N2 retry limit exceeded — link declared failed. */
+
+    /* Flow control events */
+    ATC_HDLC_EVENT_REMOTE_BUSY_ON,     /**< Peer sent RNR; outgoing I-frame transmission suspended. */
+    ATC_HDLC_EVENT_REMOTE_BUSY_OFF,    /**< Peer sent RR after RNR; transmission resumed. */
+    ATC_HDLC_EVENT_WINDOW_OPEN,        /**< TX window slot freed; application may send again. */
+
+    /* Diagnostic events */
+    ATC_HDLC_EVENT_TEST_RESULT,        /**< TEST frame round-trip complete; check test_result field. */
 } atc_hdlc_event_t;
+
+/*
+ * --------------------------------------------------------------------------
+ * ERROR CODES
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief HDLC library error codes.
+ *
+ * Returned by all public API functions. Zero indicates success; all error
+ * values are negative so callers can test with a simple @c < 0 check.
+ *
+ * @note Granularity is intentionally coarse at the public boundary. Internal
+ *       helpers may use additional sentinel values that are never exposed.
+ */
+typedef enum {
+    ATC_HDLC_OK                       =  0, /**< Operation completed successfully. */
+
+    /* Frame errors (-1 .. -2) */
+    ATC_HDLC_ERR_FCS                  = -1, /**< FCS mismatch — frame discarded. */
+    ATC_HDLC_ERR_SHORT_FRAME          = -2, /**< Frame too short to be valid. */
+
+    /* Resource errors (-3 .. -4) */
+    ATC_HDLC_ERR_BUFFER_FULL          = -3, /**< Destination buffer is full. */
+    ATC_HDLC_ERR_NO_BUFFER            = -4, /**< Required buffer not provided. */
+
+    /* Protocol errors (-5 .. -7) */
+    ATC_HDLC_ERR_SEQUENCE             = -5, /**< Sequence number out of range. */
+    ATC_HDLC_ERR_INVALID_COMMAND      = -6, /**< Received unsupported/invalid command. */
+    ATC_HDLC_ERR_FRMR                 = -7, /**< Irrecoverable protocol error (FRMR). */
+
+    /* State errors (-8 .. -9) */
+    ATC_HDLC_ERR_INVALID_STATE        = -8, /**< Operation not permitted in current state. */
+    ATC_HDLC_ERR_UNSUPPORTED_MODE     = -9, /**< Requested mode not implemented. */
+
+    /* Timing errors (-10) */
+    ATC_HDLC_ERR_MAX_RETRY            = -10, /**< N2 retry limit exceeded — link failed. */
+
+    /* Parameter errors (-11 .. -12) */
+    ATC_HDLC_ERR_INVALID_PARAM        = -11, /**< NULL or out-of-range parameter. */
+    ATC_HDLC_ERR_INCONSISTENT_BUFFER  = -12, /**< Buffer geometry violates constraints. */
+
+    /* Flow control errors (-13 .. -16) */
+    ATC_HDLC_ERR_REMOTE_BUSY          = -13, /**< Peer is busy (RNR received); TX suspended. */
+    ATC_HDLC_ERR_WINDOW_FULL          = -14, /**< TX window full; no free slots. */
+    ATC_HDLC_ERR_FRAME_TOO_LARGE      = -15, /**< Payload exceeds max_frame_size (MRU). */
+    ATC_HDLC_ERR_TEST_PENDING         = -16, /**< A TEST frame is already awaiting response. */
+} atc_hdlc_error_t;
 
 /*
  * --------------------------------------------------------------------------
@@ -249,64 +335,283 @@ typedef void (*atc_hdlc_on_state_change_cb_t)(atc_hdlc_protocol_state_t state, a
 
 /*
  * --------------------------------------------------------------------------
+ * CONFIGURATION
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief HDLC station protocol configuration.
+ *
+ * Passed to @ref atc_hdlc_init() and kept alive (by the caller) for the
+ * entire lifetime of the station context. The library stores a pointer to
+ * this struct — it does not copy it.
+ *
+ * All timer values are in milliseconds. The library converts them to internal
+ * tick counts using the tick period implied by the call rate of
+ * @ref atc_hdlc_tick().
+ */
+typedef struct {
+    atc_hdlc_link_mode_t mode;        /**< Operating mode. First release: @c ATC_HDLC_MODE_ABM only. */
+    atc_hdlc_u8          address;     /**< Local station address (1 octet). */
+    atc_hdlc_u8          window_size; /**< Sliding window size, 1–7 (mod-8). */
+    atc_hdlc_u32         max_frame_size; /**< Maximum information field size in octets (MRU). */
+    atc_hdlc_u8          max_retries; /**< N2: maximum retransmission attempts before link failure. */
+    atc_hdlc_u32         t1_ms;       /**< T1 retransmission timer in ms (typical 200–3000). */
+    atc_hdlc_u32         t2_ms;       /**< T2 acknowledgement delay timer in ms (must be < t1_ms). */
+    atc_hdlc_u32         t3_ms;       /**< T3 idle/keep-alive timer in ms (typical 10000–60000). */
+    atc_hdlc_bool        use_extended;/**< Extended (mod-128) mode flag. Must be false in v1. */
+} atc_hdlc_config_t;
+
+/*
+ * --------------------------------------------------------------------------
+ * PLATFORM INTEGRATION
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Byte-output callback with error return.
+ *
+ * Called for every encoded octet during frame transmission. The @p flush
+ * flag is set on the final octet of the closing flag (0x7E), signalling
+ * that the complete frame has been written and any hardware FIFO/DMA buffer
+ * may be flushed.
+ *
+ * @param byte     Encoded octet to transmit.
+ * @param flush    True on the last octet of the frame (closing flag).
+ * @param user_ctx Opaque pointer provided in @ref atc_hdlc_platform_t.
+ * @return 0 on success, negative value on transmission error.
+ */
+typedef int (*atc_hdlc_send_fn)(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_ctx);
+
+/**
+ * @brief Verified payload delivery callback.
+ *
+ * Invoked once per accepted I-frame or UI/TEST information field after FCS
+ * validation and sequence-number acceptance. The @p payload pointer refers
+ * to the station's internal RX buffer; it is valid only for the duration of
+ * this callback unless a zero-copy swap is performed.
+ *
+ * @param payload  Pointer to the decoded information field.
+ * @param len      Length of the information field in octets.
+ * @param user_ctx Opaque pointer provided in @ref atc_hdlc_platform_t.
+ */
+typedef void (*atc_hdlc_on_data_fn)(const atc_hdlc_u8 *payload,
+                                     atc_hdlc_u16 len,
+                                     void *user_ctx);
+
+/**
+ * @brief Asynchronous event notification callback.
+ *
+ * Fired whenever a noteworthy condition is detected inside the station
+ * (connection lifecycle, flow control, errors, diagnostics). See
+ * @ref atc_hdlc_event_t for the full list of events.
+ *
+ * @param event    The event that occurred.
+ * @param user_ctx Opaque pointer provided in @ref atc_hdlc_platform_t.
+ */
+typedef void (*atc_hdlc_on_event_fn)(atc_hdlc_event_t event, void *user_ctx);
+
+/**
+ * @brief Platform integration descriptor.
+ *
+ * Groups all platform-dependent capabilities required by the station layer.
+ * Passed to @ref atc_hdlc_init() and kept alive for the lifetime of the
+ * context. The library stores a pointer — it does not copy this struct.
+ *
+ * Only @c send is mandatory. @c on_data and @c on_event may be NULL if the
+ * application does not require payload delivery or event notifications.
+ */
+typedef struct {
+    atc_hdlc_send_fn     send;     /**< Physical byte-output function (mandatory). */
+    atc_hdlc_on_data_fn  on_data;  /**< Payload delivery to upper layer (optional). */
+    atc_hdlc_on_event_fn on_event; /**< Event notification to upper layer (optional). */
+    void                *user_ctx; /**< Opaque pointer forwarded to all callbacks. */
+} atc_hdlc_platform_t;
+
+/*
+ * --------------------------------------------------------------------------
+ * BUFFER DESCRIPTORS
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief TX retransmit window descriptor.
+ *
+ * Describes the user-allocated memory region used for Go-Back-N
+ * retransmission. All three pointer arrays must have at least
+ * @c slot_count elements and must remain valid for the lifetime of the
+ * station context.
+ *
+ * Consistency requirements checked by @ref atc_hdlc_init():
+ *  - @c slot_count == @c config->window_size
+ *  - @c slot_capacity >= @c config->max_frame_size
+ */
+typedef struct {
+    atc_hdlc_u8  *slots;        /**< Flat buffer for frame payloads: slot_count * slot_capacity octets. */
+    atc_hdlc_u32 *slot_lens;    /**< Per-slot stored payload length (slot_count elements). */
+    atc_hdlc_u8  *seq_to_slot;  /**< Sequence-number-to-slot-index mapping (slot_count elements). */
+    atc_hdlc_u32  slot_capacity;/**< Capacity of a single slot in octets. */
+    atc_hdlc_u8   slot_count;   /**< Total number of slots (must equal window_size). */
+} atc_hdlc_tx_window_t;
+
+/**
+ * @brief RX buffer descriptor.
+ *
+ * Describes the user-allocated receive buffer. The buffer must remain valid
+ * for the lifetime of the station context.
+ *
+ * Consistency requirement checked by @ref atc_hdlc_init():
+ *  - @c capacity >= @c config->max_frame_size
+ */
+typedef struct {
+    atc_hdlc_u8  *buffer;   /**< Pointer to the receive buffer. */
+    atc_hdlc_u32  capacity; /**< Buffer capacity in octets. */
+} atc_hdlc_rx_buffer_t;
+
+/*
+ * --------------------------------------------------------------------------
+ * STATISTICS
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Runtime statistics snapshot.
+ *
+ * Collected by the station during normal operation. Can be read at any time
+ * via @ref atc_hdlc_get_stats(). All counters are monotonically increasing
+ * and wrap on overflow (no saturation).
+ *
+ * Compile-time macro @c ATC_HDLC_ENABLE_STATS (hdlc_config.h) controls
+ * whether instrumentation code is included. When set to 0, all stat
+ * increments compile to no-ops.
+ */
+typedef struct {
+    /* Transmission */
+    atc_hdlc_u32 tx_i_frames;            /**< I-frames successfully transmitted. */
+    atc_hdlc_u32 tx_bytes;               /**< Information bytes transmitted. */
+    /* Reception */
+    atc_hdlc_u32 rx_i_frames;            /**< In-sequence I-frames accepted. */
+    atc_hdlc_u32 rx_bytes;               /**< Information bytes received. */
+    /* Errors */
+    atc_hdlc_u32 fcs_errors;             /**< Frames discarded due to FCS mismatch. */
+    atc_hdlc_u32 frmr_count;             /**< FRMR frames received from peer. */
+    atc_hdlc_u32 timeout_count;          /**< T1 timeout occurrences (retransmission triggers). */
+    /* Flow control */
+    atc_hdlc_u32 rej_sent;               /**< REJ frames sent. */
+    atc_hdlc_u32 rej_received;           /**< REJ frames received. */
+    atc_hdlc_u32 rnr_sent;               /**< RNR frames sent (local busy asserted). */
+    atc_hdlc_u32 rnr_received;           /**< RNR frames received (remote busy detected). */
+    atc_hdlc_u32 local_busy_transitions; /**< Number of times local busy was asserted. */
+    /* Diagnostics */
+    atc_hdlc_u32 test_sent;              /**< TEST frames sent. */
+    atc_hdlc_u32 test_success;           /**< TEST frames with a matching response received. */
+    atc_hdlc_u32 test_failed;            /**< TEST frames that timed out or had payload mismatch. */
+} atc_hdlc_stats_t;
+
+/*
+ * --------------------------------------------------------------------------
+ * TEST RESULT
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Result of a TEST frame round-trip.
+ *
+ * Populated by the station and delivered via the @ref ATC_HDLC_EVENT_TEST_RESULT
+ * event. The caller may read this from the context's @c test_result field
+ * inside the @c on_event callback.
+ */
+typedef struct {
+    atc_hdlc_bool success;      /**< True if the peer echoed the correct payload. */
+    atc_hdlc_bool timed_out;    /**< True if T1 expired before a response arrived. */
+    atc_hdlc_u16  payload_len;  /**< Length of the test pattern that was sent. */
+} atc_hdlc_test_result_t;
+
+/*
+ * --------------------------------------------------------------------------
  * CONTEXT STRUCTURE
  * --------------------------------------------------------------------------
  */
 
 /**
- * @brief HDLC Protocol Context.
+ * @brief HDLC station context.
  *
- * Main state structure holding all runtime information for a single HDLC
- * instance.
+ * Holds all runtime state for a single HDLC station instance. Must be
+ * allocated by the caller (typically as a static variable). Initialised
+ * exclusively by @ref atc_hdlc_init(); never access fields directly from
+ * application code.
+ *
+ * @note Fields marked @c @deprecated will be removed in Phase 2 once the
+ *       struct-based init/config refactor is complete. They are kept here
+ *       temporarily to avoid breaking the build during incremental migration.
  */
 typedef struct {
-    /* Callbacks & Pointers (Highest alignment requirement) */
-    atc_hdlc_output_byte_cb_t output_byte_cb;         /**< Hardware TX callback. */
-    atc_hdlc_on_frame_cb_t on_frame_cb;               /**< Application RX callback. */
-    atc_hdlc_on_state_change_cb_t on_state_change_cb; /**< State change callback. */
-    void *user_data;                                  /**< User context passed to callbacks. */
-    atc_hdlc_u8 *retransmit_buffer;                   /**< User-supplied buffer for Go-Back-N. */
-    atc_hdlc_u8 *input_buffer;                        /**< User-supplied RX buffer. */
-    
-    /* Inner Structs */
-    atc_hdlc_frame_t input_frame_buffer;              /**< Temporary frame descriptor. */
+    /* --- Phase 2+ injected references (pointers, highest alignment) --- */
+    const atc_hdlc_config_t   *config;    /**< Protocol configuration (user-owned). */
+    const atc_hdlc_platform_t *platform;  /**< Platform integration callbacks (user-owned). */
+    atc_hdlc_tx_window_t      *tx_window; /**< TX retransmit window descriptor (user-owned). */
+    atc_hdlc_rx_buffer_t      *rx_buf;    /**< RX buffer descriptor (user-owned). */
 
-    /* 32-bit Types & Arrays (4-byte alignment) */
-    atc_hdlc_u32 retransmit_lens[8];                  /**< Payload length stored per slot. */
-    atc_hdlc_u32 ack_timer;                           /**< Timer for delayed ACK. */
-    atc_hdlc_u32 ack_delay_timeout;                   /**< Configurable ACK delay timeout. */
-    atc_hdlc_u32 contention_timer;                    /**< Timer for SABM contention resolution delay. */
-    atc_hdlc_u32 retransmit_buffer_len;               /**< Total length of the retransmit buffer. */
-    atc_hdlc_u32 retransmit_slot_size;                /**< Max payload per slot. */
-    atc_hdlc_u32 retransmit_timer;                    /**< Timer for retransmission. */
-    atc_hdlc_u32 retransmit_timeout;                  /**< Configurable retransmission timeout. */
-    atc_hdlc_u32 input_buffer_len;                    /**< Length of the user-supplied RX buffer. */
-    atc_hdlc_u32 input_index;                         /**< Current write index in rx_buffer. */
-    atc_hdlc_u32 stats_input_frames;                  /**< Count of valid frames received. */
-    atc_hdlc_u32 stats_output_frames;                 /**< Count of frames transmitted. */
-    atc_hdlc_u32 stats_crc_errors;                    /**< Count of frames discarded due to CRC mismatch. */
+    /* --- Legacy callback pointers (deprecated — removed in Phase 2) --- */
+    atc_hdlc_output_byte_cb_t output_byte_cb;         /**< @deprecated Use platform->send. */
+    atc_hdlc_on_frame_cb_t on_frame_cb;               /**< @deprecated Use platform->on_data. */
+    atc_hdlc_on_state_change_cb_t on_state_change_cb; /**< @deprecated Use platform->on_event. */
+    void *user_data;                                  /**< @deprecated Use platform->user_ctx. */
 
-    /* Enums (typically 4-byte aligned in C) */
-    volatile atc_hdlc_protocol_state_t current_state; /**< Current connection state. */
-    atc_hdlc_link_mode_t mode;                        /**< Operational link mode. */
-    atc_hdlc_station_role_t role;                     /**< Operational station role. */
+    /* --- Legacy raw buffer pointers (deprecated — removed in Phase 2) --- */
+    atc_hdlc_u8 *retransmit_buffer;   /**< @deprecated Use tx_window->slots. */
+    atc_hdlc_u8 *input_buffer;        /**< @deprecated Use rx_buf->buffer. */
 
-    /* 16-bit Types (2-byte alignment) */
-    atc_hdlc_u16 output_crc;                          /**< Running CRC for streaming TX. */
+    /* --- Inner structs --- */
+    atc_hdlc_frame_t       input_frame_buffer; /**< Temporary parsed frame descriptor. */
+    atc_hdlc_stats_t       stats;              /**< Runtime statistics counters. */
+    atc_hdlc_test_result_t test_result;        /**< Result of the most recent TEST round-trip. */
 
-    /* 8-bit Types & Arrays (1-byte alignment) */
-    atc_hdlc_u8 tx_seq_to_slot[8];                    /**< Mapping: Seq num V(S) -> physical buffer slot. */
-    atc_hdlc_u8 my_address;                           /**< Local station address. */
-    atc_hdlc_u8 peer_address;                         /**< Remote station address. */
-    atc_hdlc_u8 vs;                                   /**< Send State Variable V(S). */
-    atc_hdlc_u8 vr;                                   /**< Receive State Variable V(R). */
-    atc_hdlc_u8 va;                                   /**< Acknowledge State Variable V(A). */
-    atc_hdlc_u8 window_size;                          /**< Transmit window size (1..7). */
-    atc_hdlc_u8 next_tx_slot;                         /**< Next available physical slot index. */
-    atc_hdlc_u8 max_retry_count;                      /**< Max retransmissions before link failure (N2). */
-    atc_hdlc_u8 retry_count;                          /**< Current retransmission count. */
-    atc_hdlc_u8 input_state;                          /**< Current internal parser state. */
-    atc_hdlc_bool rej_exception;                      /**< REJ exception condition. */
+    /* --- 32-bit counters and timers --- */
+    atc_hdlc_u32 retransmit_lens[8];      /**< @deprecated Per-slot payload length; use tx_window->slot_lens. */
+    atc_hdlc_u32 ack_timer;               /**< T2 countdown (ticks remaining until standalone RR). */
+    atc_hdlc_u32 ack_delay_timeout;       /**< @deprecated T2 period in ticks; use config->t2_ms. */
+    atc_hdlc_u32 contention_timer;        /**< Backoff countdown for SABM contention resolution. */
+    atc_hdlc_u32 retransmit_buffer_len;   /**< @deprecated Total TX buffer length; use tx_window fields. */
+    atc_hdlc_u32 retransmit_slot_size;    /**< @deprecated Slot capacity; use tx_window->slot_capacity. */
+    atc_hdlc_u32 retransmit_timer;        /**< T1 countdown (ticks remaining until retransmit). */
+    atc_hdlc_u32 retransmit_timeout;      /**< @deprecated T1 period in ticks; use config->t1_ms. */
+    atc_hdlc_u32 t3_timer;               /**< T3 countdown (ticks remaining until keep-alive). */
+    atc_hdlc_u32 input_buffer_len;        /**< @deprecated RX buffer length; use rx_buf->capacity. */
+    atc_hdlc_u32 input_index;            /**< Current write index into the RX buffer. */
+
+    /* --- State machine --- */
+    volatile atc_hdlc_state_t         current_state; /**< Current station state (8-state machine). */
+
+    /* --- Legacy mode/role fields (deprecated — removed in Phase 2) --- */
+    atc_hdlc_link_mode_t    mode; /**< @deprecated Use config->mode. */
+    atc_hdlc_station_role_t role; /**< @deprecated Station role; ABM has no primary/secondary. */
+
+    /* --- 16-bit fields --- */
+    atc_hdlc_u16 output_crc; /**< Running FCS accumulator for the streaming TX path. */
+
+    /* --- 8-bit sequence variables and flags --- */
+    atc_hdlc_u8 tx_seq_to_slot[8]; /**< @deprecated Seq→slot map; use tx_window->seq_to_slot. */
+    atc_hdlc_u8 my_address;        /**< Local station address (cached from config). */
+    atc_hdlc_u8 peer_address;      /**< Remote station address (set at connect time). */
+    atc_hdlc_u8 vs;                /**< Send state variable V(S). */
+    atc_hdlc_u8 vr;                /**< Receive state variable V(R). */
+    atc_hdlc_u8 va;                /**< Acknowledge state variable V(A). */
+    atc_hdlc_u8 window_size;       /**< TX window size (cached from config, 1–7). */
+    atc_hdlc_u8 next_tx_slot;      /**< Index of next slot to allocate in tx_window. */
+    atc_hdlc_u8 max_retry_count;   /**< @deprecated N2 limit; use config->max_retries. */
+    atc_hdlc_u8 retry_count;       /**< Current retransmission attempt count. */
+    atc_hdlc_u8 input_state;       /**< RX parser state machine (hdlc_input_state_t). */
+
+    /* --- Boolean flags --- */
+    atc_hdlc_bool rej_exception;   /**< REJ exception guard: suppresses duplicate REJ sends. */
+    atc_hdlc_bool remote_busy;     /**< True when peer is in RNR (receive-not-ready) state. */
+    atc_hdlc_bool local_busy;      /**< True when local station has asserted busy (RNR sent). */
+    atc_hdlc_bool test_pending;    /**< True while awaiting a TEST(F=1) response. */
+
+    /* --- TEST pattern reference (valid only when test_pending == true) --- */
+    const atc_hdlc_u8 *test_pattern;    /**< Pointer to the test payload sent (user-owned). */
+    atc_hdlc_u16        test_pattern_len;/**< Length of the test payload in octets. */
 } atc_hdlc_context_t;
 
 #ifdef __cplusplus

@@ -73,10 +73,10 @@ static void node_on_frame_cb(const atc_hdlc_frame_t *frame, void *user_data) {
     }
 }
 
-static void node_state_cb(atc_hdlc_protocol_state_t state, atc_hdlc_event_t event, void *user_data) {
+static void node_state_cb(atc_hdlc_state_t state, atc_hdlc_event_t event, void *user_data) {
     (void)event;
     virtual_node_t *node = (virtual_node_t *)user_data;
-    if (state == ATC_HDLC_PROTOCOL_STATE_CONNECTED) {
+    if (state == ATC_HDLC_STATE_CONNECTED) {
         node->connected = true;
     } else {
         node->connected = false;

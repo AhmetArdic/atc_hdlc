@@ -86,7 +86,7 @@ void atc_hdlc_input_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
         } else {
           // CRC Error: Frame discarded silently (or logged)
           ATC_HDLC_LOG_WARN("rx: CRC Error! Calc: 0x%04X, RX: 0x%04X", calced_crc, rx_fcs);
-          ctx->stats_crc_errors++;
+          ctx->stats.fcs_errors++;
         }
       }
     }

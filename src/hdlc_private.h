@@ -236,7 +236,7 @@ typedef void (*hdlc_put_byte_fn)(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, a
  */
 
 /* hdlc.c — State management */
-void hdlc_set_protocol_state(atc_hdlc_context_t *ctx, atc_hdlc_protocol_state_t new_state, atc_hdlc_event_t event);
+void hdlc_set_protocol_state(atc_hdlc_context_t *ctx, atc_hdlc_state_t new_state, atc_hdlc_event_t event);
 
 /* hdlc_output.c — Output helpers used by multiple modules */
 void atc_hdlc_output_frame_start(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 control);
