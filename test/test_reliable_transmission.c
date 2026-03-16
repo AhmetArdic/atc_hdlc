@@ -949,38 +949,6 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT
     test_pass("SABM/UA State Initialization Working");
 }
 
-int main(void) {
-  printf("\n%sSTARTING RELIABLE TRANSMISSION TEST SUITE%s\n", COL_YELLOW,
-         COL_RESET);
-  printf("----------------------------------------\n\n");
-
-  test_reliable_transmission();
-  test_reliable_retransmission();
-  test_sequence_rollover();
-  test_duplicate_ack_ignored();
-  test_rej_retransmit();
-  test_piggyback_ack();
-  test_window_size_2_basic();
-  test_gobackn_retransmit();
-  test_window7_mid_rej();
-  test_throughput_benchmark();
-  test_process_tx_task_simulation();
-  test_nr_modulo_validation();
-  test_nr_edge_cases();
-  test_state_initialization();
-  test_public_query_api();
-  test_set_local_busy();
-  test_rnr_reception();
-  test_t2_timer_callbacks();
-
-  printf("\n%sALL RELIABLE TRANSMISSION TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
-  return 0;
-}
-
-/* ================================================================
- *  New tests — added in Phase 2
- * ================================================================ */
-
 /**
  * @brief Test: Public query API — get_state, get_window_available,
  *        has_pending_ack, get_stats.
@@ -1206,4 +1174,32 @@ void test_t2_timer_callbacks(void) {
         test_fail("T2 Callbacks", "T2 not stopped on piggybacked ACK");
 
     test_pass("T2 Timer Callbacks");
+}
+
+int main(void) {
+  printf("\n%sSTARTING RELIABLE TRANSMISSION TEST SUITE%s\n", COL_YELLOW,
+         COL_RESET);
+  printf("----------------------------------------\n\n");
+
+  test_reliable_transmission();
+  test_reliable_retransmission();
+  test_sequence_rollover();
+  test_duplicate_ack_ignored();
+  test_rej_retransmit();
+  test_piggyback_ack();
+  test_window_size_2_basic();
+  test_gobackn_retransmit();
+  test_window7_mid_rej();
+  test_throughput_benchmark();
+  test_process_tx_task_simulation();
+  test_nr_modulo_validation();
+  test_nr_edge_cases();
+  test_state_initialization();
+  test_public_query_api();
+  test_set_local_busy();
+  test_rnr_reception();
+  test_t2_timer_callbacks();
+
+  printf("\n%sALL RELIABLE TRANSMISSION TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
+  return 0;
 }

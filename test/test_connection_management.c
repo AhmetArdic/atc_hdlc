@@ -527,33 +527,6 @@ void test_contention_resolution_loser(void) {
     test_pass("Contention Resolution (Loser + Timer)");
 }
 
-int main(void) {
-    printf("\n%sSTARTING CONNECTION MANAGEMENT TESTS%s\n", COL_YELLOW, COL_RESET);
-    printf("----------------------------------------\n\n");
-    
-    test_init_state();
-    test_connect_sends_sabm();
-    test_connect_complete_on_ua();
-    test_disconnect_flow();
-    test_passive_open();
-    test_frmr_reception();
-    test_mode_rejection();
-    test_extended_mode_rejection();
-    test_contention_resolution_winner();
-    test_contention_resolution_loser();
-    test_link_reset();
-    test_peer_disconnect();
-    test_event_callbacks();
-    test_t1_timer_callbacks();
-
-    printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
-    return 0;
-}
-
-/* ================================================================
- *  New tests — added in Phase 2
- * ================================================================ */
-
 /**
  * @brief Test: atc_hdlc_link_reset() resets state and sends SABM.
  */
@@ -734,3 +707,27 @@ void test_t1_timer_callbacks(void) {
 
     test_pass("T1 Timer Callbacks");
 }
+
+int main(void) {
+    printf("\n%sSTARTING CONNECTION MANAGEMENT TESTS%s\n", COL_YELLOW, COL_RESET);
+    printf("----------------------------------------\n\n");
+    
+    test_init_state();
+    test_connect_sends_sabm();
+    test_connect_complete_on_ua();
+    test_disconnect_flow();
+    test_passive_open();
+    test_frmr_reception();
+    test_mode_rejection();
+    test_extended_mode_rejection();
+    test_contention_resolution_winner();
+    test_contention_resolution_loser();
+    test_link_reset();
+    test_peer_disconnect();
+    test_event_callbacks();
+    test_t1_timer_callbacks();
+
+    printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
+    return 0;
+}
+
