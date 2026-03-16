@@ -872,18 +872,24 @@ void test_nr_edge_cases(void) {
 
         bool was_treated_as_valid = false;
         
-        // If the frame is valid, V(A) becomes N(R).
-        // If N(R) == V(A), V(A) doesn't change.
-        //   - If outstanding frames exist: T1 is restarted (t1_active=true)
-        //   - If window empty (va==vs): T1 is stopped (t1_active=false) — still valid
+        /* Determine if frame was treated as valid:
+         * - If V(A) changed: definitely accepted (V(A) := N(R))
+         * - If N(R) == V(A): frame was accepted but V(A) unchanged (N(R) == V(A)
+         *   is a valid no-op ACK per ISO 13239). T1 is NOT restarted in this case.
+         * - If invalid: context state is unchanged (FRMR_ERROR transition would
+         *   change state, which we detect). */
         if (ctx.va != cases[i].va) {
+            /* V(A) advanced — frame accepted */
             was_treated_as_valid = true;
-        } else if (cases[i].nr == cases[i].va && cases[i].va == cases[i].vs) {
-            /* Empty window + ACK none: always valid, T1 stops (no outstanding frames) */
-            was_treated_as_valid = true;
-        } else if (cases[i].nr == cases[i].va && ctx.t1_active) {
-            was_treated_as_valid = true;
+        } else if (cases[i].nr == cases[i].va) {
+            /* N(R) == V(A): valid no-op ACK — state unchanged is correct */
+            was_treated_as_valid = (ctx.current_state != ATC_HDLC_STATE_FRMR_ERROR);
         }
+        /* else: N(R) invalid → FRMR_ERROR or no state change — was_treated_as_valid stays false */
+
+        /* Reset context state for next iteration */
+        if (ctx.current_state == ATC_HDLC_STATE_FRMR_ERROR)
+            ctx.current_state = ATC_HDLC_STATE_CONNECTED;
 
         if (was_treated_as_valid != cases[i].expect_valid) {
             char fail_msg[256];
@@ -949,6 +955,237 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT
     test_pass("SABM/UA State Initialization Working");
 }
 
+/**
+ * @brief Test: Public query API — get_state, get_window_available,
+ *        has_pending_ack, get_stats.
+ */
+void test_public_query_api(void) {
+    printf("\nTEST: Public Query API\n");
+
+    atc_hdlc_context_t ctx;
+    setup_test_context(&ctx);
+    ctx.peer_address = 0x02;
+    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+
+    /* atc_hdlc_get_state */
+    if (atc_hdlc_get_state(&ctx) != ATC_HDLC_STATE_CONNECTED)
+        test_fail("Query API", "get_state returned wrong value");
+
+    /* atc_hdlc_get_window_available — fresh context, window_size=1, vs=va=0 */
+    atc_hdlc_u8 avail = atc_hdlc_get_window_available(&ctx);
+    if (avail != 1)
+        test_fail("Query API", "get_window_available wrong on empty window");
+
+    /* Send one I-frame → window fills */
+    atc_hdlc_u8 payload[] = {0x01};
+    atc_hdlc_transmit_i(&ctx, payload, 1);
+    avail = atc_hdlc_get_window_available(&ctx);
+    if (avail != 0)
+        test_fail("Query API", "get_window_available should be 0 after filling");
+
+    /* atc_hdlc_has_pending_ack — T2 starts when I-frame is received */
+    if (atc_hdlc_has_pending_ack(&ctx))
+        test_fail("Query API", "has_pending_ack should be false before receiving I-frame");
+
+    /* Simulate receiving an I-frame → T2 starts */
+    atc_hdlc_u8 i_ctrl = hdlc_create_i_ctrl(0, 0, 0);
+    atc_hdlc_frame_t iframe = { .address = 0x01, .control = i_ctrl,
+                                  .information = payload, .information_len = 1 };
+    atc_hdlc_u8 i_raw[64]; atc_hdlc_u32 i_len = 0;
+    atc_hdlc_frame_pack(&iframe, i_raw, sizeof(i_raw), &i_len);
+    reset_test_state();
+    atc_hdlc_data_in_bytes(&ctx, i_raw, i_len);
+    if (!atc_hdlc_has_pending_ack(&ctx))
+        test_fail("Query API", "has_pending_ack should be true after I-frame");
+
+    /* atc_hdlc_get_stats */
+    atc_hdlc_stats_t stats;
+    atc_hdlc_get_stats(&ctx, &stats);
+    if (stats.rx_i_frames == 0)
+        test_fail("Query API", "get_stats rx_i_frames should be > 0");
+
+    /* NULL safety */
+    if (atc_hdlc_get_state(NULL) != ATC_HDLC_STATE_DISCONNECTED)
+        test_fail("Query API", "get_state(NULL) should return DISCONNECTED");
+    if (atc_hdlc_get_window_available(NULL) != 0)
+        test_fail("Query API", "get_window_available(NULL) should return 0");
+    if (atc_hdlc_has_pending_ack(NULL))
+        test_fail("Query API", "has_pending_ack(NULL) should return false");
+    atc_hdlc_get_stats(NULL, &stats); /* should not crash */
+    atc_hdlc_get_stats(&ctx, NULL);   /* should not crash */
+
+    test_pass("Public Query API");
+}
+
+/**
+ * @brief Test: atc_hdlc_set_local_busy() — RNR sent when local busy,
+ *        RR sent when cleared.
+ */
+void test_set_local_busy(void) {
+    printf("\nTEST: Local Busy (set_local_busy)\n");
+
+    atc_hdlc_context_t ctx;
+    setup_test_context(&ctx);
+    ctx.peer_address = 0x02;
+    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+
+    /* Must fail in non-CONNECTED state */
+    ctx.current_state = ATC_HDLC_STATE_DISCONNECTED;
+    if (atc_hdlc_set_local_busy(&ctx, true) != ATC_HDLC_ERR_INVALID_STATE)
+        test_fail("Local Busy", "Should reject in DISCONNECTED");
+    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+
+    /* Assert busy — no RNR in output (set_local_busy itself doesn't transmit RNR,
+     * it just sets the flag; RNR goes out when next I-frame arrives) */
+    reset_test_state();
+    atc_hdlc_error_t err = atc_hdlc_set_local_busy(&ctx, true);
+    if (err != ATC_HDLC_OK)
+        test_fail("Local Busy", "set_local_busy(true) failed");
+    if (!ctx.local_busy)
+        test_fail("Local Busy", "local_busy flag not set");
+
+    /* Clear busy — RR must be sent */
+    reset_test_state();
+    err = atc_hdlc_set_local_busy(&ctx, false);
+    if (err != ATC_HDLC_OK)
+        test_fail("Local Busy", "set_local_busy(false) failed");
+    if (ctx.local_busy)
+        test_fail("Local Busy", "local_busy flag not cleared");
+    if (mock_output_len < 6)
+        test_fail("Local Busy", "RR not sent on busy-clear");
+
+    /* Verify output is RR (S-frame) */
+    atc_hdlc_frame_t resp; atc_hdlc_u8 flat[32];
+    if (atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len, &resp, flat, sizeof(flat))) {
+        if (atc_hdlc_get_s_frame_sub_type(resp.control) != ATC_HDLC_S_FRAME_TYPE_RR)
+            test_fail("Local Busy", "Cleared-busy frame is not RR");
+    }
+
+    /* Idempotent calls should not re-set or double-clear */
+    reset_test_state();
+    atc_hdlc_set_local_busy(&ctx, false); /* already false */
+    if (mock_output_len != 0)
+        test_fail("Local Busy", "Double-clear should not send extra RR");
+
+    test_pass("Local Busy (set_local_busy)");
+}
+
+/**
+ * @brief Test: RNR reception sets remote_busy; clears on RR.
+ *        Verifies ATC_HDLC_ERR_REMOTE_BUSY returned from transmit_i.
+ */
+void test_rnr_reception(void) {
+    printf("\nTEST: RNR Reception (remote_busy)\n");
+
+    atc_hdlc_context_t ctx;
+    setup_test_context(&ctx);
+    ctx.peer_address = 0x02;
+    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+
+    /* Build RNR(P=0, N(R)=0) from peer (address = my_address = 0x01) */
+    atc_hdlc_u8 rnr_ctrl = hdlc_create_s_ctrl(HDLC_S_RNR, 0, 0);
+    atc_hdlc_frame_t rnr = { .address = 0x01, .control = rnr_ctrl,
+                               .information = NULL, .information_len = 0 };
+    atc_hdlc_u8 rnr_raw[32]; atc_hdlc_u32 rnr_len = 0;
+    atc_hdlc_frame_pack(&rnr, rnr_raw, sizeof(rnr_raw), &rnr_len);
+
+    reset_test_state();
+    atc_hdlc_data_in_bytes(&ctx, rnr_raw, rnr_len);
+
+    if (!ctx.remote_busy)
+        test_fail("RNR Reception", "remote_busy not set after RNR");
+
+    /* transmit_i must return REMOTE_BUSY */
+    atc_hdlc_u8 payload[] = {0xAA};
+    atc_hdlc_error_t err = atc_hdlc_transmit_i(&ctx, payload, 1);
+    if (err != ATC_HDLC_ERR_REMOTE_BUSY)
+        test_fail("RNR Reception", "transmit_i should return REMOTE_BUSY");
+
+    /* Build RR(P=0, N(R)=0) from peer to clear busy */
+    atc_hdlc_u8 rr_ctrl = hdlc_create_s_ctrl(HDLC_S_RR, 0, 0);
+    atc_hdlc_frame_t rr = { .address = 0x01, .control = rr_ctrl,
+                              .information = NULL, .information_len = 0 };
+    atc_hdlc_u8 rr_raw[32]; atc_hdlc_u32 rr_len = 0;
+    atc_hdlc_frame_pack(&rr, rr_raw, sizeof(rr_raw), &rr_len);
+    atc_hdlc_data_in_bytes(&ctx, rr_raw, rr_len);
+
+    /* remote_busy should clear on RR */
+    if (ctx.remote_busy)
+        test_fail("RNR Reception", "remote_busy not cleared by RR");
+
+    /* transmit_i should succeed now */
+    err = atc_hdlc_transmit_i(&ctx, payload, 1);
+    if (err != ATC_HDLC_OK)
+        test_fail("RNR Reception", "transmit_i should succeed after RR");
+
+    test_pass("RNR Reception (remote_busy)");
+}
+
+/**
+ * @brief Test: T2 platform callbacks fire on I-frame receipt and stop on
+ *        piggybacked ACK send.
+ */
+void test_t2_timer_callbacks(void) {
+    printf("\nTEST: T2 Timer Callbacks\n");
+
+    atc_hdlc_context_t ctx;
+    setup_test_context(&ctx);
+    ctx.peer_address = 0x02;
+    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+
+    /* Receive I-frame → T2 must start */
+    atc_hdlc_u8 payload[] = {0x01, 0x02};
+    atc_hdlc_u8 i_ctrl = hdlc_create_i_ctrl(0, 0, 0);
+    atc_hdlc_frame_t iframe = { .address = 0x01, .control = i_ctrl,
+                                  .information = payload, .information_len = 2 };
+    atc_hdlc_u8 i_raw[64]; atc_hdlc_u32 i_len = 0;
+    atc_hdlc_frame_pack(&iframe, i_raw, sizeof(i_raw), &i_len);
+
+    reset_test_state();
+    atc_hdlc_data_in_bytes(&ctx, i_raw, i_len);
+    if (mock_t2_start_count < 1)
+        test_fail("T2 Callbacks", "T2 not started after I-frame");
+    if (!ctx.t2_active)
+        test_fail("T2 Callbacks", "t2_active not set");
+
+    /* atc_hdlc_t2_expired → RR sent, T2 clears */
+    reset_test_state();
+    atc_hdlc_t2_expired(&ctx);
+    if (ctx.t2_active)
+        test_fail("T2 Callbacks", "t2_active not cleared after expiry");
+    if (mock_output_len < 6)
+        test_fail("T2 Callbacks", "RR not sent on T2 expiry");
+
+    /* Verify output is RR */
+    atc_hdlc_frame_t resp; atc_hdlc_u8 flat[32];
+    if (atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len, &resp, flat, sizeof(flat))) {
+        if (atc_hdlc_get_s_frame_sub_type(resp.control) != ATC_HDLC_S_FRAME_TYPE_RR)
+            test_fail("T2 Callbacks", "T2 expired frame is not RR");
+    }
+
+    /* Sending own I-frame stops T2 (ACK piggybacked) */
+    reset_test_state();
+    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+    ctx.vs = 0; ctx.vr = 0; ctx.va = 0;
+    /* Receive I-frame N(S)=0, N(R)=0 → vr becomes 1, T2 starts */
+    atc_hdlc_u8 i_ctrl2 = hdlc_create_i_ctrl(0, 0, 0); /* N(S)=0, N(R)=0 */
+    atc_hdlc_frame_t iframe2 = { .address = 0x01, .control = i_ctrl2,
+                                   .information = payload, .information_len = 2 };
+    atc_hdlc_u8 i_raw2[64]; atc_hdlc_u32 i_len2 = 0;
+    atc_hdlc_frame_pack(&iframe2, i_raw2, sizeof(i_raw2), &i_len2);
+    atc_hdlc_data_in_bytes(&ctx, i_raw2, i_len2);
+    if (!ctx.t2_active)
+        test_fail("T2 Callbacks", "T2 not started before piggybacked ACK test");
+    int t2_stop_before = mock_t2_stop_count;
+    /* Sending outgoing I-frame with N(R)=vr piggybacks ACK → T2 should stop */
+    atc_hdlc_u8 out_payload[] = {0x55};
+    atc_hdlc_transmit_i(&ctx, out_payload, 1);
+    if (mock_t2_stop_count <= t2_stop_before)
+        test_fail("T2 Callbacks", "T2 not stopped on piggybacked ACK");
+
+    test_pass("T2 Timer Callbacks");
+}
+
 int main(void) {
   printf("\n%sSTARTING RELIABLE TRANSMISSION TEST SUITE%s\n", COL_YELLOW,
          COL_RESET);
@@ -968,6 +1205,10 @@ int main(void) {
   test_nr_modulo_validation();
   test_nr_edge_cases();
   test_state_initialization();
+  test_public_query_api();
+  test_set_local_busy();
+  test_rnr_reception();
+  test_t2_timer_callbacks();
 
   printf("\n%sALL RELIABLE TRANSMISSION TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
   return 0;

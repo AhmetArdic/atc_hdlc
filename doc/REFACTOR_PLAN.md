@@ -541,13 +541,13 @@ static inline void hdlc_t3_stop(atc_hdlc_context_t *ctx);
 
 ---
 
-## PHASE 4 — State Machine Expansion ⬜
+## PHASE 4 — State Machine Expansion ✅
 
 **Goal:** Implement FRMR lock-down and transition guards. Sub-conditions within
 CONNECTED (remote busy, local busy, reject-recovery) are modelled as boolean
 flags in the context, not as separate states — consistent with ISO/IEC 13239.
 
-**Status:** `PENDING`
+**Status:** `COMPLETE`
 
 ### State Model (5 states)
 
@@ -589,19 +589,34 @@ Sub-conditions within CONNECTED (tracked by context boolean flags):
 | DISCONNECTING | T1 expires > N2 | DISCONNECTED | Link failure event |
 
 ### Tasks
-- [ ] Update `hdlc_set_protocol_state()` to enforce transition guards
-- [ ] `hdlc_process_frmr()`: transition to `STATE_FRMR_ERROR` (was: `DISCONNECTED`)
-- [ ] Add `FRMR_ERROR` guard in all public API entry points
-- [ ] Update `atc_hdlc_is_connected()`: return true only for `CONNECTED`
-- [ ] Update all references to old state enum values in tests
+- [x] Per-state handler refactor (Linux LAPB `lapb_stateN_machine` pattern):
+      `hdlc_state_disconnected`, `hdlc_state_connecting`, `hdlc_state_connected`,
+      `hdlc_state_disconnecting`, `hdlc_state_frmr_error`
+- [x] `hdlc_process_frmr()` → `STATE_FRMR_ERROR` (was: `DISCONNECTED`)
+- [x] `hdlc_send_frmr()` internal helper — builds 3-byte FRMR info field, fires PROTOCOL_ERROR
+- [x] FRMR sent for invalid N(R) (Z bit) in `hdlc_process_nr()`
+- [x] FRMR sent for unimplemented U-frame (W bit) in `hdlc_state_connected()`
+- [x] `FRMR_ERROR` lock-down: SABM from peer re-establishes; API calls → ERR_INVALID_STATE
+- [x] T3 keep-alive: starts on `hdlc_set_protocol_state(CONNECTED)`, stops on leaving
+- [x] T3 restarts on every received frame while CONNECTED
+- [x] `EVENT_REMOTE_BUSY_ON/OFF` fired in S-frame handler
+- [x] `EVENT_WINDOW_OPEN` fired in `hdlc_process_nr()` when window slot freed
+- [x] Duplicate REJ guard: second OOS I-frame suppresses duplicate REJ
+- [x] `HDLC_STAT_INC/ADD` macros in `hdlc_config.h` + `hdlc_private.h`;
+      all raw `ctx->stats.*++` replaced
+- [x] `ATC_HDLC_ENABLE_STATS`, `ATC_HDLC_ENABLE_ASSERT`, `ATC_HDLC_FCS_USE_TABLE`
+      compile-time macros in `hdlc_config.h`
+- [x] Tests: 4 new Phase 4 tests (FRMR send, FRMR_ERROR lock-down, T3, duplicate REJ)
+- [x] Build: PASS; Tests: 87/87 PASS
 
 ### Files Changed
-`inc/hdlc_types.h`, `src/station/hdlc_station.c`, `src/station/hdlc_frame_handlers.c`,
-`inc/hdlc.h`, test files (enum value references).
+`inc/hdlc_config.h`, `src/hdlc_private.h`, `src/station/hdlc_frame_handlers.c`,
+`src/station/hdlc_station.c`, `src/station/hdlc_in.c`, `src/station/hdlc_out.c`,
+`test/test_connection_management.c`, `test/test_hdlc.c`, `test/test_reliable_transmission.c`
 
 ---
 
-## PHASE 4 — T3 Timer + T1 Connecting/Disconnecting Retry ⬜
+## PHASE 5 — T3 Timer + T1 Connecting/Disconnecting Retry ⬜
 
 **Goal:** Add the missing T3 idle/keep-alive timer. Extend T1 to cover CONNECTING and DISCONNECTING states.
 
@@ -664,7 +679,7 @@ if CONNECTED (any sub-condition flag):
 
 ---
 
-## PHASE 5 — Remote Busy + Local Busy + RNR ⬜
+## PHASE 6 — Remote Busy + Local Busy + RNR ⬜
 
 **Goal:** Fully implement flow control. RNR sending and receiving.
 
@@ -718,7 +733,7 @@ atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_context_t *ctx, atc_hdlc_bool 
 
 ---
 
-## PHASE 6 — FRMR Sending + Link Reset API ⬜
+## PHASE 7 — FRMR Sending + Link Reset API ⬜
 
 **Goal:** Send FRMR on protocol violations. Add user-accessible link reset.
 
@@ -771,7 +786,7 @@ atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_context_t *ctx);
 
 ---
 
-## PHASE 7 — TEST Frame Full Lifecycle ⬜
+## PHASE 8 — TEST Frame Full Lifecycle ⬜
 
 **Goal:** Implement the complete TEST frame round-trip as defined in §7 of the architecture document.
 
@@ -807,7 +822,7 @@ atc_hdlc_u16   test_pattern_len;  /**< Length of the test pattern */
 
 ---
 
-## PHASE 8 — Event System Expansion + Status Query Functions ⬜
+## PHASE 9 — Event System Expansion + Status Query Functions ⬜
 
 **Goal:** Complete the event notification model. Add all §6.6 query functions.
 
@@ -843,7 +858,7 @@ Fire in `hdlc_process_nr()` when at least one TX slot is freed (V(A) advances fr
 
 ---
 
-## PHASE 9 — Statistics Expansion + Compile-Time Configuration ⬜
+## PHASE 10 — Statistics Expansion + Compile-Time Configuration ⬜
 
 **Goal:** Complete statistics instrumentation. Add compile-time feature toggles.
 
@@ -923,7 +938,7 @@ Fire in `hdlc_process_nr()` when at least one TX slot is freed (V(A) advances fr
 
 ---
 
-## PHASE 10 — I-Frame Reception Fixes + Connect/Disconnect Preconditions ⬜
+## PHASE 11 — I-Frame Reception Fixes + Connect/Disconnect Preconditions ⬜
 
 **Goal:** Correct remaining behavioural gaps in §6.4 and add state guards to connection management.
 
@@ -962,7 +977,7 @@ Fire in `hdlc_process_nr()` when at least one TX slot is freed (V(A) advances fr
 
 ---
 
-## PHASE 11 — Optional Buffer-Based Output + Zero-Copy RX ⬜
+## PHASE 12 — Optional Buffer-Based Output + Zero-Copy RX ⬜
 
 **Goal:** Add the optional buffer-based send path and the zero-copy RX swap mechanism.
 
@@ -1028,7 +1043,7 @@ atc_hdlc_u8 *atc_hdlc_swap_rx_buffer(atc_hdlc_context_t *ctx,
 | 2 | Init / reset refactor | ✅ Complete | PASS | 3/3 PASS |
 | 3a | Coding convention cleanup | ✅ Complete | PASS | 3/3 PASS |
 | 3b | Timer architecture refactor | ✅ Complete | PASS | 4/4 PASS |
-| 4 | State machine expansion | ⬜ Pending | — | — |
+| 4 | State machine expansion | ✅ Complete | PASS | 87/87 PASS |
 | 5 | T3 timer (now: platform-driven) | ⬜ Pending | — | — |
 | 6 | Remote busy / local busy | ⬜ Pending | — | — |
 | 7 | FRMR sending + link reset | ⬜ Pending | — | — |
@@ -1050,3 +1065,4 @@ atc_hdlc_u8 *atc_hdlc_swap_rx_buffer(atc_hdlc_context_t *ctx,
 | 2026-03-15 | 2 | Init/reset refactor: new `atc_hdlc_init()` (5-param struct-based), all consistency checks, deprecated fields removed from context, `configure_station` removed, `link_setup(peer_addr)`, all output_frame_* return `atc_hdlc_error_t`, platform callbacks via `atc_hdlc_platform_t`, new link_reset/set_local_busy/query APIs, all test files migrated; clean build + 3/3 tests pass |
 | 2026-03-15 | 3a | Convention cleanup: `hdlc_in.c`/`hdlc_out.c` rename, `data_in*`/`transmit_*` API rename, `.on_send`, `rx_*`/`tx_*` context fields, `t1_timer`/`t2_timer`, `HDLC_` internal macros, `hdlc_` prefix on internal functions; clean build + 3/3 tests pass |
 | 2026-03-15 | 3b | Timer refactor: `atc_hdlc_tick()` removed, `t1/t2/t3_start/stop` platform callbacks added, `atc_hdlc_t1/t2/t3_expired()` public API, all internal timer logic migrated, test thread loops updated; clean build + 4/4 tests pass |
+| 2026-03-16 | 4 | State machine expansion: per-state handlers (Linux LAPB pattern), FRMR sending (W/Z bits), FRMR_ERROR lock-down, T3 keep-alive on CONNECTED entry, duplicate REJ guard, EVENT_REMOTE_BUSY_ON/OFF + EVENT_WINDOW_OPEN, HDLC_STAT_INC/ADD macros, compile-time feature flags; RNR remote_busy flag bug fixed; 87/87 tests pass |

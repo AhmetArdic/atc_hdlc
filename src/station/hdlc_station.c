@@ -220,7 +220,7 @@ atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_context_t *ctx,
 
     if (busy && !ctx->local_busy) {
         ctx->local_busy = true;
-        ctx->stats.local_busy_transitions++;
+        HDLC_STAT_INC(ctx, local_busy_transitions);
         ATC_HDLC_LOG_DEBUG("flow: Local busy asserted");
     } else if (!busy && ctx->local_busy) {
         ctx->local_busy = false;
@@ -248,7 +248,7 @@ void atc_hdlc_t1_expired(atc_hdlc_context_t *ctx) {
 
     const atc_hdlc_u8 max_retries = ctx->config ? ctx->config->max_retries : 0;
     ctx->retry_count++;
-    ctx->stats.timeout_count++;
+    HDLC_STAT_INC(ctx, timeout_count);
 
     if (max_retries > 0 && ctx->retry_count > max_retries) {
         ATC_HDLC_LOG_ERROR("tx: Link failure — N2 exceeded (state %d)",
@@ -383,6 +383,16 @@ void hdlc_set_protocol_state(atc_hdlc_context_t *ctx,
         ATC_HDLC_LOG_DEBUG("state: %d -> %d (event: %d)",
                            ctx->current_state, new_state, event);
         ctx->current_state = new_state;
+
+        /* Start T3 keep-alive on entering CONNECTED; stop on leaving */
+        if (new_state == ATC_HDLC_STATE_CONNECTED) {
+            if (ctx->config && ctx->config->t3_ms > 0) {
+                hdlc_t3_start(ctx);
+            }
+        } else if (ctx->t3_active) {
+            hdlc_t3_stop(ctx);
+        }
+
         hdlc_fire_event(ctx, event);
     }
 }

@@ -103,6 +103,48 @@ extern "C" {
 
 /*
  * --------------------------------------------------------------------------
+ * STATISTICS INSTRUMENTATION
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Enable runtime statistics collection in atc_hdlc_stats_t.
+ *
+ * Set to 0 to compile out all stat increments (zero overhead on
+ * resource-constrained targets). Default: enabled.
+ */
+#ifndef ATC_HDLC_ENABLE_STATS
+#define ATC_HDLC_ENABLE_STATS 1
+#endif
+
+/**
+ * @brief Enable internal assertion checks.
+ *
+ * Set to 1 for debug builds. Requires <assert.h>. Default: disabled.
+ */
+#ifndef ATC_HDLC_ENABLE_ASSERT
+#define ATC_HDLC_ENABLE_ASSERT 0
+#endif
+
+/*
+ * --------------------------------------------------------------------------
+ * CRC COMPUTATION
+ * --------------------------------------------------------------------------
+ */
+
+/**
+ * @brief Use a 256-entry lookup table for FCS-16 computation.
+ *
+ * Set to 1 for maximum speed (+512 B ROM).
+ * Set to 0 for bit-by-bit computation (minimal ROM, ~8× slower).
+ * Default: table enabled.
+ */
+#ifndef ATC_HDLC_FCS_USE_TABLE
+#define ATC_HDLC_FCS_USE_TABLE 1
+#endif
+
+/*
+ * --------------------------------------------------------------------------
  * DEBUG LOGGING
  * --------------------------------------------------------------------------
  */

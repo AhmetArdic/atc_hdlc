@@ -209,6 +209,28 @@ typedef struct {
 
 /*
  * --------------------------------------------------------------------------
+ * STATISTICS INSTRUMENTATION MACROS
+ * --------------------------------------------------------------------------
+ */
+#if ATC_HDLC_ENABLE_STATS
+/** @brief Increment a statistics counter (no-op when ENABLE_STATS=0). */
+#  define HDLC_STAT_INC(ctx, field)     ((ctx)->stats.field++)
+/** @brief Add @p n to a statistics counter (no-op when ENABLE_STATS=0). */
+#  define HDLC_STAT_ADD(ctx, field, n)  ((ctx)->stats.field += (n))
+#else
+#  define HDLC_STAT_INC(ctx, field)     ((void)0)
+#  define HDLC_STAT_ADD(ctx, field, n)  ((void)0)
+#endif
+
+#if ATC_HDLC_ENABLE_ASSERT
+#  include <assert.h>
+#  define HDLC_ASSERT(cond) assert(cond)
+#else
+#  define HDLC_ASSERT(cond) ((void)0)
+#endif
+
+/*
+ * --------------------------------------------------------------------------
  * SEQUENCE NUMBER CONSTANTS
  * --------------------------------------------------------------------------
  */
@@ -241,6 +263,25 @@ typedef void (*hdlc_put_byte_fn)(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, a
 
 /* hdlc_station.c — State management */
 void hdlc_set_protocol_state(atc_hdlc_context_t *ctx, atc_hdlc_state_t new_state, atc_hdlc_event_t event);
+
+/* hdlc_frame_handlers.c — FRMR sender */
+/**
+ * @brief Transmit a Frame Reject (FRMR) response.
+ *
+ * Builds the 3-byte FRMR information field (rejected ctrl + V(S)/V(R) + reason bits),
+ * sends the FRMR frame, and transitions to FRMR_ERROR state.
+ *
+ * @param ctx           Station context.
+ * @param rejected_ctrl Control field of the offending frame.
+ * @param w  Control field undefined/unimplemented.
+ * @param x  Info field present on frame that disallows it.
+ * @param y  Info field exceeds max_frame_size.
+ * @param z  Invalid N(R).
+ */
+void hdlc_send_frmr(atc_hdlc_context_t *ctx,
+                    atc_hdlc_u8 rejected_ctrl,
+                    atc_hdlc_bool w, atc_hdlc_bool x,
+                    atc_hdlc_bool y, atc_hdlc_bool z);
 
 /*
  * --------------------------------------------------------------------------
@@ -358,6 +399,10 @@ static inline void hdlc_send_rr(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
 
 static inline void hdlc_send_response_rr(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
     hdlc_send_s_frame(ctx, ctx->my_address, HDLC_S_RR, ctx->vr, pf); /* Response */
+}
+
+static inline void hdlc_send_rnr(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
+    hdlc_send_s_frame(ctx, ctx->my_address, HDLC_S_RNR, ctx->vr, pf); /* Response */
 }
 
 static inline void hdlc_send_rej(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
