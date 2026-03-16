@@ -10,9 +10,9 @@ void YIELD_THREAD(void) {
 }
 
 double get_time_s(void) {
-    LARGE_INTEGER freq;
+    static LARGE_INTEGER freq = {0};
+    if (freq.QuadPart == 0) QueryPerformanceFrequency(&freq);
     LARGE_INTEGER time;
-    QueryPerformanceFrequency(&freq);
     QueryPerformanceCounter(&time);
     return (double)time.QuadPart / (double)freq.QuadPart;
 }

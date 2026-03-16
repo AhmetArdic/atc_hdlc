@@ -23,6 +23,10 @@
  *
  * Contains private constants, macros, types, and function prototypes
  * shared across HDLC implementation modules but not part of the public API.
+ *
+ * Naming convention (internal):
+ *   - Types / functions : hdlc_  prefix
+ *   - Macros / constants: HDLC_  prefix
  */
 
 #ifndef ATC_HDLC_PRIVATE_H
@@ -35,23 +39,23 @@
  * FRAME LENGTH CONSTANTS (Internal)
  * --------------------------------------------------------------------------
  */
-#define ATC_HDLC_FLAG_LEN               (1)     /**< Flag. */
-#define ATC_HDLC_ADDRESS_LEN            (1)     /**< Address Field. */
-#define ATC_HDLC_CONTROL_LEN            (1)     /**< Control Field. */
-#define ATC_HDLC_FCS_LEN                (2)     /**< FCS Field. */
+#define HDLC_FLAG_LEN               (1)     /**< Flag byte length. */
+#define HDLC_ADDRESS_LEN            (1)     /**< Address field length. */
+#define HDLC_CONTROL_LEN            (1)     /**< Control field length. */
+#define HDLC_FCS_LEN                (2)     /**< FCS field length. */
 
 /** Minimum frame length: Address(1) + Control(1) + FCS(2). */
-#define ATC_HDLC_MIN_FRAME_LEN          (ATC_HDLC_ADDRESS_LEN + ATC_HDLC_CONTROL_LEN + ATC_HDLC_FCS_LEN)
+#define HDLC_MIN_FRAME_LEN          (HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN + HDLC_FCS_LEN)
 
 /* Frame Type Masks & Values */
-#define ATC_HDLC_FRAME_TYPE_MASK_I      (0x01)
-#define ATC_HDLC_FRAME_TYPE_VAL_I       (0x00)
+#define HDLC_FRAME_TYPE_MASK_I      (0x01)
+#define HDLC_FRAME_TYPE_VAL_I       (0x00)
 
-#define ATC_HDLC_FRAME_TYPE_MASK_S      (0x03)
-#define ATC_HDLC_FRAME_TYPE_VAL_S       (0x01)
+#define HDLC_FRAME_TYPE_MASK_S      (0x03)
+#define HDLC_FRAME_TYPE_VAL_S       (0x01)
 
-#define ATC_HDLC_FRAME_TYPE_MASK_U      (0x03)
-#define ATC_HDLC_FRAME_TYPE_VAL_U       (0x03)
+#define HDLC_FRAME_TYPE_MASK_U      (0x03)
+#define HDLC_FRAME_TYPE_VAL_U       (0x03)
 
 /*
  * Control Field Properties Extraction/Creation Macros
@@ -81,15 +85,15 @@
 #define HDLC_CTRL_U_M_HI(ctrl)     (((ctrl) >> HDLC_CTRL_U_M_HI_SHIFT) & HDLC_CTRL_U_M_HI_MASK)
 
 /**
- * @brief Input State Machine States.
- * Internal states for the byte-by-byte receive parser.
+ * @brief RX byte-parser state machine states.
+ * Internal states for the byte-by-byte receive parser (hdlc_in.c).
  */
 typedef enum {
-    HDLC_INPUT_STATE_HUNT = 0, /**< Searching for the Start Flag (0x7E) to sync. */
-    HDLC_INPUT_STATE_ADDRESS,  /**< Frame detected, expecting Address Byte next. */
-    HDLC_INPUT_STATE_DATA,     /**< Receiving Control or Payload Data. */
-    HDLC_INPUT_STATE_ESCAPE    /**< Previous byte was 0x7D (Escape), next byte needs XORing. */
-} hdlc_input_state_t;
+    HDLC_RX_STATE_HUNT = 0, /**< Searching for the Start Flag (0x7E) to sync. */
+    HDLC_RX_STATE_ADDRESS,  /**< Frame detected, expecting Address Byte next. */
+    HDLC_RX_STATE_DATA,     /**< Receiving Control or Payload Data. */
+    HDLC_RX_STATE_ESCAPE    /**< Previous byte was 0x7D (Escape), next byte needs XORing. */
+} hdlc_rx_state_t;
 
 /*
  * --------------------------------------------------------------------------
@@ -205,6 +209,28 @@ typedef struct {
 
 /*
  * --------------------------------------------------------------------------
+ * STATISTICS INSTRUMENTATION MACROS
+ * --------------------------------------------------------------------------
+ */
+#if ATC_HDLC_ENABLE_STATS
+/** @brief Increment a statistics counter (no-op when ENABLE_STATS=0). */
+#  define HDLC_STAT_INC(ctx, field)     ((ctx)->stats.field++)
+/** @brief Add @p n to a statistics counter (no-op when ENABLE_STATS=0). */
+#  define HDLC_STAT_ADD(ctx, field, n)  ((ctx)->stats.field += (n))
+#else
+#  define HDLC_STAT_INC(ctx, field)     ((void)0)
+#  define HDLC_STAT_ADD(ctx, field, n)  ((void)0)
+#endif
+
+#if ATC_HDLC_ENABLE_ASSERT
+#  include <assert.h>
+#  define HDLC_ASSERT(cond) assert(cond)
+#else
+#  define HDLC_ASSERT(cond) ((void)0)
+#endif
+
+/*
+ * --------------------------------------------------------------------------
  * SEQUENCE NUMBER CONSTANTS
  * --------------------------------------------------------------------------
  */
@@ -235,22 +261,92 @@ typedef void (*hdlc_put_byte_fn)(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, a
  * --------------------------------------------------------------------------
  */
 
-/* hdlc.c — State management */
-void hdlc_set_protocol_state(atc_hdlc_context_t *ctx, atc_hdlc_protocol_state_t new_state, atc_hdlc_event_t event);
+/* hdlc_station.c — State management */
+void hdlc_set_protocol_state(atc_hdlc_context_t *ctx, atc_hdlc_state_t new_state, atc_hdlc_event_t event);
 
-/* hdlc_output.c — Output helpers used by multiple modules */
-void atc_hdlc_output_frame_start(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 control);
-void atc_hdlc_output_frame_information_bytes(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *information_bytes, atc_hdlc_u32 len);
-void atc_hdlc_output_frame_end(atc_hdlc_context_t *ctx);
+/* hdlc_frame_handlers.c — FRMR sender */
+/**
+ * @brief Transmit a Frame Reject (FRMR) response.
+ *
+ * Builds the 3-byte FRMR information field (rejected ctrl + V(S)/V(R) + reason bits),
+ * sends the FRMR frame, and transitions to FRMR_ERROR state.
+ *
+ * @param ctx           Station context.
+ * @param rejected_ctrl Control field of the offending frame.
+ * @param w  Control field undefined/unimplemented.
+ * @param x  Info field present on frame that disallows it.
+ * @param y  Info field exceeds max_frame_size.
+ * @param z  Invalid N(R).
+ */
+void hdlc_send_frmr(atc_hdlc_context_t *ctx,
+                    atc_hdlc_u8 rejected_ctrl,
+                    atc_hdlc_bool w, atc_hdlc_bool x,
+                    atc_hdlc_bool y, atc_hdlc_bool z);
 
-/* hdlc_frame.c — Encoding helpers used by hdlc_output.c */
-void output_byte_to_callback(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush);
-void pack_escaped(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hdlc_u8 byte);
-void pack_escaped_crc_update(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hdlc_u8 byte, atc_hdlc_u16 *crc);
-atc_hdlc_bool frame_pack_core(const atc_hdlc_frame_t *frame, hdlc_put_byte_fn put_fn, hdlc_encode_ctx_t *enc_ctx);
+/*
+ * --------------------------------------------------------------------------
+ * INTERNAL TIMER HELPERS
+ * --------------------------------------------------------------------------
+ * Thin wrappers that invoke the platform start/stop callbacks and maintain
+ * the t1/t2/t3_active flags. Use these everywhere inside the library instead
+ * of touching ctx->t1_active directly.
+ */
 
-/* hdlc_input.c — Process complete frame (called from input parser) */
-void process_complete_frame(atc_hdlc_context_t *ctx);
+static inline void hdlc_t1_start(atc_hdlc_context_t *ctx) {
+    if (ctx->platform && ctx->platform->t1_start && ctx->config) {
+        ctx->platform->t1_start(ctx->config->t1_ms, ctx->platform->user_ctx);
+    }
+    ctx->t1_active = true;
+}
+
+static inline void hdlc_t1_stop(atc_hdlc_context_t *ctx) {
+    if (ctx->t1_active && ctx->platform && ctx->platform->t1_stop) {
+        ctx->platform->t1_stop(ctx->platform->user_ctx);
+    }
+    ctx->t1_active = false;
+}
+
+static inline void hdlc_t2_start(atc_hdlc_context_t *ctx) {
+    if (ctx->platform && ctx->platform->t2_start && ctx->config) {
+        ctx->platform->t2_start(ctx->config->t2_ms, ctx->platform->user_ctx);
+    }
+    ctx->t2_active = true;
+}
+
+static inline void hdlc_t2_stop(atc_hdlc_context_t *ctx) {
+    if (ctx->t2_active && ctx->platform && ctx->platform->t2_stop) {
+        ctx->platform->t2_stop(ctx->platform->user_ctx);
+    }
+    ctx->t2_active = false;
+}
+
+static inline void hdlc_t3_start(atc_hdlc_context_t *ctx) {
+    if (ctx->platform && ctx->platform->t3_start && ctx->config) {
+        ctx->platform->t3_start(ctx->config->t3_ms, ctx->platform->user_ctx);
+    }
+    ctx->t3_active = true;
+}
+
+static inline void hdlc_t3_stop(atc_hdlc_context_t *ctx) {
+    if (ctx->t3_active && ctx->platform && ctx->platform->t3_stop) {
+        ctx->platform->t3_stop(ctx->platform->user_ctx);
+    }
+    ctx->t3_active = false;
+}
+
+/* hdlc_out.c — TX helpers used by multiple modules */
+void atc_hdlc_transmit_start(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 control);
+void atc_hdlc_transmit_data_bytes(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
+void atc_hdlc_transmit_end(atc_hdlc_context_t *ctx);
+
+/* hdlc_frame.c — Encoding helpers used by hdlc_out.c */
+void hdlc_write_byte(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush);
+void hdlc_pack_escaped(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hdlc_u8 byte);
+void hdlc_pack_escaped_crc(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hdlc_u8 byte, atc_hdlc_u16 *crc);
+atc_hdlc_bool hdlc_frame_pack_core(const atc_hdlc_frame_t *frame, hdlc_put_byte_fn put_fn, hdlc_encode_ctx_t *enc_ctx);
+
+/* hdlc_in.c — Process complete frame (called from RX parser) */
+void hdlc_process_complete_frame(atc_hdlc_context_t *ctx);
 
 /* hdlc_frame_handlers.c — Connection state reset */
 void hdlc_reset_connection_state(atc_hdlc_context_t *ctx);
@@ -261,26 +357,26 @@ void hdlc_reset_connection_state(atc_hdlc_context_t *ctx);
  * --------------------------------------------------------------------------
  */
 
-/* hdlc_output.c — Complete frame output (internal) */
-void atc_hdlc_output_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame);
+/* hdlc_out.c — Complete frame transmit (internal) */
+void hdlc_transmit_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame);
 
 /* hdlc_frame.c — Control field constructors (internal) */
-atc_hdlc_u8 atc_hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
-atc_hdlc_u8 atc_hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
-atc_hdlc_u8 atc_hdlc_create_u_ctrl(atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf);
+atc_hdlc_u8 hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
+atc_hdlc_u8 hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
+atc_hdlc_u8 hdlc_create_u_ctrl(atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf);
 
 /* Shared frame type resolver */
 static inline atc_hdlc_frame_type_t hdlc_resolve_frame_type(atc_hdlc_u8 ctrl) {
-    if ((ctrl & ATC_HDLC_FRAME_TYPE_MASK_I) == ATC_HDLC_FRAME_TYPE_VAL_I) return ATC_HDLC_FRAME_I;
-    if ((ctrl & ATC_HDLC_FRAME_TYPE_MASK_S) == ATC_HDLC_FRAME_TYPE_VAL_S) return ATC_HDLC_FRAME_S;
-    if ((ctrl & ATC_HDLC_FRAME_TYPE_MASK_U) == ATC_HDLC_FRAME_TYPE_VAL_U) return ATC_HDLC_FRAME_U;
+    if ((ctrl & HDLC_FRAME_TYPE_MASK_I) == HDLC_FRAME_TYPE_VAL_I) return ATC_HDLC_FRAME_I;
+    if ((ctrl & HDLC_FRAME_TYPE_MASK_S) == HDLC_FRAME_TYPE_VAL_S) return ATC_HDLC_FRAME_S;
+    if ((ctrl & HDLC_FRAME_TYPE_MASK_U) == HDLC_FRAME_TYPE_VAL_U) return ATC_HDLC_FRAME_U;
     return ATC_HDLC_FRAME_INVALID;
 }
 
 static inline void hdlc_send_u_frame(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf) {
-    atc_hdlc_u8 ctrl = atc_hdlc_create_u_ctrl(m_lo, m_hi, pf);
-    atc_hdlc_output_frame_start(ctx, address, ctrl);
-    atc_hdlc_output_frame_end(ctx);
+    atc_hdlc_u8 ctrl = hdlc_create_u_ctrl(m_lo, m_hi, pf);
+    atc_hdlc_transmit_start(ctx, address, ctrl);
+    atc_hdlc_transmit_end(ctx);
 }
 
 static inline void hdlc_send_ua(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
@@ -292,21 +388,25 @@ static inline void hdlc_send_dm(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
 }
 
 static inline void hdlc_send_s_frame(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
-    atc_hdlc_u8 ctrl = atc_hdlc_create_s_ctrl(s_bits, nr, pf);
-    atc_hdlc_output_frame_start(ctx, address, ctrl);
-    atc_hdlc_output_frame_end(ctx);
+    atc_hdlc_u8 ctrl = hdlc_create_s_ctrl(s_bits, nr, pf);
+    atc_hdlc_transmit_start(ctx, address, ctrl);
+    atc_hdlc_transmit_end(ctx);
 }
 
 static inline void hdlc_send_rr(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
-    hdlc_send_s_frame(ctx, ctx->peer_address, HDLC_S_RR, ctx->vr, pf); // Command
+    hdlc_send_s_frame(ctx, ctx->peer_address, HDLC_S_RR, ctx->vr, pf); /* Command */
 }
 
 static inline void hdlc_send_response_rr(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
-    hdlc_send_s_frame(ctx, ctx->my_address, HDLC_S_RR, ctx->vr, pf); // Response (Address = Sender's own address)
+    hdlc_send_s_frame(ctx, ctx->my_address, HDLC_S_RR, ctx->vr, pf); /* Response */
+}
+
+static inline void hdlc_send_rnr(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
+    hdlc_send_s_frame(ctx, ctx->my_address, HDLC_S_RNR, ctx->vr, pf); /* Response */
 }
 
 static inline void hdlc_send_rej(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
     hdlc_send_s_frame(ctx, ctx->peer_address, HDLC_S_REJ, ctx->vr, pf);
 }
 
-#endif // ATC_HDLC_PRIVATE_H
+#endif /* ATC_HDLC_PRIVATE_H */
