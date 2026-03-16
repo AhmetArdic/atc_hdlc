@@ -76,7 +76,7 @@ void atc_hdlc_data_in(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
           hdlc_process_complete_frame(ctx);
         } else {
           ATC_HDLC_LOG_WARN("rx: CRC Error! Calc: 0x%04X, RX: 0x%04X", calced_crc, rx_fcs);
-          ctx->stats.fcs_errors++;
+          HDLC_STAT_INC(ctx, fcs_errors);
         }
       }
     }

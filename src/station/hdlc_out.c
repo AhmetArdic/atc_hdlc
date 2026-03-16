@@ -53,7 +53,7 @@ void hdlc_transmit_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame)
   (void)hdlc_frame_pack_core(frame, hdlc_write_byte, &enc_ctx);
 
   /* Stats: frame_pack_core does not call atc_hdlc_transmit_end(), increment here. */
-  ctx->stats.tx_i_frames++;
+  HDLC_STAT_INC(ctx, tx_i_frames);
 }
 
 /*
@@ -137,7 +137,7 @@ void atc_hdlc_transmit_end(atc_hdlc_context_t *ctx) {
   /* Closing flag (raw) */
   hdlc_write_byte(&enc, HDLC_FLAG, true);
 
-  ctx->stats.tx_i_frames++;
+  HDLC_STAT_INC(ctx, tx_i_frames);
 }
 
 /*
@@ -284,8 +284,8 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t *ctx,
         hdlc_t1_start(ctx);
     }
 
-    ctx->stats.tx_i_frames++;
-    ctx->stats.tx_bytes += len;
+    HDLC_STAT_INC(ctx, tx_i_frames);
+    HDLC_STAT_ADD(ctx, tx_bytes, len);
 
     return ATC_HDLC_OK;
 }

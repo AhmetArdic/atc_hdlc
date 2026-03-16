@@ -23,10 +23,15 @@ void test_basic_frame() {
 
   atc_hdlc_context_t ctx;
   setup_test_context(&ctx);
+  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
+
+  /* I-frames are only processed in CONNECTED state */
+  ctx.current_state = ATC_HDLC_STATE_CONNECTED;
 
   atc_hdlc_u8 payload[] = "TEST";
+  /* Address = my_address (0x01) so I-frame is accepted in CONNECTED state */
   atc_hdlc_frame_t frame_out = {
-      .address = 0xFF, .control = 0x00, .information = payload, .information_len = 4};
+      .address = 0x01, .control = 0x00, .information = payload, .information_len = 4};
 
   hdlc_transmit_frame(&ctx, &frame_out);
   print_hexdump("Output Buffer", mock_output_buffer, mock_output_len);
@@ -66,9 +71,10 @@ void test_empty_information() {
 
   atc_hdlc_context_t ctx;
   setup_test_context(&ctx);
+  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   atc_hdlc_frame_t frame_out = {
-      .address = 0xFF, .control = 0x00, .information = NULL, .information_len = 0};
+      .address = 0x01, .control = 0x00, .information = NULL, .information_len = 0};
 
   hdlc_transmit_frame(&ctx, &frame_out);
   
@@ -97,6 +103,7 @@ void test_byte_stuffing_heavy() {
 
   atc_hdlc_context_t ctx;
   setup_test_context(&ctx);
+  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   /*
    * NOTE: For static tests verifying basic decoding (byte stuffing, CRC, etc.),
@@ -153,6 +160,7 @@ void test_garbage_noise() {
 
   atc_hdlc_context_t ctx;
   setup_test_context(&ctx);
+  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   // Generate valid frame first
   atc_hdlc_frame_t valid_frame = {
@@ -193,6 +201,7 @@ void test_consecutive_flags() {
 
   atc_hdlc_context_t ctx;
   setup_test_context(&ctx);
+  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   mock_output_len = 0;
   atc_hdlc_frame_t f = {.address=0xFF, .control=0x03, .information=NULL, .information_len=0};
@@ -229,6 +238,7 @@ void test_min_size_rejection() {
   
   atc_hdlc_context_t ctx;
   setup_test_context(&ctx);
+  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   // Min size is usually ~4 bytes (Addr+Ctrl+FCS). 
   // Send 0x7E 0xFF 0x7E (Too short)
@@ -255,6 +265,7 @@ void test_aborted_frame() {
   
   atc_hdlc_context_t ctx;
   setup_test_context(&ctx);
+  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   // Send start of frame: 7E Addr Ctrl Data...
   atc_hdlc_data_in(&ctx, 0x7E);
@@ -284,6 +295,7 @@ void test_crc_error_injection() {
   
   atc_hdlc_context_t ctx;
   setup_test_context(&ctx);
+  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   // Generate valid frame
   atc_hdlc_frame_t f = {.address=0xFF, .control=0x00, .information=(atc_hdlc_u8*)"123", .information_len=3};
@@ -316,7 +328,8 @@ void test_input_buffer_overflow() {
   reset_test_state();
   
   atc_hdlc_context_t ctx;
-  setup_test_context(&ctx); // uses mock_rx_buffer [16384]
+  setup_test_context(&ctx);
+  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */ // uses mock_rx_buffer [16384]
 
   // Create a frame larger than buffer? Buffer is huge (16k in test).
   // Real world buffer might be small. 
@@ -363,6 +376,7 @@ void test_streaming_large_payload(void) {
 
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
+  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
     const int sizes[] = {1024, 4096, 8192};
     for (int s = 0; s < 3; s++) {
@@ -412,6 +426,7 @@ void test_control_field_i(void) {
   
   atc_hdlc_context_t ctx;
   setup_test_context(&ctx);
+  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   /*
    * NOTE: We previously used loopbacks and the application callback for this test.
@@ -448,6 +463,7 @@ void test_control_field_s(void) {
   
   atc_hdlc_context_t ctx;
   setup_test_context(&ctx);
+  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   // Construct S-Frame: REJ (S=10 -> 2), N(R)=7, P/F=0
   atc_hdlc_frame_t f = {.address=0xFF, .control=hdlc_create_s_ctrl(0x02, 7, 0), .information=NULL, .information_len=0};
@@ -477,6 +493,7 @@ void test_ui_frame_transmission(void) {
     
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
+  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
     ctx.peer_address = 0x02; /* peer address set directly for test */
 
     const char *payload = "HELLO";
@@ -501,6 +518,7 @@ void test_ui_frame_reception(void) {
     
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
+  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
     ctx.peer_address = 0x02; /* peer address set directly for test */
 
     // Construct a valid UI frame addressed to ME (0x01)
@@ -530,6 +548,7 @@ void test_test_frame(void) {
     reset_test_state();
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
+  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
     ctx.peer_address = 0x02; /* peer address set directly for test */
 
     // --- 1. Send TEST command ---
@@ -640,6 +659,7 @@ void test_timer_callbacks(void) {
 
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
+    /* link_setup requires DISCONNECTED state — do NOT set CONNECTED here */
     ctx.peer_address = 0x02;
 
     /* T1 should start when link_setup sends SABM */

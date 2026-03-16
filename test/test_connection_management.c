@@ -290,9 +290,10 @@ void test_frmr_reception(void) {
     // Feed bytes
     atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
 
-    // Verify State Change -> DISCONNECTED
-    if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED)
-         test_fail("FRMR Reception", "State not DISCONNECTED");
+    /* FRMR now transitions to FRMR_ERROR (lock-down state), not DISCONNECTED.
+     * The peer rejected one of our frames; only link_reset or disconnect is valid. */
+    if (ctx.current_state != ATC_HDLC_STATE_FRMR_ERROR)
+         test_fail("FRMR Reception", "State not FRMR_ERROR");
 
     if (state_change_call_count != 1)
          test_fail("FRMR Reception", "State change callback count incorrect");
@@ -726,8 +727,222 @@ int main(void) {
     test_peer_disconnect();
     test_event_callbacks();
     test_t1_timer_callbacks();
+    test_frmr_send_invalid_nr();
+    test_frmr_error_lockdown();
+    test_t3_timer_on_connect();
+    test_duplicate_rej_guard();
 
     printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
     return 0;
+}
+
+/* ================================================================
+ *  Phase 4 tests — state machine expansion
+ * ================================================================ */
+
+/**
+ * @brief Test: FRMR is sent for invalid N(R) (out of V(A)..V(S) window).
+ */
+void test_frmr_send_invalid_nr(void) {
+    printf("TEST: FRMR sent on invalid N(R)\n");
+
+    atc_hdlc_context_t ctx;
+    setup_test_context(&ctx);
+    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+    ctx.peer_address  = 0x02;
+    ctx.va = 0; ctx.vs = 2; /* outstanding frames 0..1 */
+
+    /* Send RR with N(R)=5 — invalid (outside V(A)..V(S) = 0..2) */
+    atc_hdlc_u8 rr_ctrl = hdlc_create_s_ctrl(HDLC_S_RR, 5, 0);
+    atc_hdlc_frame_t rr = { .address = 0x01, .control = rr_ctrl,
+                              .information = NULL, .information_len = 0 };
+    atc_hdlc_u8 rr_raw[32]; atc_hdlc_u32 rr_len = 0;
+    atc_hdlc_frame_pack(&rr, rr_raw, sizeof(rr_raw), &rr_len);
+
+    reset_test_state();
+    atc_hdlc_data_in_bytes(&ctx, rr_raw, rr_len);
+
+    /* State must be FRMR_ERROR */
+    if (ctx.current_state != ATC_HDLC_STATE_FRMR_ERROR)
+        test_fail("FRMR Invalid NR", "State not FRMR_ERROR after invalid N(R)");
+
+    /* FRMR frame must have been transmitted */
+    if (mock_output_len < 6)
+        test_fail("FRMR Invalid NR", "No FRMR in output");
+
+    /* Verify FRMR Z bit set — decode the frame */
+    atc_hdlc_frame_t frmr_out; atc_hdlc_u8 flat[32];
+    if (atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len,
+                               &frmr_out, flat, sizeof(flat))) {
+        if (atc_hdlc_get_u_frame_sub_type(frmr_out.control) != ATC_HDLC_U_FRAME_TYPE_FRMR)
+            test_fail("FRMR Invalid NR", "Output is not a FRMR frame");
+        if (frmr_out.information_len >= 3) {
+            atc_hdlc_u8 reason = frmr_out.information[2];
+            if (!(reason & HDLC_FRMR_Z_BIT))
+                test_fail("FRMR Invalid NR", "FRMR Z bit not set");
+        }
+    }
+
+    /* PROTOCOL_ERROR event must have fired */
+    if (last_event != ATC_HDLC_EVENT_PROTOCOL_ERROR)
+        test_fail("FRMR Invalid NR", "PROTOCOL_ERROR event not fired");
+
+    test_pass("FRMR sent on invalid N(R)");
+}
+
+/**
+ * @brief Test: FRMR_ERROR lock-down — all operations except reset/disconnect
+ *        return ERR_INVALID_STATE.
+ */
+void test_frmr_error_lockdown(void) {
+    printf("TEST: FRMR_ERROR lock-down\n");
+
+    atc_hdlc_context_t ctx;
+    setup_test_context(&ctx);
+    ctx.current_state = ATC_HDLC_STATE_FRMR_ERROR;
+    ctx.peer_address  = 0x02;
+
+    /* transmit_i must be rejected */
+    atc_hdlc_u8 payload[] = {0xAA};
+    if (atc_hdlc_transmit_i(&ctx, payload, 1) != ATC_HDLC_ERR_INVALID_STATE)
+        test_fail("FRMR Lock-down", "transmit_i should return INVALID_STATE in FRMR_ERROR");
+
+    /* link_reset must be allowed */
+    if (atc_hdlc_link_reset(&ctx) != ATC_HDLC_OK)
+        test_fail("FRMR Lock-down", "link_reset should succeed in FRMR_ERROR");
+    if (ctx.current_state != ATC_HDLC_STATE_CONNECTING)
+        test_fail("FRMR Lock-down", "link_reset should transition to CONNECTING");
+
+    /* disconnect from FRMR_ERROR must also be allowed */
+    ctx.current_state = ATC_HDLC_STATE_FRMR_ERROR;
+    if (atc_hdlc_disconnect(&ctx) != ATC_HDLC_OK)
+        test_fail("FRMR Lock-down", "disconnect should succeed in FRMR_ERROR");
+
+    /* SABM from peer while in FRMR_ERROR: peer re-establishes → CONNECTED */
+    ctx.current_state = ATC_HDLC_STATE_FRMR_ERROR;
+    atc_hdlc_u8 sabm_ctrl = hdlc_create_u_ctrl(
+        HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1);
+    atc_hdlc_frame_t sabm = { .address = 0x01, .control = sabm_ctrl,
+                                .information = NULL, .information_len = 0 };
+    atc_hdlc_u8 sabm_raw[32]; atc_hdlc_u32 sabm_len = 0;
+    atc_hdlc_frame_pack(&sabm, sabm_raw, sizeof(sabm_raw), &sabm_len);
+    reset_test_state();
+    atc_hdlc_data_in_bytes(&ctx, sabm_raw, sabm_len);
+    if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
+        test_fail("FRMR Lock-down", "SABM from peer should re-establish CONNECTED from FRMR_ERROR");
+
+    test_pass("FRMR_ERROR lock-down");
+}
+
+/**
+ * @brief Test: T3 keep-alive timer starts on CONNECTED entry and
+ *        restarts on every received frame.
+ */
+void test_t3_timer_on_connect(void) {
+    printf("TEST: T3 timer on CONNECTED entry\n");
+
+    /* Use a config with t3_ms > 0 */
+    static atc_hdlc_config_t cfg_t3;
+    static atc_hdlc_platform_t plat_t3;
+    static atc_hdlc_rx_buffer_t rx_t3;
+    static atc_hdlc_u8 rx_buf_t3[1028];
+
+    cfg_t3 = (atc_hdlc_config_t){
+        .mode = ATC_HDLC_MODE_ABM, .address = 0x01, .window_size = 1,
+        .max_frame_size = 1024, .max_retries = 3,
+        .t1_ms = 1000, .t2_ms = 10, .t3_ms = 5000, .use_extended = false
+    };
+    plat_t3 = (atc_hdlc_platform_t){
+        .on_send = mock_send_cb, .on_data = mock_on_data_cb,
+        .on_event = mock_on_event_cb, .user_ctx = NULL,
+        .t1_start = mock_t1_start_cb, .t1_stop = mock_t1_stop_cb,
+        .t2_start = mock_t2_start_cb, .t2_stop = mock_t2_stop_cb,
+        .t3_start = mock_t3_start_cb, .t3_stop = mock_t3_stop_cb,
+    };
+    rx_t3.buffer = rx_buf_t3; rx_t3.capacity = sizeof(rx_buf_t3);
+
+    atc_hdlc_context_t ctx;
+    reset_test_state();
+    atc_hdlc_init(&ctx, &cfg_t3, &plat_t3, NULL, &rx_t3);
+    ctx.peer_address = 0x02;
+
+    /* link_setup → CONNECTING (T3 should NOT start yet) */
+    atc_hdlc_link_setup(&ctx, 0x02);
+    if (ctx.t3_active)
+        test_fail("T3 Timer", "T3 should not be active in CONNECTING");
+
+    /* Feed UA → CONNECTED: T3 should start */
+    atc_hdlc_u8 ua_ctrl = hdlc_create_u_ctrl(
+        HDLC_U_MODIFIER_LO_UA, HDLC_U_MODIFIER_HI_UA, 1);
+    atc_hdlc_frame_t ua = { .address = 0x02, .control = ua_ctrl,
+                              .information = NULL, .information_len = 0 };
+    atc_hdlc_u8 ua_raw[32]; atc_hdlc_u32 ua_len = 0;
+    atc_hdlc_frame_pack(&ua, ua_raw, sizeof(ua_raw), &ua_len);
+    reset_test_state();
+    atc_hdlc_data_in_bytes(&ctx, ua_raw, ua_len);
+    if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
+        test_fail("T3 Timer", "Not CONNECTED after UA");
+    if (!ctx.t3_active)
+        test_fail("T3 Timer", "T3 not started on entering CONNECTED");
+    if (mock_t3_start_count < 1)
+        test_fail("T3 Timer", "T3 start callback not invoked");
+
+    /* T3 expiry: RR(P=1) should be sent */
+    reset_test_state();
+    atc_hdlc_t3_expired(&ctx);
+    if (mock_output_len < 6)
+        test_fail("T3 Timer", "No keep-alive RR after T3 expiry");
+
+    test_pass("T3 timer on CONNECTED entry");
+}
+
+/**
+ * @brief Test: Duplicate REJ guard — second OOS I-frame does not send another REJ.
+ */
+void test_duplicate_rej_guard(void) {
+    printf("TEST: Duplicate REJ guard\n");
+
+    atc_hdlc_context_t ctx;
+    setup_test_context(&ctx);
+    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+    ctx.peer_address  = 0x02;
+    ctx.vr = 0;
+
+    /* Send I-frame N(S)=1 (out of sequence, expect N(S)=0) → REJ sent */
+    atc_hdlc_u8 i_ctrl = hdlc_create_i_ctrl(1, 0, 0);
+    atc_hdlc_u8 payload[] = {0xBB};
+    atc_hdlc_frame_t iframe = { .address = 0x01, .control = i_ctrl,
+                                  .information = payload, .information_len = 1 };
+    atc_hdlc_u8 i_raw[64]; atc_hdlc_u32 i_len = 0;
+    atc_hdlc_frame_pack(&iframe, i_raw, sizeof(i_raw), &i_len);
+
+    reset_test_state();
+    atc_hdlc_data_in_bytes(&ctx, i_raw, i_len);
+    if (!ctx.rej_exception)
+        test_fail("Duplicate REJ", "rej_exception not set after OOS frame");
+    int first_output_len = mock_output_len;
+    if (first_output_len < 6)
+        test_fail("Duplicate REJ", "No REJ sent on first OOS");
+
+    /* Send second OOS I-frame N(S)=2 — REJ must NOT be sent again */
+    atc_hdlc_u8 i_ctrl2 = hdlc_create_i_ctrl(2, 0, 0);
+    atc_hdlc_frame_t iframe2 = { .address = 0x01, .control = i_ctrl2,
+                                   .information = payload, .information_len = 1 };
+    atc_hdlc_u8 i_raw2[64]; atc_hdlc_u32 i_len2 = 0;
+    atc_hdlc_frame_pack(&iframe2, i_raw2, sizeof(i_raw2), &i_len2);
+    reset_test_state();
+    atc_hdlc_data_in_bytes(&ctx, i_raw2, i_len2);
+    /* No REJ should be in output (rej_exception guards duplicate REJ) */
+    if (mock_output_len >= 6) {
+        /* Check that the output is NOT a REJ */
+        atc_hdlc_frame_t resp; atc_hdlc_u8 flat[32];
+        if (atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len,
+                                   &resp, flat, sizeof(flat))) {
+            if (atc_hdlc_get_s_frame_sub_type(resp.control) == ATC_HDLC_S_FRAME_TYPE_REJ)
+                test_fail("Duplicate REJ", "Duplicate REJ sent — rej_exception guard failed");
+        }
+    }
+
+    test_pass("Duplicate REJ guard");
 }
 

@@ -19,176 +19,48 @@
  * @file hdlc_frame_handlers.c
  * @author ahmettardic - Ahmet Talha ARDIC
  * @date 02.02.2026
- * @brief HDLC Frame Processing (I/S/U Handlers).
+ * @brief HDLC frame processing — per-state dispatch (Linux LAPB pattern).
  *
- * Contains the frame dispatcher and all handlers for received I, S, and U
- * frames, including connection management commands and sequence number logic.
+ * The frame dispatcher routes each complete, CRC-verified frame to the
+ * appropriate per-state handler:
+ *
+ *   hdlc_state_disconnected()   — State 0: no logical connection
+ *   hdlc_state_connecting()     — State 1: SABM sent, awaiting UA
+ *   hdlc_state_connected()      — State 3: active data transfer
+ *   hdlc_state_disconnecting()  — State 2: DISC sent, awaiting UA
+ *   hdlc_state_frmr_error()     — State 4: lock-down after FRMR
+ *
+ * Sub-conditions within CONNECTED (remote_busy, local_busy, rej_exception)
+ * are modelled as boolean flags in the context, not as separate states,
+ * consistent with ISO/IEC 13239 §5.5.
  */
 
 #include "../../inc/hdlc.h"
 #include "../hdlc_private.h"
 #include <string.h>
 
-/* Forward declarations for static helpers */
-static bool handle_i_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame);
-static bool handle_s_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame);
-static bool handle_u_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame);
-static inline void hdlc_process_nr(atc_hdlc_context_t *ctx, atc_hdlc_u8 nr);
-
 /*
  * --------------------------------------------------------------------------
- * FRAME DISPATCHER
+ * FORWARD DECLARATIONS
  * --------------------------------------------------------------------------
  */
+static void hdlc_state_disconnected (atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame);
+static void hdlc_state_connecting   (atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame);
+static void hdlc_state_connected    (atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame);
+static void hdlc_state_disconnecting(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame);
+static void hdlc_state_frmr_error   (atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame);
 
-void hdlc_process_complete_frame(atc_hdlc_context_t *ctx) {
-  atc_hdlc_u8 ctrl = ctx->rx_frame.control;
-  bool pass_to_user = false;
-
-  ctx->rx_frame.type = hdlc_resolve_frame_type(ctrl);
-
-  switch (ctx->rx_frame.type) {
-    case ATC_HDLC_FRAME_I:
-      pass_to_user = handle_i_frame(ctx, &ctx->rx_frame);
-      break;
-    case ATC_HDLC_FRAME_S:
-      pass_to_user = handle_s_frame(ctx, &ctx->rx_frame);
-      break;
-    case ATC_HDLC_FRAME_U:
-      pass_to_user = handle_u_frame(ctx, &ctx->rx_frame);
-      break;
-    default:
-      break;
-  }
-
-  if (pass_to_user && ctx->platform && ctx->platform->on_data) {
-    const atc_hdlc_frame_t *f = &ctx->rx_frame;
-    ctx->platform->on_data(f->information, f->information_len,
-                           ctx->platform->user_ctx);
-  }
-
-  ctx->stats.rx_i_frames++;
-}
+static void         hdlc_process_nr          (atc_hdlc_context_t *ctx, atc_hdlc_u8 nr);
+static void         hdlc_retransmit_go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_seq);
+static inline void  hdlc_enter_frmr_state    (atc_hdlc_context_t *ctx,
+                                               atc_hdlc_u8 rejected_ctrl,
+                                               atc_hdlc_bool w, atc_hdlc_bool x,
+                                               atc_hdlc_bool y, atc_hdlc_bool z);
+static inline atc_hdlc_u_frame_sub_type_t frame_u_type(const atc_hdlc_frame_t *f);
 
 /*
  * --------------------------------------------------------------------------
- * I-FRAME HANDLER
- * --------------------------------------------------------------------------
- */
-
-static bool handle_i_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-  atc_hdlc_u8 msg_ns = HDLC_CTRL_I_NS(frame->control);
-  atc_hdlc_u8 msg_nr = HDLC_CTRL_NR(frame->control);
-  atc_hdlc_u8 msg_p  = HDLC_CTRL_PF(frame->control);
-
-  ATC_HDLC_LOG_DEBUG("rx: I-Frame N(S)=%u, N(R)=%u, P/F=%u", msg_ns, msg_nr, msg_p);
-
-  if (msg_ns == ctx->vr) {
-      ctx->vr = (ctx->vr + 1) % HDLC_SEQUENCE_MODULUS;
-      hdlc_t2_start(ctx);
-  } else {
-      ATC_HDLC_LOG_WARN("rx: Out of sequence I-Frame (Exp %u, got %u). Sending REJ.",
-                        ctx->vr, msg_ns);
-      hdlc_send_rej(ctx, msg_p);
-      return false;
-  }
-
-  hdlc_process_nr(ctx, msg_nr);
-
-  if (msg_p) {
-      hdlc_send_rr(ctx, 1);
-      hdlc_t2_stop(ctx);
-  }
-
-  return true;
-}
-
-/*
- * --------------------------------------------------------------------------
- * S-FRAME HANDLER
- * --------------------------------------------------------------------------
- */
-
-static void hdlc_retransmit_go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_seq) {
-    if (ctx->vs == from_seq) return;
-
-    atc_hdlc_u8 old_vs = ctx->vs;
-
-    ATC_HDLC_LOG_WARN("tx: Go-Back-N triggered! Rewinding V(S) from %u back to %u",
-                      old_vs, from_seq);
-
-    ctx->vs = from_seq;
-
-    if (ctx->tx_window->slots != NULL && ctx->tx_window->slot_capacity > 0) {
-        ctx->next_tx_slot = ctx->tx_window->seq_to_slot[ctx->vs];
-    }
-
-    while (ctx->vs != old_vs) {
-        atc_hdlc_u8 slot = ctx->tx_window->seq_to_slot[ctx->vs];
-        atc_hdlc_u8 ctrl = hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
-        atc_hdlc_transmit_start(ctx, ctx->peer_address, ctrl);
-        if (ctx->tx_window->slot_lens[slot] > 0 && ctx->tx_window->slots != NULL) {
-            atc_hdlc_transmit_data_bytes(ctx,
-                ctx->tx_window->slots + (slot * ctx->tx_window->slot_capacity),
-                ctx->tx_window->slot_lens[slot]);
-        }
-        atc_hdlc_transmit_end(ctx);
-
-        ctx->vs = (ctx->vs + 1) % HDLC_SEQUENCE_MODULUS;
-        if (ctx->tx_window->slots != NULL && ctx->tx_window->slot_capacity > 0) {
-            ctx->next_tx_slot = (ctx->next_tx_slot + 1) % ctx->window_size;
-        }
-    }
-
-    hdlc_t1_start(ctx);
-}
-
-static bool handle_s_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-  atc_hdlc_u8 mode     = HDLC_CTRL_S_BITS(frame->control);
-  atc_hdlc_u8 msg_nr   = HDLC_CTRL_NR(frame->control);
-  atc_hdlc_u8 msg_pf   = HDLC_CTRL_PF(frame->control);
-  bool is_command = (frame->address == ctx->my_address);
-
-  ATC_HDLC_LOG_DEBUG("rx: S-Frame S=%u, N(R)=%u, P/F=%u", mode, msg_nr, msg_pf);
-
-  if (mode == HDLC_S_RR) {
-      hdlc_process_nr(ctx, msg_nr);
-      /* RR clears any remote-busy condition */
-      if (ctx->remote_busy) {
-          ctx->remote_busy = false;
-          ATC_HDLC_LOG_DEBUG("flow: Remote busy cleared by RR");
-      }
-  } else if (mode == HDLC_S_RNR) {
-      hdlc_process_nr(ctx, msg_nr);
-      /* RNR sets remote-busy — outgoing I-frames suspended */
-      if (!ctx->remote_busy) {
-          ctx->remote_busy = true;
-          ATC_HDLC_LOG_DEBUG("flow: Remote busy set by RNR");
-      }
-  } else if (mode == HDLC_S_REJ) {
-      hdlc_process_nr(ctx, msg_nr);
-
-      if (!ctx->rej_exception && ctx->va != ctx->vs) {
-          ctx->rej_exception = true;
-          hdlc_retransmit_go_back_n(ctx, msg_nr);
-      }
-  }
-
-  if (is_command && msg_pf) {
-      hdlc_send_response_rr(ctx, 1);
-  } else if (!is_command && msg_pf) {
-      ATC_HDLC_LOG_WARN("rx: Received F=1 response. Checking for retransmissions.");
-      if (ctx->va != ctx->vs) {
-          hdlc_retransmit_go_back_n(ctx, ctx->va);
-      }
-  }
-
-  return false;
-}
-
-/*
- * --------------------------------------------------------------------------
- * U-FRAME HANDLER
+ * CONNECTION STATE RESET
  * --------------------------------------------------------------------------
  */
 
@@ -202,203 +74,594 @@ void hdlc_reset_connection_state(atc_hdlc_context_t *ctx) {
     }
     ctx->next_tx_slot  = 0;
     ctx->rej_exception = false;
+    ctx->remote_busy   = false;
+    ctx->local_busy    = false;
     ctx->retry_count   = 0;
     hdlc_t1_stop(ctx);
     hdlc_t2_stop(ctx);
     hdlc_t3_stop(ctx);
 }
 
-static void hdlc_process_sabm(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    if (ctx->current_state == ATC_HDLC_STATE_CONNECTING) {
-        if (ctx->peer_address > ctx->my_address) {
-            ATC_HDLC_LOG_WARN("state: SABM collision. I lost (addr %u < %u). Waiting for T1.",
-                              ctx->my_address, ctx->peer_address);
-            /* Back off: T1 is already running from link_setup(); let it expire
-             * and retry SABM via atc_hdlc_t1_expired(). */
-            return;
-        } else {
-            ATC_HDLC_LOG_WARN("state: SABM collision. I won (addr %u > %u). Answering UA.",
-                              ctx->my_address, ctx->peer_address);
-        }
-    }
+/*
+ * --------------------------------------------------------------------------
+ * FRMR SENDER
+ * --------------------------------------------------------------------------
+ */
 
-    hdlc_reset_connection_state(ctx);
-    hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_INCOMING_CONNECT);
-    hdlc_send_ua(ctx, HDLC_CTRL_PF(frame->control));
-}
+/**
+ * @brief Transmit a FRMR response and enter FRMR_ERROR lock-down.
+ *
+ * FRMR information field (3 bytes):
+ *   Byte 0 : rejected control field
+ *   Byte 1 : 0 V(S) C/R V(R)  (bits: [7:5]=V(R), [4]=C/R, [3:1]=V(S), [0]=0)
+ *   Byte 2 : W X Y Z 0 0 0 0
+ */
+void hdlc_send_frmr(atc_hdlc_context_t *ctx,
+                    atc_hdlc_u8 rejected_ctrl,
+                    atc_hdlc_bool w, atc_hdlc_bool x,
+                    atc_hdlc_bool y, atc_hdlc_bool z)
+{
+    atc_hdlc_u8 info[3];
+    info[0] = rejected_ctrl;
+    info[1] = (atc_hdlc_u8)(((ctx->vr & 0x07) << 5) | 0x00 | ((ctx->vs & 0x07) << 1));
+    info[2] = (atc_hdlc_u8)((w ? HDLC_FRMR_W_BIT : 0) |
+                              (x ? HDLC_FRMR_X_BIT : 0) |
+                              (y ? HDLC_FRMR_Y_BIT : 0) |
+                              (z ? HDLC_FRMR_Z_BIT : 0));
 
-static void hdlc_process_snrm(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    hdlc_send_dm(ctx, HDLC_CTRL_PF(frame->control));
-}
+    ATC_HDLC_LOG_ERROR("tx: FRMR ctrl=0x%02X W=%u X=%u Y=%u Z=%u",
+                       rejected_ctrl, (unsigned)w, (unsigned)x,
+                       (unsigned)y, (unsigned)z);
 
-static void hdlc_process_sarm(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    hdlc_send_dm(ctx, HDLC_CTRL_PF(frame->control));
-}
-
-static void hdlc_process_sabme(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    hdlc_send_dm(ctx, HDLC_CTRL_PF(frame->control));
-}
-
-static void hdlc_process_snrme(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    hdlc_send_dm(ctx, HDLC_CTRL_PF(frame->control));
-}
-
-static void hdlc_process_sarme(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    hdlc_send_dm(ctx, HDLC_CTRL_PF(frame->control));
-}
-
-static void hdlc_process_disc(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_PEER_DISCONNECT);
-    hdlc_send_ua(ctx, HDLC_CTRL_PF(frame->control));
-}
-
-static void hdlc_process_ua(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    (void)frame;
-    if (ctx->current_state == ATC_HDLC_STATE_CONNECTING) {
-        hdlc_reset_connection_state(ctx);
-        hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_CONNECT_ACCEPTED);
-    } else if (ctx->current_state == ATC_HDLC_STATE_DISCONNECTING) {
-        hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_DISCONNECT_COMPLETE);
-    }
-}
-
-static void hdlc_process_dm(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    (void)frame;
-    hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_PEER_REJECT);
-}
-
-static void hdlc_process_frmr(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-   if (frame->information_len >= HDLC_FRMR_INFO_MIN_LEN) {
-       atc_hdlc_frmr_data_t frmr_data;
-       memset(&frmr_data, 0, sizeof(frmr_data));
-
-       frmr_data.rejected_control = frame->information[0];
-
-       atc_hdlc_u8 byte1 = frame->information[1];
-       frmr_data.v_s = (byte1 >> HDLC_FRMR_VS_SHIFT) & HDLC_FRMR_VS_MASK;
-       frmr_data.cr  = (byte1 & HDLC_FRMR_CR_BIT) ? true : false;
-       frmr_data.v_r = (byte1 >> HDLC_FRMR_VR_SHIFT) & HDLC_FRMR_VR_MASK;
-
-       atc_hdlc_u8 byte2 = frame->information[2];
-       frmr_data.errors.w = (byte2 & HDLC_FRMR_W_BIT);
-       frmr_data.errors.x = (byte2 & HDLC_FRMR_X_BIT);
-       frmr_data.errors.y = (byte2 & HDLC_FRMR_Y_BIT);
-       frmr_data.errors.z = (byte2 & HDLC_FRMR_Z_BIT);
-       frmr_data.errors.v = (byte2 & HDLC_FRMR_V_BIT);
-
-       (void)frmr_data;
-       ATC_HDLC_LOG_ERROR("rx: FRMR Received! Peer rejected frame. (Ctrl: 0x%02X, V(S)=%u, V(R)=%u)",
-                      frmr_data.rejected_control, frmr_data.v_s, frmr_data.v_r);
-   } else {
-       ATC_HDLC_LOG_ERROR("rx: FRMR Received but information field too short.");
-   }
-
-   ATC_HDLC_LOG_DEBUG("state: FRMR caused disconnect");
-   hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_PROTOCOL_ERROR);
-}
-
-static void hdlc_process_test(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-    atc_hdlc_transmit_start(ctx, ctx->my_address,
-        hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST,
-                           HDLC_CTRL_PF(frame->control)));
-
-    if (frame->information != NULL && frame->information_len > 0) {
-        atc_hdlc_transmit_data_bytes(ctx, frame->information, frame->information_len);
-    }
-
+    atc_hdlc_u8 ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_FRMR, HDLC_U_MODIFIER_HI_FRMR, 0);
+    atc_hdlc_transmit_start(ctx, ctx->my_address, ctrl);
+    atc_hdlc_transmit_data_bytes(ctx, info, sizeof(info));
     atc_hdlc_transmit_end(ctx);
+
+    HDLC_STAT_INC(ctx, frmr_count);
+
+    hdlc_t1_stop(ctx);
+    hdlc_t2_stop(ctx);
+    hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_FRMR_ERROR, ATC_HDLC_EVENT_PROTOCOL_ERROR);
 }
 
-static bool handle_u_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-  atc_hdlc_u8 m_lo = HDLC_CTRL_U_M_LO(frame->control);
-  atc_hdlc_u8 m_hi = HDLC_CTRL_U_M_HI(frame->control);
-
-  ATC_HDLC_LOG_DEBUG("rx: U-Frame M_LO=%u, M_HI=%u", m_lo, m_hi);
-
-  /* 1. COMMANDS -> Addressed to ME or BROADCAST */
-  if (frame->address == ctx->my_address || frame->address == ATC_HDLC_BROADCAST_ADDRESS) {
-
-    if (m_lo == HDLC_U_MODIFIER_LO_UI && m_hi == HDLC_U_MODIFIER_HI_UI) {
-         return true; /* UI frames contain user payload */
-    }
-
-    if (frame->address == ATC_HDLC_BROADCAST_ADDRESS) return false;
-
-    if (m_lo == HDLC_U_MODIFIER_LO_SABM && m_hi == HDLC_U_MODIFIER_HI_SABM) {
-        hdlc_process_sabm(ctx, frame);
-    } else if (m_lo == HDLC_U_MODIFIER_LO_DISC && m_hi == HDLC_U_MODIFIER_HI_DISC) {
-        hdlc_process_disc(ctx, frame);
-    } else if (m_lo == HDLC_U_MODIFIER_LO_SNRM && m_hi == HDLC_U_MODIFIER_HI_SNRM) {
-        hdlc_process_snrm(ctx, frame);
-    } else if (m_lo == HDLC_U_MODIFIER_LO_SARM && m_hi == HDLC_U_MODIFIER_HI_SARM) {
-        hdlc_process_sarm(ctx, frame);
-    } else if (m_lo == HDLC_U_MODIFIER_LO_SABME && m_hi == HDLC_U_MODIFIER_HI_SABME) {
-       hdlc_process_sabme(ctx, frame);
-    } else if (m_lo == HDLC_U_MODIFIER_LO_SNRME && m_hi == HDLC_U_MODIFIER_HI_SNRME) {
-       hdlc_process_snrme(ctx, frame);
-    } else if (m_lo == HDLC_U_MODIFIER_LO_SARME && m_hi == HDLC_U_MODIFIER_HI_SARME) {
-       hdlc_process_sarme(ctx, frame);
-    } else if (m_lo == HDLC_U_MODIFIER_LO_TEST && m_hi == HDLC_U_MODIFIER_HI_TEST) {
-        hdlc_process_test(ctx, frame);
-        return true;
-    } else {
-        ATC_HDLC_LOG_WARN("rx: Unhandled U-Frame Command (M_LO=%u, M_HI=%u)", m_lo, m_hi);
-    }
-  }
-
-  /* 2. RESPONSES -> Addressed to PEER */
-  else if (frame->address == ctx->peer_address) {
-
-    if (m_lo == HDLC_U_MODIFIER_LO_UA && m_hi == HDLC_U_MODIFIER_HI_UA) {
-        hdlc_process_ua(ctx, frame);
-    } else if (m_lo == HDLC_U_MODIFIER_LO_DM && m_hi == HDLC_U_MODIFIER_HI_DM) {
-        hdlc_process_dm(ctx, frame);
-    } else if (m_lo == HDLC_U_MODIFIER_LO_FRMR && m_hi == HDLC_U_MODIFIER_HI_FRMR) {
-        hdlc_process_frmr(ctx, frame);
-    } else if (m_lo == HDLC_U_MODIFIER_LO_TEST && m_hi == HDLC_U_MODIFIER_HI_TEST) {
-        return true; /* TEST response — pass to on_data */
-    } else {
-        ATC_HDLC_LOG_WARN("rx: Unhandled U-Frame Response (M_LO=%u, M_HI=%u)", m_lo, m_hi);
-    }
-  }
-
-  return false;
+/** Convenience wrapper used inline in state handlers. */
+static inline void hdlc_enter_frmr_state(atc_hdlc_context_t *ctx,
+                                          atc_hdlc_u8 rejected_ctrl,
+                                          atc_hdlc_bool w, atc_hdlc_bool x,
+                                          atc_hdlc_bool y, atc_hdlc_bool z)
+{
+    hdlc_send_frmr(ctx, rejected_ctrl, w, x, y, z);
 }
 
 /*
  * --------------------------------------------------------------------------
- * SEQUENCE NUMBER HELPERS
+ * MAIN DISPATCHER — routes frame to per-state handler
  * --------------------------------------------------------------------------
  */
 
-static inline bool hdlc_nr_valid(atc_hdlc_u8 va, atc_hdlc_u8 nr, atc_hdlc_u8 vs) {
-    atc_hdlc_u8 diff_nr = (nr - va) & (HDLC_SEQUENCE_MODULUS - 1);
-    atc_hdlc_u8 diff_vs = (vs - va) & (HDLC_SEQUENCE_MODULUS - 1);
-    return (diff_nr <= diff_vs);
+void hdlc_process_complete_frame(atc_hdlc_context_t *ctx) {
+    atc_hdlc_u8 ctrl = ctx->rx_frame.control;
+    ctx->rx_frame.type = hdlc_resolve_frame_type(ctrl);
+
+    /* T3 keep-alive: restart on every received frame while CONNECTED */
+    if (ctx->current_state == ATC_HDLC_STATE_CONNECTED && ctx->t3_active) {
+        hdlc_t3_stop(ctx);
+        hdlc_t3_start(ctx);
+    }
+
+    switch (ctx->current_state) {
+        case ATC_HDLC_STATE_DISCONNECTED:
+            hdlc_state_disconnected(ctx, &ctx->rx_frame);
+            break;
+        case ATC_HDLC_STATE_CONNECTING:
+            hdlc_state_connecting(ctx, &ctx->rx_frame);
+            break;
+        case ATC_HDLC_STATE_CONNECTED:
+            hdlc_state_connected(ctx, &ctx->rx_frame);
+            break;
+        case ATC_HDLC_STATE_DISCONNECTING:
+            hdlc_state_disconnecting(ctx, &ctx->rx_frame);
+            break;
+        case ATC_HDLC_STATE_FRMR_ERROR:
+            hdlc_state_frmr_error(ctx, &ctx->rx_frame);
+            break;
+        default:
+            break;
+    }
 }
 
-static inline void hdlc_process_nr(atc_hdlc_context_t *ctx, atc_hdlc_u8 nr) {
-    if (hdlc_nr_valid(ctx->va, nr, ctx->vs)) {
-        atc_hdlc_u8 old_va = ctx->va;
-        if (nr < ctx->va && nr <= ctx->vs) {
-             ATC_HDLC_LOG_DEBUG("rx: Peer acknowledged across a wrap-around! (V(A)=%u -> N(R)=%u)",
-                                ctx->va, nr);
-        } else {
-             ATC_HDLC_LOG_DEBUG("rx: Peer acknowledged up to V(A)=%u (now %u)", ctx->va, nr);
+/*
+ * --------------------------------------------------------------------------
+ * HELPER: U-frame sub-type shorthand
+ * --------------------------------------------------------------------------
+ */
+static inline atc_hdlc_u_frame_sub_type_t frame_u_type(const atc_hdlc_frame_t *f) {
+    return atc_hdlc_get_u_frame_sub_type(f->control);
+}
+
+/*
+ * --------------------------------------------------------------------------
+ * STATE 0 — DISCONNECTED
+ * Ref: Linux lapb_state0_machine()
+ * --------------------------------------------------------------------------
+ * Accepts SABM (passive open), DISC (responds UA), ignores everything else.
+ */
+static void hdlc_state_disconnected(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame)
+{
+    if (frame->type != ATC_HDLC_FRAME_U) return;
+
+    switch (frame_u_type(frame)) {
+        case ATC_HDLC_U_FRAME_TYPE_SABM:
+            ATC_HDLC_LOG_DEBUG("S0 RX SABM -> S3 TX UA");
+            hdlc_reset_connection_state(ctx);
+            hdlc_send_ua(ctx, HDLC_CTRL_PF(frame->control));
+            hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTED,
+                                     ATC_HDLC_EVENT_INCOMING_CONNECT);
+            hdlc_t3_start(ctx);
+            break;
+
+        case ATC_HDLC_U_FRAME_TYPE_DISC:
+            /* Peer sent DISC while we are already disconnected — respond UA */
+            ATC_HDLC_LOG_DEBUG("S0 RX DISC -> TX UA");
+            hdlc_send_ua(ctx, HDLC_CTRL_PF(frame->control));
+            break;
+
+        case ATC_HDLC_U_FRAME_TYPE_UI:
+            /* Connectionless delivery — fire on_data even for empty payload */
+            if (ctx->platform && ctx->platform->on_data) {
+                ctx->platform->on_data(frame->information, frame->information_len,
+                                       ctx->platform->user_ctx);
+            }
+            break;
+
+        case ATC_HDLC_U_FRAME_TYPE_SNRM:
+        case ATC_HDLC_U_FRAME_TYPE_SARM:
+        case ATC_HDLC_U_FRAME_TYPE_SABME:
+        case ATC_HDLC_U_FRAME_TYPE_SNRME:
+        case ATC_HDLC_U_FRAME_TYPE_SARME:
+            /* Unsupported mode setup commands: respond DM */
+            ATC_HDLC_LOG_DEBUG("S0 RX unsupported mode -> TX DM");
+            hdlc_send_dm(ctx, HDLC_CTRL_PF(frame->control));
+            break;
+
+        default:
+            /* All other frames ignored in DISCONNECTED */
+            break;
+    }
+}
+
+/*
+ * --------------------------------------------------------------------------
+ * STATE 1 — CONNECTING (Awaiting UA after SABM)
+ * Ref: Linux lapb_state1_machine()
+ * --------------------------------------------------------------------------
+ */
+static void hdlc_state_connecting(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame)
+{
+    if (frame->type == ATC_HDLC_FRAME_U) {
+        switch (frame_u_type(frame)) {
+            case ATC_HDLC_U_FRAME_TYPE_SABM:
+                /* Contention: both sides sent SABM simultaneously */
+                if (ctx->peer_address > ctx->my_address) {
+                    /* I lost — back off and let T1 retry */
+                    ATC_HDLC_LOG_WARN("S1 SABM collision: I lost, backing off");
+                    return;
+                }
+                /* I won — send UA, transition to CONNECTED */
+                ATC_HDLC_LOG_WARN("S1 SABM collision: I won, sending UA");
+                hdlc_reset_connection_state(ctx);
+                hdlc_send_ua(ctx, HDLC_CTRL_PF(frame->control));
+                hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTED,
+                                         ATC_HDLC_EVENT_INCOMING_CONNECT);
+                hdlc_t3_start(ctx);
+                break;
+
+            case ATC_HDLC_U_FRAME_TYPE_UA:
+                /* Normal connection acceptance */
+                if (HDLC_CTRL_PF(frame->control)) {
+                    ATC_HDLC_LOG_DEBUG("S1 RX UA(F=1) -> S3 CONNECTED");
+                    hdlc_t1_stop(ctx);
+                    hdlc_reset_connection_state(ctx);
+                    hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTED,
+                                             ATC_HDLC_EVENT_CONNECT_ACCEPTED);
+                    hdlc_t3_start(ctx);
+                }
+                break;
+
+            case ATC_HDLC_U_FRAME_TYPE_DM:
+                /* Peer refused connection */
+                if (HDLC_CTRL_PF(frame->control)) {
+                    ATC_HDLC_LOG_DEBUG("S1 RX DM(F=1) -> S0 DISCONNECTED");
+                    hdlc_t1_stop(ctx);
+                    hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED,
+                                             ATC_HDLC_EVENT_PEER_REJECT);
+                }
+                break;
+
+            case ATC_HDLC_U_FRAME_TYPE_DISC:
+                /* Peer wants to disconnect while we're connecting */
+                ATC_HDLC_LOG_DEBUG("S1 RX DISC -> TX DM");
+                hdlc_send_dm(ctx, HDLC_CTRL_PF(frame->control));
+                break;
+
+            default:
+                break;
         }
+    }
+    /* I/S frames in CONNECTING state are ignored */
+}
+
+/*
+ * --------------------------------------------------------------------------
+ * STATE 3 — CONNECTED
+ * Ref: Linux lapb_state3_machine()
+ * --------------------------------------------------------------------------
+ * Main data-transfer state. Handles I/S/U frames. Sub-conditions
+ * (remote_busy, local_busy, rej_exception) are boolean flags, not states.
+ */
+
+/** Process an acknowledged N(R) — advance V(A), manage T1. */
+static void hdlc_process_nr(atc_hdlc_context_t *ctx, atc_hdlc_u8 nr) {
+    /* Validate: V(A) <= N(R) <= V(S)  (modulo arithmetic) */
+    atc_hdlc_u8 diff_nr = (nr - ctx->va) & (HDLC_SEQUENCE_MODULUS - 1);
+    atc_hdlc_u8 diff_vs = (ctx->vs - ctx->va) & (HDLC_SEQUENCE_MODULUS - 1);
+
+    if (diff_nr > diff_vs) {
+        /* Invalid N(R) — send FRMR Z */
+        ATC_HDLC_LOG_WARN("rx: Invalid N(R)=%u (V(A)=%u, V(S)=%u) -> FRMR Z",
+                          nr, ctx->va, ctx->vs);
+        hdlc_enter_frmr_state(ctx, ctx->rx_frame.control, false, false, false, true);
+        return;
+    }
+
+    if (nr != ctx->va) {
+        atc_hdlc_u8 old_va = ctx->va;
         ctx->va = nr;
         ctx->retry_count = 0;
+        ctx->rej_exception = false;
 
-        if (ctx->va != old_va) {
-            ctx->rej_exception = false;
+        /* Fire WINDOW_OPEN if the window was full before this ACK */
+        atc_hdlc_u8 was_outstanding = (atc_hdlc_u8)((ctx->vs - old_va) &
+                                       (HDLC_SEQUENCE_MODULUS - 1));
+        if (was_outstanding >= ctx->window_size) {
+            if (ctx->platform && ctx->platform->on_event) {
+                ctx->platform->on_event(ATC_HDLC_EVENT_WINDOW_OPEN,
+                                         ctx->platform->user_ctx);
+            }
         }
 
-        if (ctx->va == ctx->vs) {
-            hdlc_t1_stop(ctx);  /* All frames acknowledged — stop T1 */
-        } else {
-            hdlc_t1_start(ctx); /* Outstanding frames remain — restart T1 */
-        }
+        ATC_HDLC_LOG_DEBUG("rx: N(R)=%u acknowledged, V(A) -> %u", nr, ctx->va);
+    }
+
+    if (ctx->va == ctx->vs) {
+        hdlc_t1_stop(ctx);  /* All frames acknowledged */
     } else {
-        ATC_HDLC_LOG_WARN("rx: Ignored invalid N(R)=%u (V(A)=%u, V(S)=%u)", nr, ctx->va, ctx->vs);
+        hdlc_t1_start(ctx); /* Outstanding frames remain */
+    }
+}
+
+/** Go-Back-N retransmit from @p from_seq. */
+static void hdlc_retransmit_go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_seq) {
+    if (ctx->tx_window == NULL) return;
+    if (ctx->vs == from_seq) return;
+
+    atc_hdlc_u8 old_vs = ctx->vs;
+    ATC_HDLC_LOG_WARN("tx: Go-Back-N V(S) %u -> %u", old_vs, from_seq);
+
+    ctx->vs = from_seq;
+    if (ctx->tx_window->slots != NULL)
+        ctx->next_tx_slot = ctx->tx_window->seq_to_slot[ctx->vs];
+
+    while (ctx->vs != old_vs) {
+        atc_hdlc_u8 slot = ctx->tx_window->seq_to_slot[ctx->vs];
+        atc_hdlc_u8 ctrl = hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
+        atc_hdlc_transmit_start(ctx, ctx->peer_address, ctrl);
+        if (ctx->tx_window->slot_lens[slot] > 0 && ctx->tx_window->slots != NULL) {
+            atc_hdlc_transmit_data_bytes(ctx,
+                ctx->tx_window->slots + (slot * ctx->tx_window->slot_capacity),
+                ctx->tx_window->slot_lens[slot]);
+        }
+        atc_hdlc_transmit_end(ctx);
+        ctx->vs = (ctx->vs + 1) % HDLC_SEQUENCE_MODULUS;
+        if (ctx->tx_window->slots != NULL)
+            ctx->next_tx_slot = (ctx->next_tx_slot + 1) % ctx->window_size;
+    }
+    hdlc_t1_start(ctx);
+}
+
+static void hdlc_state_connected(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame)
+{
+    atc_hdlc_u8 ctrl   = frame->control;
+    atc_hdlc_u8 msg_pf = HDLC_CTRL_PF(ctrl);
+
+    switch (frame->type) {
+
+    /* ---- I-FRAME ---- */
+    case ATC_HDLC_FRAME_I: {
+        atc_hdlc_u8 msg_ns = HDLC_CTRL_I_NS(ctrl);
+        atc_hdlc_u8 msg_nr = HDLC_CTRL_NR(ctrl);
+
+        ATC_HDLC_LOG_DEBUG("S3 RX I N(S)=%u N(R)=%u P=%u", msg_ns, msg_nr, msg_pf);
+
+        /* Validate N(R) first — may send FRMR and return */
+        hdlc_process_nr(ctx, msg_nr);
+        if (ctx->current_state == ATC_HDLC_STATE_FRMR_ERROR) return;
+
+        if (msg_ns == ctx->vr) {
+            /* In-sequence frame */
+            ctx->vr = (ctx->vr + 1) % HDLC_SEQUENCE_MODULUS;
+            ctx->rej_exception = false;
+            HDLC_STAT_INC(ctx, rx_i_frames);
+            HDLC_STAT_ADD(ctx, rx_bytes, frame->information_len);
+
+            /* Deliver payload to upper layer (even if empty — caller may want count) */
+            if (ctx->platform && ctx->platform->on_data) {
+                ctx->platform->on_data(frame->information, frame->information_len,
+                                       ctx->platform->user_ctx);
+            }
+
+            if (msg_pf) {
+                /* P=1 command: respond with F=1 immediately */
+                if (ctx->local_busy) {
+                    hdlc_send_rnr(ctx, 1);
+                    HDLC_STAT_INC(ctx, rnr_sent);
+                } else {
+                    hdlc_send_response_rr(ctx, 1);
+                }
+                hdlc_t2_stop(ctx);
+            } else {
+                /* Start T2 for delayed ACK (unless already running) */
+                if (!ctx->t2_active) {
+                    if (ctx->local_busy) {
+                        hdlc_send_rnr(ctx, 0);
+                        HDLC_STAT_INC(ctx, rnr_sent);
+                    } else {
+                        hdlc_t2_start(ctx);
+                    }
+                }
+            }
+        } else {
+            /* Out-of-sequence frame */
+            if (ctx->rej_exception) {
+                /* REJ already sent — suppress duplicate; respond to P=1 only */
+                if (msg_pf) {
+                    hdlc_send_response_rr(ctx, 1);
+                }
+            } else {
+                /* First OOS: send REJ, set rej_exception */
+                ATC_HDLC_LOG_WARN("S3 OOS I N(S)=%u exp=%u -> REJ", msg_ns, ctx->vr);
+                ctx->rej_exception = true;
+                hdlc_send_rej(ctx, msg_pf);
+                HDLC_STAT_INC(ctx, rej_sent);
+                hdlc_t2_stop(ctx);
+            }
+        }
+        break;
+    }
+
+    /* ---- S-FRAME ---- */
+    case ATC_HDLC_FRAME_S: {
+        atc_hdlc_u8 s_bits = HDLC_CTRL_S_BITS(ctrl);
+        atc_hdlc_u8 msg_nr = HDLC_CTRL_NR(ctrl);
+        bool is_cmd = (frame->address == ctx->my_address);
+
+        ATC_HDLC_LOG_DEBUG("S3 RX S s=%u N(R)=%u P/F=%u", s_bits, msg_nr, msg_pf);
+
+        if (s_bits == HDLC_S_RR) {
+            bool was_busy = ctx->remote_busy;
+            ctx->remote_busy = false;
+            if (was_busy) {
+                ATC_HDLC_LOG_DEBUG("flow: remote_busy cleared by RR");
+                if (ctx->platform && ctx->platform->on_event)
+                    ctx->platform->on_event(ATC_HDLC_EVENT_REMOTE_BUSY_OFF,
+                                             ctx->platform->user_ctx);
+            }
+            hdlc_process_nr(ctx, msg_nr);
+            if (ctx->current_state == ATC_HDLC_STATE_FRMR_ERROR) return;
+
+        } else if (s_bits == HDLC_S_RNR) {
+            if (!ctx->remote_busy) {
+                ctx->remote_busy = true;
+                ATC_HDLC_LOG_DEBUG("flow: remote_busy set by RNR");
+                HDLC_STAT_INC(ctx, rnr_received);
+                if (ctx->platform && ctx->platform->on_event)
+                    ctx->platform->on_event(ATC_HDLC_EVENT_REMOTE_BUSY_ON,
+                                             ctx->platform->user_ctx);
+            }
+            hdlc_process_nr(ctx, msg_nr);
+            if (ctx->current_state == ATC_HDLC_STATE_FRMR_ERROR) return;
+
+        } else if (s_bits == HDLC_S_REJ) {
+            ctx->remote_busy = false;
+            hdlc_process_nr(ctx, msg_nr);
+            if (ctx->current_state == ATC_HDLC_STATE_FRMR_ERROR) return;
+
+            if (!ctx->rej_exception && ctx->va != ctx->vs) {
+                ctx->rej_exception = true;
+                HDLC_STAT_INC(ctx, rej_received);
+                hdlc_retransmit_go_back_n(ctx, msg_nr);
+            }
+        }
+
+        /* P/F response handling */
+        if (is_cmd && msg_pf) {
+            hdlc_send_response_rr(ctx, 1);
+        } else if (!is_cmd && msg_pf) {
+            /* F=1 response: we issued a poll, now check for retransmit */
+            ATC_HDLC_LOG_DEBUG("S3 F=1 response — check retransmit");
+            if (ctx->va != ctx->vs)
+                hdlc_retransmit_go_back_n(ctx, ctx->va);
+        }
+        break;
+    }
+
+    /* ---- U-FRAME ---- */
+    case ATC_HDLC_FRAME_U:
+        switch (frame_u_type(frame)) {
+            case ATC_HDLC_U_FRAME_TYPE_SABM:
+                /* Peer reset the link — re-synchronise */
+                ATC_HDLC_LOG_DEBUG("S3 RX SABM -> reset + UA");
+                hdlc_reset_connection_state(ctx);
+                hdlc_send_ua(ctx, msg_pf);
+                /* Stay CONNECTED — this is a remote-initiated reset */
+                break;
+
+            case ATC_HDLC_U_FRAME_TYPE_DISC:
+                ATC_HDLC_LOG_DEBUG("S3 RX DISC -> S0");
+                hdlc_reset_connection_state(ctx);
+                hdlc_send_ua(ctx, msg_pf);
+                hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED,
+                                         ATC_HDLC_EVENT_PEER_DISCONNECT);
+                break;
+
+            case ATC_HDLC_U_FRAME_TYPE_DM:
+                ATC_HDLC_LOG_DEBUG("S3 RX DM -> S0");
+                hdlc_reset_connection_state(ctx);
+                hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED,
+                                         ATC_HDLC_EVENT_PEER_REJECT);
+                break;
+
+            case ATC_HDLC_U_FRAME_TYPE_FRMR:
+                /* Peer rejected one of our frames — enter lock-down, re-establish */
+                ATC_HDLC_LOG_ERROR("S3 RX FRMR -> S4 + re-establish");
+                HDLC_STAT_INC(ctx, frmr_count);
+                hdlc_reset_connection_state(ctx);
+                hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_FRMR_ERROR,
+                                         ATC_HDLC_EVENT_PROTOCOL_ERROR);
+                break;
+
+            case ATC_HDLC_U_FRAME_TYPE_UI:
+                /* Connectionless delivery — fire on_data even for empty payload */
+                if (ctx->platform && ctx->platform->on_data) {
+                    ctx->platform->on_data(frame->information, frame->information_len,
+                                           ctx->platform->user_ctx);
+                }
+                break;
+
+            case ATC_HDLC_U_FRAME_TYPE_TEST:
+                /* Echo TEST frame back (command → response) */
+                if (frame->address == ctx->my_address) {
+                    atc_hdlc_u8 resp_ctrl = hdlc_create_u_ctrl(
+                        HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST, msg_pf);
+                    atc_hdlc_transmit_start(ctx, ctx->my_address, resp_ctrl);
+                    if (frame->information != NULL && frame->information_len > 0)
+                        atc_hdlc_transmit_data_bytes(ctx, frame->information,
+                                                      frame->information_len);
+                    atc_hdlc_transmit_end(ctx);
+                } else {
+                    /* TEST response — pass payload to upper layer */
+                    if (ctx->platform && ctx->platform->on_data &&
+                        frame->information != NULL) {
+                        ctx->platform->on_data(frame->information, frame->information_len,
+                                               ctx->platform->user_ctx);
+                    }
+                }
+                break;
+
+            case ATC_HDLC_U_FRAME_TYPE_SNRM:
+            case ATC_HDLC_U_FRAME_TYPE_SARM:
+            case ATC_HDLC_U_FRAME_TYPE_SABME:
+            case ATC_HDLC_U_FRAME_TYPE_SNRME:
+            case ATC_HDLC_U_FRAME_TYPE_SARME:
+                /* Unsupported mode commands — respond DM */
+                hdlc_send_dm(ctx, msg_pf);
+                break;
+
+            default:
+                /* Unimplemented U-frame — send FRMR W */
+                ATC_HDLC_LOG_WARN("S3 RX unknown U-frame -> FRMR W");
+                hdlc_enter_frmr_state(ctx, ctrl, true, false, false, false);
+                break;
+        }
+        break;
+
+    default:
+        break;
+    }
+}
+
+/*
+ * --------------------------------------------------------------------------
+ * STATE 2 — DISCONNECTING (Awaiting UA after DISC)
+ * Ref: Linux lapb_state2_machine()
+ * --------------------------------------------------------------------------
+ */
+static void hdlc_state_disconnecting(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame)
+{
+    if (frame->type != ATC_HDLC_FRAME_U) {
+        /* I/S frames in DISCONNECTING → respond DM on P=1 */
+        if (HDLC_CTRL_PF(frame->control))
+            hdlc_send_dm(ctx, 1);
+        return;
+    }
+
+    switch (frame_u_type(frame)) {
+        case ATC_HDLC_U_FRAME_TYPE_SABM:
+        case ATC_HDLC_U_FRAME_TYPE_SABME:
+            /* Peer initiated new connection while we're disconnecting */
+            ATC_HDLC_LOG_DEBUG("S2 RX SABM/SABME -> TX DM");
+            hdlc_send_dm(ctx, HDLC_CTRL_PF(frame->control));
+            break;
+
+        case ATC_HDLC_U_FRAME_TYPE_DISC:
+            ATC_HDLC_LOG_DEBUG("S2 RX DISC -> TX UA");
+            hdlc_send_ua(ctx, HDLC_CTRL_PF(frame->control));
+            break;
+
+        case ATC_HDLC_U_FRAME_TYPE_UA:
+            if (HDLC_CTRL_PF(frame->control)) {
+                ATC_HDLC_LOG_DEBUG("S2 RX UA(F=1) -> S0 DISCONNECTED");
+                hdlc_t1_stop(ctx);
+                hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED,
+                                         ATC_HDLC_EVENT_DISCONNECT_COMPLETE);
+            }
+            break;
+
+        case ATC_HDLC_U_FRAME_TYPE_DM:
+            if (HDLC_CTRL_PF(frame->control)) {
+                ATC_HDLC_LOG_DEBUG("S2 RX DM(F=1) -> S0 DISCONNECTED");
+                hdlc_t1_stop(ctx);
+                hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED,
+                                         ATC_HDLC_EVENT_PEER_REJECT);
+            }
+            break;
+
+        default:
+            break;
+    }
+}
+
+/*
+ * --------------------------------------------------------------------------
+ * STATE 4 — FRMR_ERROR (Lock-down after FRMR)
+ * Ref: Linux lapb_state4_machine()
+ * --------------------------------------------------------------------------
+ * Only SABM (re-establish) is accepted. All other frames are silently
+ * ignored (or DM is sent if a P=1 is received).
+ * The user must call atc_hdlc_link_reset() or atc_hdlc_disconnect() to
+ * escape this state.
+ */
+static void hdlc_state_frmr_error(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame)
+{
+    if (frame->type != ATC_HDLC_FRAME_U) {
+        /* Ignore I/S frames in FRMR_ERROR */
+        return;
+    }
+
+    switch (frame_u_type(frame)) {
+        case ATC_HDLC_U_FRAME_TYPE_SABM:
+            /* Peer trying to re-establish — accept */
+            ATC_HDLC_LOG_DEBUG("S4 RX SABM -> S3 TX UA");
+            hdlc_reset_connection_state(ctx);
+            hdlc_send_ua(ctx, HDLC_CTRL_PF(frame->control));
+            hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTED,
+                                     ATC_HDLC_EVENT_INCOMING_CONNECT);
+            hdlc_t3_start(ctx);
+            break;
+
+        default:
+            /* All other frames ignored in FRMR_ERROR */
+            break;
     }
 }

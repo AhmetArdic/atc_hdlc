@@ -872,18 +872,24 @@ void test_nr_edge_cases(void) {
 
         bool was_treated_as_valid = false;
         
-        // If the frame is valid, V(A) becomes N(R).
-        // If N(R) == V(A), V(A) doesn't change.
-        //   - If outstanding frames exist: T1 is restarted (t1_active=true)
-        //   - If window empty (va==vs): T1 is stopped (t1_active=false) — still valid
+        /* Determine if frame was treated as valid:
+         * - If V(A) changed: definitely accepted (V(A) := N(R))
+         * - If N(R) == V(A): frame was accepted but V(A) unchanged (N(R) == V(A)
+         *   is a valid no-op ACK per ISO 13239). T1 is NOT restarted in this case.
+         * - If invalid: context state is unchanged (FRMR_ERROR transition would
+         *   change state, which we detect). */
         if (ctx.va != cases[i].va) {
+            /* V(A) advanced — frame accepted */
             was_treated_as_valid = true;
-        } else if (cases[i].nr == cases[i].va && cases[i].va == cases[i].vs) {
-            /* Empty window + ACK none: always valid, T1 stops (no outstanding frames) */
-            was_treated_as_valid = true;
-        } else if (cases[i].nr == cases[i].va && ctx.t1_active) {
-            was_treated_as_valid = true;
+        } else if (cases[i].nr == cases[i].va) {
+            /* N(R) == V(A): valid no-op ACK — state unchanged is correct */
+            was_treated_as_valid = (ctx.current_state != ATC_HDLC_STATE_FRMR_ERROR);
         }
+        /* else: N(R) invalid → FRMR_ERROR or no state change — was_treated_as_valid stays false */
+
+        /* Reset context state for next iteration */
+        if (ctx.current_state == ATC_HDLC_STATE_FRMR_ERROR)
+            ctx.current_state = ATC_HDLC_STATE_CONNECTED;
 
         if (was_treated_as_valid != cases[i].expect_valid) {
             char fail_msg[256];
@@ -1159,15 +1165,19 @@ void test_t2_timer_callbacks(void) {
 
     /* Sending own I-frame stops T2 (ACK piggybacked) */
     reset_test_state();
-    /* Receive another I-frame to start T2 again */
-    atc_hdlc_u8 i_ctrl2 = hdlc_create_i_ctrl(1, 1, 0); /* N(S)=1, N(R)=1 */
+    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+    ctx.vs = 0; ctx.vr = 0; ctx.va = 0;
+    /* Receive I-frame N(S)=0, N(R)=0 → vr becomes 1, T2 starts */
+    atc_hdlc_u8 i_ctrl2 = hdlc_create_i_ctrl(0, 0, 0); /* N(S)=0, N(R)=0 */
     atc_hdlc_frame_t iframe2 = { .address = 0x01, .control = i_ctrl2,
                                    .information = payload, .information_len = 2 };
     atc_hdlc_u8 i_raw2[64]; atc_hdlc_u32 i_len2 = 0;
     atc_hdlc_frame_pack(&iframe2, i_raw2, sizeof(i_raw2), &i_len2);
     atc_hdlc_data_in_bytes(&ctx, i_raw2, i_len2);
+    if (!ctx.t2_active)
+        test_fail("T2 Callbacks", "T2 not started before piggybacked ACK test");
     int t2_stop_before = mock_t2_stop_count;
-    /* Sending outgoing I-frame piggybacks ACK → T2 should stop */
+    /* Sending outgoing I-frame with N(R)=vr piggybacks ACK → T2 should stop */
     atc_hdlc_u8 out_payload[] = {0x55};
     atc_hdlc_transmit_i(&ctx, out_payload, 1);
     if (mock_t2_stop_count <= t2_stop_before)
