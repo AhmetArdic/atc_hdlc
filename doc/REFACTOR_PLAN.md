@@ -616,7 +616,7 @@ Sub-conditions within CONNECTED (tracked by context boolean flags):
 
 ---
 
-## PHASE 4 — T3 Timer + T1 Connecting/Disconnecting Retry ⬜
+## PHASE 5 — T3 Timer + T1 Connecting/Disconnecting Retry ⬜
 
 **Goal:** Add the missing T3 idle/keep-alive timer. Extend T1 to cover CONNECTING and DISCONNECTING states.
 
@@ -679,7 +679,7 @@ if CONNECTED (any sub-condition flag):
 
 ---
 
-## PHASE 5 — Remote Busy + Local Busy + RNR ⬜
+## PHASE 6 — Remote Busy + Local Busy + RNR ⬜
 
 **Goal:** Fully implement flow control. RNR sending and receiving.
 
@@ -733,7 +733,7 @@ atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_context_t *ctx, atc_hdlc_bool 
 
 ---
 
-## PHASE 6 — FRMR Sending + Link Reset API ⬜
+## PHASE 7 — FRMR Sending + Link Reset API ⬜
 
 **Goal:** Send FRMR on protocol violations. Add user-accessible link reset.
 
@@ -786,7 +786,7 @@ atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_context_t *ctx);
 
 ---
 
-## PHASE 7 — TEST Frame Full Lifecycle ⬜
+## PHASE 8 — TEST Frame Full Lifecycle ⬜
 
 **Goal:** Implement the complete TEST frame round-trip as defined in §7 of the architecture document.
 
@@ -822,7 +822,7 @@ atc_hdlc_u16   test_pattern_len;  /**< Length of the test pattern */
 
 ---
 
-## PHASE 8 — Event System Expansion + Status Query Functions ⬜
+## PHASE 9 — Event System Expansion + Status Query Functions ⬜
 
 **Goal:** Complete the event notification model. Add all §6.6 query functions.
 
@@ -858,7 +858,7 @@ Fire in `hdlc_process_nr()` when at least one TX slot is freed (V(A) advances fr
 
 ---
 
-## PHASE 9 — Statistics Expansion + Compile-Time Configuration ⬜
+## PHASE 10 — Statistics Expansion + Compile-Time Configuration ⬜
 
 **Goal:** Complete statistics instrumentation. Add compile-time feature toggles.
 
@@ -938,7 +938,7 @@ Fire in `hdlc_process_nr()` when at least one TX slot is freed (V(A) advances fr
 
 ---
 
-## PHASE 10 — I-Frame Reception Fixes + Connect/Disconnect Preconditions ⬜
+## PHASE 11 — I-Frame Reception Fixes + Connect/Disconnect Preconditions ⬜
 
 **Goal:** Correct remaining behavioural gaps in §6.4 and add state guards to connection management.
 
@@ -977,7 +977,7 @@ Fire in `hdlc_process_nr()` when at least one TX slot is freed (V(A) advances fr
 
 ---
 
-## PHASE 11 — Optional Buffer-Based Output + Zero-Copy RX ⬜
+## PHASE 12 — Optional Buffer-Based Output + Zero-Copy RX ⬜
 
 **Goal:** Add the optional buffer-based send path and the zero-copy RX swap mechanism.
 
