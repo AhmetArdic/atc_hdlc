@@ -5,24 +5,6 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
-
-/**
- * @file hdlc_out.c
- * @author ahmettardic - Ahmet Talha ARDIC
- * @date 02.02.2026
- * @brief HDLC TX path — streaming transmit API and convenience wrappers.
- *
- * Contains the streaming frame transmit API (start/data/end) and convenience
- * wrappers for UI/TEST/I frames.
  */
 
 #include "../../inc/hdlc.h"
@@ -30,15 +12,6 @@
 #include "../hdlc_private.h"
 #include <string.h>
 
-/*
- * --------------------------------------------------------------------------
- * INTERNAL — Complete frame transmit (used by frame_handlers)
- * --------------------------------------------------------------------------
- */
-
-/**
- * @brief Transmit a complete HDLC frame (internal helper).
- */
 void hdlc_transmit_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
   if (ctx == NULL || frame == NULL) {
     return;
@@ -52,20 +25,9 @@ void hdlc_transmit_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame)
 
   (void)hdlc_frame_pack_core(frame, hdlc_write_byte, &enc_ctx);
 
-  /* Stats: frame_pack_core does not call atc_hdlc_transmit_end(), increment here. */
   HDLC_STAT_INC(ctx, tx_i_frames);
 }
 
-/*
- * --------------------------------------------------------------------------
- * STREAMING TRANSMIT API
- * --------------------------------------------------------------------------
- */
-
-/**
- * @brief Begin streaming a frame.
- * @see hdlc.h
- */
 void atc_hdlc_transmit_start(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 control) {
   if (ctx == NULL) {
     return;
@@ -77,18 +39,12 @@ void atc_hdlc_transmit_start(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_h
 
   ATC_HDLC_LOG_DEBUG("tx: Frame start (Addr: 0x%02X, Ctrl: 0x%02X)", address, control);
 
-  /* Opening flag (raw, no escaping) */
   hdlc_write_byte(&enc, HDLC_FLAG, false);
 
-  /* Address & Control (escaped + CRC update) */
   hdlc_pack_escaped_crc(&enc, hdlc_write_byte, address, &ctx->tx_crc);
   hdlc_pack_escaped_crc(&enc, hdlc_write_byte, control, &ctx->tx_crc);
 }
 
-/**
- * @brief Append a single data octet to the streamed frame.
- * @see hdlc.h
- */
 void atc_hdlc_transmit_data_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
   if (ctx == NULL) {
     return;
@@ -98,10 +54,6 @@ void atc_hdlc_transmit_data_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
   hdlc_pack_escaped_crc(&enc, hdlc_write_byte, byte, &ctx->tx_crc);
 }
 
-/**
- * @brief Append an array of data octets to the streamed frame.
- * @see hdlc.h
- */
 void atc_hdlc_transmit_data_bytes(atc_hdlc_context_t *ctx,
                                    const atc_hdlc_u8  *data,
                                    atc_hdlc_u32        len) {
@@ -115,10 +67,6 @@ void atc_hdlc_transmit_data_bytes(atc_hdlc_context_t *ctx,
   }
 }
 
-/**
- * @brief Finalise the streamed frame — emit FCS and closing flag.
- * @see hdlc.h
- */
 void atc_hdlc_transmit_end(atc_hdlc_context_t *ctx) {
   if (ctx == NULL) {
     return;
@@ -130,26 +78,14 @@ void atc_hdlc_transmit_end(atc_hdlc_context_t *ctx) {
   atc_hdlc_u8 fcs_hi = (crc >> 8) & 0xFF;
   atc_hdlc_u8 fcs_lo = crc & 0xFF;
 
-  /* FCS (escaped, no CRC update) */
   hdlc_pack_escaped(&enc, hdlc_write_byte, fcs_hi);
   hdlc_pack_escaped(&enc, hdlc_write_byte, fcs_lo);
 
-  /* Closing flag (raw) */
   hdlc_write_byte(&enc, HDLC_FLAG, true);
 
   HDLC_STAT_INC(ctx, tx_i_frames);
 }
 
-/*
- * --------------------------------------------------------------------------
- * CONVENIENCE FRAME STARTERS
- * --------------------------------------------------------------------------
- */
-
-/**
- * @brief Begin streaming a UI frame.
- * @see hdlc.h
- */
 void atc_hdlc_transmit_start_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address) {
   if (ctx == NULL) {
     return;
@@ -158,10 +94,6 @@ void atc_hdlc_transmit_start_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address) {
   atc_hdlc_transmit_start(ctx, address, ctrl);
 }
 
-/**
- * @brief Begin streaming a TEST frame.
- * @see hdlc.h
- */
 void atc_hdlc_transmit_start_test(atc_hdlc_context_t *ctx, atc_hdlc_u8 address) {
   if (ctx == NULL) {
     return;
@@ -170,20 +102,10 @@ void atc_hdlc_transmit_start_test(atc_hdlc_context_t *ctx, atc_hdlc_u8 address) 
   atc_hdlc_transmit_start(ctx, address, ctrl);
 }
 
-/*
- * --------------------------------------------------------------------------
- * CONVENIENCE COMPLETE-FRAME WRAPPERS
- * --------------------------------------------------------------------------
- */
-
-/**
- * @brief Transmit an Unnumbered Information (UI) frame.
- * @see hdlc.h
- */
 atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_context_t *ctx,
-                                        atc_hdlc_u8         address,
-                                        const atc_hdlc_u8  *data,
-                                        atc_hdlc_u32        len) {
+                                         atc_hdlc_u8         address,
+                                         const atc_hdlc_u8  *data,
+                                         atc_hdlc_u32        len) {
     if (ctx == NULL) return ATC_HDLC_ERR_INVALID_PARAM;
     if (ctx->config && len > ctx->config->max_frame_size) {
         return ATC_HDLC_ERR_FRAME_TOO_LARGE;
@@ -197,14 +119,10 @@ atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_context_t *ctx,
     return ATC_HDLC_OK;
 }
 
-/**
- * @brief Transmit a TEST frame and await the echo.
- * @see hdlc.h
- */
 atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_context_t *ctx,
-                                          atc_hdlc_u8         address,
-                                          const atc_hdlc_u8  *data,
-                                          atc_hdlc_u32        len) {
+                                           atc_hdlc_u8         address,
+                                           const atc_hdlc_u8  *data,
+                                           atc_hdlc_u32        len) {
     if (ctx == NULL) return ATC_HDLC_ERR_INVALID_PARAM;
     if (ctx->test_pending) return ATC_HDLC_ERR_TEST_PENDING;
     if (ctx->config && len > ctx->config->max_frame_size) {
@@ -222,16 +140,11 @@ atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_context_t *ctx,
     }
     atc_hdlc_transmit_end(ctx);
 
-    /* Start T1 to detect timeout */
     hdlc_t1_start(ctx);
 
     return ATC_HDLC_OK;
 }
 
-/**
- * @brief Transmit a reliable Information (I) frame.
- * @see hdlc.h
- */
 atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t *ctx,
                                        const atc_hdlc_u8  *data,
                                        atc_hdlc_u32        len) {
@@ -245,14 +158,12 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t *ctx,
         return ATC_HDLC_ERR_FRAME_TOO_LARGE;
     }
 
-    /* Window check */
     atc_hdlc_u8 outstanding = (atc_hdlc_u8)((ctx->vs - ctx->va +
                                HDLC_SEQUENCE_MODULUS) % HDLC_SEQUENCE_MODULUS);
     if (outstanding >= ctx->window_size) {
         return ATC_HDLC_ERR_WINDOW_FULL;
     }
 
-    /* Copy payload into retransmit slot */
     atc_hdlc_u8 slot = ctx->next_tx_slot;
     ctx->tx_window->seq_to_slot[ctx->vs] = slot;
     ctx->next_tx_slot = (atc_hdlc_u8)((ctx->next_tx_slot + 1) % ctx->window_size);
@@ -266,7 +177,6 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t *ctx,
     }
     ctx->tx_window->slot_lens[slot] = len;
 
-    /* Build and send frame */
     ATC_HDLC_LOG_DEBUG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
     atc_hdlc_u8 ctrl = hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
     atc_hdlc_transmit_start(ctx, ctx->peer_address, ctrl);
@@ -275,11 +185,9 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t *ctx,
     }
     atc_hdlc_transmit_end(ctx);
 
-    /* Advance V(S), cancel T2 (ACK piggybacked in N(R)) */
     ctx->vs = (atc_hdlc_u8)((ctx->vs + 1) % HDLC_SEQUENCE_MODULUS);
     hdlc_t2_stop(ctx);
 
-    /* Start T1 only for the first outstanding frame */
     if (outstanding == 0) {
         hdlc_t1_start(ctx);
     }

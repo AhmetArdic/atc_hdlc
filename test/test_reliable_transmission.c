@@ -29,7 +29,7 @@ static void make_ctx(atc_hdlc_context_t *ctx,
     cfg.max_frame_size = 1024;
     cfg.max_retries    = 3;
     cfg.t1_ms          = t1_ms;
-    cfg.t2_ms          = ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT;
+    cfg.t2_ms          = ATC_HDLC_DEFAULT_T2_TIMEOUT;
     cfg.t3_ms          = 30000;
     cfg.use_extended   = false;
 
@@ -64,7 +64,7 @@ void test_reliable_transmission(void) {
     reset_test_state();
     
     atc_hdlc_context_t ctx;
-    make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
+    make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     
     // Send I-Frame
     mock_output_len = 0;
@@ -108,7 +108,7 @@ void test_reliable_retransmission(void) {
     reset_test_state();
     
     atc_hdlc_context_t ctx;
-make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
+make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     
     // Send I-Frame
     atc_hdlc_u8 data[] = {0xCA, 0xFE};
@@ -132,7 +132,7 @@ void test_sequence_rollover(void) {
     reset_test_state();
     
     atc_hdlc_context_t ctx;
-make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
+make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     
     atc_hdlc_u8 data[] = {0x00};
     
@@ -173,7 +173,7 @@ void test_duplicate_ack_ignored(void) {
     reset_test_state();
     
     atc_hdlc_context_t ctx;
-make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
+make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     
     // Send I-Frame (VS becomes 1)
     atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8*)"A", 1);
@@ -200,7 +200,7 @@ void test_rej_retransmit(void) {
     reset_test_state();
     
     atc_hdlc_context_t ctx;
-make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
+make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     
     // Send I-Frame [VS=0] -> VS becomes 1
     atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8*)"XY", 2);
@@ -225,7 +225,7 @@ void test_piggyback_ack(void) {
     reset_test_state();
     
     atc_hdlc_context_t ctx;
-make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
+make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // --- Phase 1: Outgoing Piggyback ---
     // Receive an I-frame from peer: N(S)=0, N(R)=0 (peer expects our frame 0)
@@ -310,7 +310,7 @@ void test_window_size_2_basic(void) {
     // Manual init for custom window size 2
     // We use mock buffers from common where possible, but context needs its own pointers if we don't use setup_test_context
     // We can use mock_rx_buffer for rx
-    make_ctx(&ctx, 2, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
+    make_ctx(&ctx, 2, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // 1. Send first I-frame (N(S)=0)
     atc_hdlc_u8 data1[] = "FRAME1";
@@ -430,7 +430,7 @@ void test_window7_mid_rej(void) {
     reset_test_state();
 
     atc_hdlc_context_t ctx;
-    make_ctx(&ctx, 7, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
+    make_ctx(&ctx, 7, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // --- Phase 1: Send 7 I-frames (fill the entire window) ---
     printf("   Phase 1: Sending 7 I-frames...\n");
@@ -566,7 +566,7 @@ static bench_result_t run_throughput_bench(int window_size) {
     reset_test_state();
 
     atc_hdlc_context_t ctx;
-    make_ctx(&ctx, (atc_hdlc_u8)window_size, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
+    make_ctx(&ctx, (atc_hdlc_u8)window_size, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // Prepare chunk payload (repeating pattern)
     atc_hdlc_u8 chunk[BENCH_CHUNK_SIZE];
@@ -729,7 +729,7 @@ void test_process_tx_task_simulation(void) {
     
     atc_hdlc_context_t ctx;
     /* window_size=2 so the task hits Window Full and must wait */
-    make_ctx(&ctx, 2, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
+    make_ctx(&ctx, 2, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // We have 100 bytes. Chunk size is 32. It should take 4 chunks (32, 32, 32, 4)
     uint8_t test_data[100];
@@ -776,7 +776,7 @@ void test_nr_modulo_validation(void) {
     reset_test_state();
 
     atc_hdlc_context_t ctx;
-    make_ctx(&ctx, 7, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
+    make_ctx(&ctx, 7, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // 1. Send 6 frames (0 to 5)
     char payload[8] = "DATA";
@@ -909,7 +909,7 @@ void test_state_initialization(void) {
     reset_test_state();
 
     atc_hdlc_context_t ctx;
-make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT);
+make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // 1. Send an I-frame so that V(S) increments to 1
     atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8 *)"TEST", 4);

@@ -215,10 +215,10 @@ To use this library in your own project:
     atc_hdlc_init(&ctx,
         rx_buffer, sizeof(rx_buffer),           // Input buffer
         retransmit_buffer, sizeof(retransmit_buffer), // Retransmit buffer
-        ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT,        // T1 timeout (default 1000 ticks)
-        ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,         // T2 timeout for cumulative ACK (default 10 ticks)
+        ATC_HDLC_DEFAULT_T1_TIMEOUT,        // T1 timeout (default 1000 ticks)
+        ATC_HDLC_DEFAULT_T2_TIMEOUT,         // T2 timeout for cumulative ACK (default 10 ticks)
         ATC_HDLC_DEFAULT_WINDOW_SIZE,               // Window size (1 = Stop-and-Wait)
-        ATC_HDLC_DEFAULT_MAX_RETRY_COUNT,           // N2 Retry limit (default 3)
+        ATC_HDLC_DEFAULT_N2_RETRY_COUNT,           // N2 Retry limit (default 3)
         my_output_byte, my_on_frame, my_on_state, NULL);
     
     // Configure Addresses (My Address, Peer Address)
@@ -313,11 +313,11 @@ Configuration is done in `inc/hdlc_config.h`:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT` | `1000` | Default T1 retransmission timeout in ticks |
-| `ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT` | `10` | Default T2 ACK delay timeout in ticks for cumulative ACK |
-| `ATC_HDLC_DEFAULT_CONTENTION_DELAY_TIMEOUT`| `100` | Default contention timer back-off in ticks upon SABM collision |
+| `ATC_HDLC_DEFAULT_T1_TIMEOUT` | `1000` | Default T1 retransmission timeout in ticks |
+| `ATC_HDLC_DEFAULT_T2_TIMEOUT` | `10` | Default T2 ACK delay timeout in ticks for cumulative ACK |
+| `ATC_HDLC_DEFAULT_T3_TIMEOUT`| `100` | Default contention timer back-off in ticks upon SABM collision |
 | `ATC_HDLC_DEFAULT_WINDOW_SIZE` | `1` | Default transmit window size for Go-Back-N (1..7) |
-| `ATC_HDLC_DEFAULT_MAX_RETRY_COUNT` | `3` | Default N2 retry limit before link disconnects |
+| `ATC_HDLC_DEFAULT_N2_RETRY_COUNT` | `3` | Default N2 retry limit before link disconnects |
 
 ## 📖 API Reference
 

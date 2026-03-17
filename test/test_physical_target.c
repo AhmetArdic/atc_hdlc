@@ -625,7 +625,7 @@ static bool node_init(physical_node_t *node, uint32_t recv_len, uint8_t window_s
     node->cfg.window_size    = (atc_hdlc_u8)window_size;
     node->cfg.max_frame_size = 1024;
     node->cfg.max_retries    = 10;
-    node->cfg.t1_ms          = ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT;
+    node->cfg.t1_ms          = ATC_HDLC_DEFAULT_T1_TIMEOUT;
     node->cfg.t2_ms          = 1;  /* Minimal ACK delay for high-baud physical link */
     node->cfg.t3_ms          = 0;
     node->cfg.use_extended   = false;

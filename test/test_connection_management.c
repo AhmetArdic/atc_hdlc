@@ -64,8 +64,8 @@ void setup_context(void) {
     static const atc_hdlc_config_t cfg = {
         .mode = ATC_HDLC_MODE_ABM, .address = 0x01, .window_size = 1,
         .max_frame_size = 1024, .max_retries = 3,
-        .t1_ms = ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT,
-        .t2_ms = ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
+        .t1_ms = ATC_HDLC_DEFAULT_T1_TIMEOUT,
+        .t2_ms = ATC_HDLC_DEFAULT_T2_TIMEOUT,
         .t3_ms = 30000, .use_extended = false,
     };
     static const atc_hdlc_platform_t plat = {

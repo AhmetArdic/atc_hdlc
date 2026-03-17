@@ -5,41 +5,18 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
-
-/**
- * @file hdlc_frame.c
- * @author ahmettardic - Ahmet Talha ARDIC
- * @date 02.02.2026
- * @brief HDLC Frame Serialization (Pack / Unpack) and control field helpers.
  */
 
 #include "../../inc/hdlc.h"
 #include "hdlc_crc.h"
 #include "../hdlc_private.h"
 
-/* --- Encoding Helpers --- */
-
-/**
- * @brief Write a byte via the platform on_send callback.
- */
 void hdlc_write_byte(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush) {
   if (enc_ctx->ctx && enc_ctx->ctx->platform && enc_ctx->ctx->platform->on_send) {
     enc_ctx->ctx->platform->on_send(byte, flush, enc_ctx->ctx->platform->user_ctx);
   }
 }
 
-/**
- * @brief Write a byte into a flat buffer (used by atc_hdlc_frame_pack).
- */
 static void hdlc_write_byte_to_buf(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush) {
   (void)flush;
   if (enc_ctx->current_len < enc_ctx->buffer_len) {
@@ -54,9 +31,6 @@ static inline void hdlc_put_byte(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn
   put_fn(ctx, byte, flush);
 }
 
-/**
- * @brief Escape a byte if necessary and write it.
- */
 void hdlc_pack_escaped(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hdlc_u8 byte) {
   if (byte == HDLC_FLAG || byte == HDLC_ESCAPE) {
     hdlc_put_byte(ctx, put_fn, HDLC_ESCAPE, false);
@@ -66,16 +40,11 @@ void hdlc_pack_escaped(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hdlc
   }
 }
 
-/**
- * @brief Escape a byte, update CRC, and write it.
- */
 void hdlc_pack_escaped_crc(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn,
                              atc_hdlc_u8 byte, atc_hdlc_u16 *crc) {
   *crc = atc_hdlc_crc_ccitt_update(*crc, byte);
   hdlc_pack_escaped(ctx, put_fn, byte);
 }
-
-/* --- Core Serialization Engine --- */
 
 atc_hdlc_bool hdlc_frame_pack_core(const atc_hdlc_frame_t *frame, hdlc_put_byte_fn put_fn,
                                      hdlc_encode_ctx_t *enc_ctx) {
@@ -109,8 +78,6 @@ atc_hdlc_bool hdlc_frame_pack_core(const atc_hdlc_frame_t *frame, hdlc_put_byte_
   hdlc_put_byte(enc_ctx, put_fn, HDLC_FLAG, true);
   return enc_ctx->success;
 }
-
-/* --- Public API --- */
 
 atc_hdlc_bool atc_hdlc_frame_pack(const atc_hdlc_frame_t *frame, atc_hdlc_u8 *buffer,
                                     atc_hdlc_u32 buffer_len, atc_hdlc_u32 *encoded_len) {
@@ -196,8 +163,6 @@ atc_hdlc_bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer, atc_hdlc_u32 buff
   return true;
 }
 
-/* --- Control Field Constructors --- */
-
 atc_hdlc_u8 hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
   return HDLC_FRAME_TYPE_VAL_I |
          ((ns & HDLC_CTRL_I_NS_MASK) << HDLC_CTRL_I_NS_SHIFT) |
@@ -216,10 +181,8 @@ atc_hdlc_u8 hdlc_create_u_ctrl(atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 p
   return HDLC_FRAME_TYPE_VAL_U |
          ((m_lo & HDLC_CTRL_U_M_LO_MASK) << HDLC_CTRL_U_M_LO_SHIFT) |
          ((pf   & HDLC_CTRL_PF_MASK)     << HDLC_CTRL_PF_SHIFT)      |
-         ((m_hi & HDLC_CTRL_U_M_HI_MASK) << HDLC_CTRL_U_M_HI_SHIFT);
+          ((m_hi & HDLC_CTRL_U_M_HI_MASK) << HDLC_CTRL_U_M_HI_SHIFT);
 }
-
-/* --- Control Field Analyzers --- */
 
 atc_hdlc_s_frame_sub_type_t atc_hdlc_get_s_frame_sub_type(atc_hdlc_u8 control) {
     if (hdlc_resolve_frame_type(control) == ATC_HDLC_FRAME_S) {

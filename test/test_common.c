@@ -93,8 +93,8 @@ static const atc_hdlc_config_t s_default_config = {
     .window_size    = ATC_HDLC_DEFAULT_WINDOW_SIZE,
     .max_frame_size = 1024,
     .max_retries    = 3,
-    .t1_ms          = ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT,
-    .t2_ms          = ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,
+    .t1_ms          = ATC_HDLC_DEFAULT_T1_TIMEOUT,
+    .t2_ms          = ATC_HDLC_DEFAULT_T2_TIMEOUT,
     .t3_ms          = 30000,
     .use_extended   = false,
 };

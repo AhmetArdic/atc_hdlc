@@ -5,39 +5,11 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
-
-/**
- * @file hdlc_crc.c
- * @author ahmettardic - Ahmet Talha ARDIC
- * @date 02.02.2026
- * @brief CRC-16-CCITT Implementation.
- *
- * Provides the Lookup Table (LUT) and update function for the
- * standard CCITT CRC-16 (Polynomial: 0x1021).
  */
 
 #include "hdlc_crc.h"
 
-/*
- * Polynomial: x^16 + x^12 + x^5 + 1 (0x1021)
- * Initial value: 0xFFFF
- */
-
-/**
- * @brief Pre-computed CRC-16-CCITT Lookup Table.
- * Allows for fast byte-wise CRC calculation at the cost of 512 bytes of
- * ROM/Flash.
- */
-static const atc_hdlc_u16 fcstab[256] = {0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x74bf, 0x8c48,
+static const atc_hdlc_u16 fcstab[256] = {0x0000, 0x1189, 0x2312, 0x329B, 0x4624, 0x57ad, 0x6536, 0x74bf, 0x8c48,
                                      0x9dc1, 0xaf5a, 0xbed3, 0xca6c, 0xdbe5, 0xe97e, 0xf8f7, 0x1081, 0x0108,
                                      0x3393, 0x221a, 0x56a5, 0x472c, 0x75b7, 0x643e, 0x9cc9, 0x8d40, 0xbfdb,
                                      0xae52, 0xdaed, 0xcb64, 0xf9ff, 0xe876, 0x2102, 0x308b, 0x0210, 0x1399,
@@ -67,10 +39,6 @@ static const atc_hdlc_u16 fcstab[256] = {0x0000, 0x1189, 0x2312, 0x329b, 0x4624,
                                      0xc514, 0xb1ab, 0xa022, 0x92b9, 0x8330, 0x7bc7, 0x6a4e, 0x58d5, 0x495c,
                                      0x3de3, 0x2c6a, 0x1ef1, 0x0f78};
 
-/**
- * @brief Update the running CRC-16-CCITT value.
- * @see hdlc_crc.h
- */
 atc_hdlc_u16 atc_hdlc_crc_ccitt_update(atc_hdlc_u16 fcs, atc_hdlc_u8 data) {
     return (fcs >> 8) ^ fcstab[(fcs ^ data) & 0xff];
 }
