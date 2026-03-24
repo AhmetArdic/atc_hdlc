@@ -7,3 +7,4 @@ add_library(hdlc STATIC
 )
 
 target_include_directories(hdlc PUBLIC ${CMAKE_SOURCE_DIR}/inc)
+target_compile_options(hdlc PRIVATE -Wall -Wextra -Wshadow -Wconversion)

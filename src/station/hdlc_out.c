@@ -25,7 +25,7 @@ atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_context_t *ctx,
         .address = address,
         .control = HDLC_U_CTRL(HDLC_U_UI, 0),
         .information = data,
-        .information_len = len
+        .information_len = (atc_hdlc_u16)len
     };
 
     hdlc_transmit_frame(ctx, &frame);
@@ -52,7 +52,7 @@ atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_context_t *ctx,
         .address = address,
         .control = HDLC_U_CTRL(HDLC_U_TEST, 1),
         .information = data,
-        .information_len = len
+        .information_len = (atc_hdlc_u16)len
     };
 
     hdlc_transmit_frame(ctx, &frame);
@@ -99,7 +99,7 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t *ctx,
         .address = ctx->peer_address,
         .control = HDLC_I_CTRL(ctx->vs, ctx->vr, 0),
         .information = data,
-        .information_len = len
+        .information_len = (atc_hdlc_u16)len
     };
 
     hdlc_transmit_frame(ctx, &frame);
@@ -146,8 +146,8 @@ void atc_hdlc_transmit_end(atc_hdlc_context_t *ctx) {
   hdlc_encode_ctx_t enc = {.ctx = ctx, .success = true};
 
   atc_hdlc_u16 crc = ctx->tx_crc;
-  atc_hdlc_u8 fcs_hi = (crc >> 8) & 0xFF;
-  atc_hdlc_u8 fcs_lo = crc & 0xFF;
+  atc_hdlc_u8 fcs_hi = (atc_hdlc_u8)((crc >> 8) & 0xFF);
+  atc_hdlc_u8 fcs_lo = (atc_hdlc_u8)(crc & 0xFF);
 
   hdlc_pack_escaped(&enc, hdlc_write_byte, fcs_hi);
   hdlc_pack_escaped(&enc, hdlc_write_byte, fcs_lo);

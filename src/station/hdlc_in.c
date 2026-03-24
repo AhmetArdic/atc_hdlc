@@ -223,17 +223,17 @@ static void hdlc_retransmit_go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_
             .address = ctx->peer_address,
             .control = HDLC_I_CTRL(ctx->vs, ctx->vr, 0),
             .information = ctx->tx_window->slots + (slot * ctx->tx_window->slot_capacity),
-            .information_len = ctx->tx_window->slot_lens[slot]
+            .information_len = (atc_hdlc_u16)ctx->tx_window->slot_lens[slot]
         };
 
         hdlc_transmit_frame(ctx, &frame);
 
         HDLC_STAT_INC(ctx, tx_i_frames);
         
-        ctx->vs = (ctx->vs + 1) % HDLC_SEQUENCE_MODULUS;
+        ctx->vs = (atc_hdlc_u8)((ctx->vs + 1) % HDLC_SEQUENCE_MODULUS);
         
         if (ctx->tx_window->slots != NULL)
-            ctx->next_tx_slot = (ctx->next_tx_slot + 1) % ctx->window_size;
+            ctx->next_tx_slot = (atc_hdlc_u8)((ctx->next_tx_slot + 1) % ctx->window_size);
     }
     hdlc_t1_start(ctx);
 }
@@ -253,7 +253,7 @@ static void hdlc_state_connected(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t
         if (ctx->current_state == ATC_HDLC_STATE_FRMR_ERROR) return;
 
         if (msg_ns == ctx->vr) {
-            ctx->vr = (ctx->vr + 1) % HDLC_SEQUENCE_MODULUS;
+            ctx->vr = (atc_hdlc_u8)((ctx->vr + 1) % HDLC_SEQUENCE_MODULUS);
             ctx->rej_exception = false;
             HDLC_STAT_INC(ctx, rx_i_frames);
             HDLC_STAT_ADD(ctx, rx_bytes, frame->information_len);

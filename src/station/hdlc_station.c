@@ -118,11 +118,9 @@ atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_context_t *ctx) {
     ATC_HDLC_LOG_DEBUG("state: Link reset initiated");
     hdlc_reset_connection_state(ctx);
 
-    hdlc_fire_event(ctx, ATC_HDLC_EVENT_RESET);
-
     hdlc_send_u_frame(ctx, ctx->peer_address, HDLC_U_CTRL(HDLC_U_SABM, 1));
     hdlc_t1_start(ctx);
-    ctx->current_state = ATC_HDLC_STATE_CONNECTING;
+    hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTING, ATC_HDLC_EVENT_RESET);
 
     return ATC_HDLC_OK;
 }
@@ -221,6 +219,19 @@ atc_hdlc_u8 atc_hdlc_get_window_available(const atc_hdlc_context_t *ctx) {
 atc_hdlc_bool atc_hdlc_has_pending_ack(const atc_hdlc_context_t *ctx) {
     if (ctx == NULL) return false;
     return ctx->t2_active;
+}
+
+void atc_hdlc_abort(atc_hdlc_context_t *ctx) {
+    if (ctx == NULL) return;
+
+    if (ctx->platform && ctx->platform->on_send) {
+        ctx->platform->on_send(HDLC_FLAG, false, ctx->platform->user_ctx);
+        ctx->platform->on_send(HDLC_FLAG, true,  ctx->platform->user_ctx);
+    }
+
+    hdlc_reset_connection_state(ctx);
+    ctx->rx_state       = HDLC_RX_STATE_HUNT;
+    ctx->current_state  = ATC_HDLC_STATE_DISCONNECTED;
 }
 
 void atc_hdlc_get_stats(const atc_hdlc_context_t *ctx, atc_hdlc_stats_t *out) {

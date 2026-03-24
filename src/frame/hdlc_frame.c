@@ -66,8 +66,8 @@ atc_hdlc_bool hdlc_frame_pack_core(const atc_hdlc_frame_t *frame, hdlc_put_byte_
     }
   }
 
-  atc_hdlc_u8 fcs_hi = (crc >> 8) & 0xFF;
-  atc_hdlc_u8 fcs_lo = crc & 0xFF;
+  atc_hdlc_u8 fcs_hi = (atc_hdlc_u8)((crc >> 8) & 0xFF);
+  atc_hdlc_u8 fcs_lo = (atc_hdlc_u8)(crc & 0xFF);
 
   hdlc_pack_escaped(enc_ctx, put_fn, fcs_hi);
   if (!enc_ctx->success) return false;

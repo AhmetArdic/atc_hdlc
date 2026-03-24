@@ -29,9 +29,9 @@
 #endif
 
 #if ATC_HDLC_ENABLE_DEBUG_LOGS
-#   define ATC_HDLC_LOG_DEBUG(fmt, ...) printf("[HDLC DEBUG] " fmt "\n", ##__VA_ARGS__)
-#   define ATC_HDLC_LOG_WARN(fmt, ...)  printf("[HDLC WARN]  " fmt "\n", ##__VA_ARGS__)
-#   define ATC_HDLC_LOG_ERROR(fmt, ...) printf("[HDLC ERROR] " fmt "\n", ##__VA_ARGS__)
+#   define ATC_HDLC_LOG_DEBUG(fmt, ...) ATC_HDLC_LOG_IMPL("DEBUG", fmt, ##__VA_ARGS__)
+#   define ATC_HDLC_LOG_WARN(fmt, ...)  ATC_HDLC_LOG_IMPL("WARN",  fmt, ##__VA_ARGS__)
+#   define ATC_HDLC_LOG_ERROR(fmt, ...) ATC_HDLC_LOG_IMPL("ERROR", fmt, ##__VA_ARGS__)
 #else
 #   define ATC_HDLC_LOG_DEBUG(fmt, ...)
 #   define ATC_HDLC_LOG_WARN(fmt, ...)

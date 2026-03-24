@@ -80,6 +80,18 @@ atc_hdlc_error_t atc_hdlc_disconnect(atc_hdlc_context_t *ctx);
 atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_context_t *ctx);
 
 /**
+ * @brief Unconditional abort.
+ *
+ * Call when UART hardware detects a line break or framing error.
+ * Sends two flag bytes (0x7E 0x7E) to force the peer into HUNT state,
+ * stops all timers, resets connection state, and moves to DISCONNECTED
+ * without firing an event.
+ *
+ * @param ctx Context.
+ */
+void atc_hdlc_abort(atc_hdlc_context_t *ctx);
+
+/**
  * @brief Check if connected.
  *
  * @param ctx Context.
