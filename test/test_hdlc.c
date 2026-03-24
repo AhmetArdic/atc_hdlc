@@ -416,7 +416,7 @@ void test_control_field_i(void) {
    */
 
   // Construct I-Frame: N(S)=3, N(R)=5, P=1.
-  atc_hdlc_frame_t f = {.address=0xFF, .control=hdlc_create_i_ctrl(3, 5, 1), .information=NULL, .information_len=0};
+  atc_hdlc_frame_t f = {.address=0xFF, .control=HDLC_I_CTRL(3, 5, 1), .information=NULL, .information_len=0};
   
   mock_output_len = 0;
   hdlc_transmit_frame(&ctx, &f);
@@ -446,7 +446,7 @@ void test_control_field_s(void) {
   ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   // Construct S-Frame: REJ (S=10 -> 2), N(R)=7, P/F=0
-  atc_hdlc_frame_t f = {.address=0xFF, .control=hdlc_create_s_ctrl(0x02, 7, 0), .information=NULL, .information_len=0};
+  atc_hdlc_frame_t f = {.address=0xFF, .control=HDLC_S_CTRL(0x02, 7, 0), .information=NULL, .information_len=0};
   
   hdlc_transmit_frame(&ctx, &f);
   

@@ -80,7 +80,7 @@ void test_reliable_transmission(void) {
 
     /* ACK: peer sends I-frame N(S)=0, N(R)=1 */
     reset_test_state();
-    atc_hdlc_frame_t peer_frame = { .address=0x01, .control=hdlc_create_i_ctrl(0, 1, 0), .information=NULL, .information_len=0 };
+    atc_hdlc_frame_t peer_frame = { .address=0x01, .control=HDLC_I_CTRL(0, 1, 0), .information=NULL, .information_len=0 };
     atc_hdlc_u32 encoded_len = 0;
     atc_hdlc_frame_pack(&peer_frame, temp_input_buffer, sizeof(temp_input_buffer), &encoded_len);
     atc_hdlc_data_in(&ctx, temp_input_buffer, encoded_len);
@@ -184,7 +184,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
         // 2. Acknowledge it (Peer sends RR with NR = expected_vs)
         atc_hdlc_frame_t rr_frame;
         rr_frame.address = 0x01;
-        rr_frame.control = hdlc_create_s_ctrl(0, expected_vs, 0); // RR, NR=VS
+        rr_frame.control = HDLC_S_CTRL(0, expected_vs, 0); // RR, NR=VS
         rr_frame.information = NULL;
         rr_frame.information_len = 0;
         
@@ -211,7 +211,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8*)"A", 1);
     
     // Receive ACK (RR NR=1)
-    atc_hdlc_frame_t rr_frame = { .address=0x01, .control=hdlc_create_s_ctrl(0, 1, 0) };
+    atc_hdlc_frame_t rr_frame = { .address=0x01, .control=HDLC_S_CTRL(0, 1, 0) };
     atc_hdlc_u32 len = 0;
     atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
@@ -239,7 +239,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     mock_output_len = 0; // Clear output
     
     // Receive REJ [NR=0] (Peer asking for frame 0 again)
-    atc_hdlc_frame_t rej_frame = { .address=0x01, .control=hdlc_create_s_ctrl(2, 0, 0) }; // REJ=2
+    atc_hdlc_frame_t rej_frame = { .address=0x01, .control=HDLC_S_CTRL(2, 0, 0) }; // REJ=2
     atc_hdlc_u32 len = 0;
     atc_hdlc_frame_pack(&rej_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
@@ -266,7 +266,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     // Build peer's I-frame: Addr=0x01 (to me), Ctrl: I-frame N(S)=0, N(R)=0, P=0
     atc_hdlc_frame_t peer_frame = {
         .address = 0x01,
-        .control = hdlc_create_i_ctrl(0, 0, 0),
+        .control = HDLC_I_CTRL(0, 0, 0),
         .information = (atc_hdlc_u8 *)"HI",
         .information_len = 2
     };
@@ -299,7 +299,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     /* Phase 2: peer's I-frame N(S)=1, N(R)=1 ACKs our frame 0 */
     atc_hdlc_frame_t peer_frame2 = {
         .address = 0x01,
-        .control = hdlc_create_i_ctrl(1, 1, 0),
+        .control = HDLC_I_CTRL(1, 1, 0),
         .information = (atc_hdlc_u8 *)"RE",
         .information_len = 2
     };
@@ -341,7 +341,7 @@ void test_window_size_2_basic(void) {
         { test_fail("Window2", "Window overflow allowed"); return; }
 
     /* Cumulative ACK N(R)=2 */
-    atc_hdlc_frame_t rr_frame = { .address=0x01, .control=hdlc_create_s_ctrl(0, 2, 0) };
+    atc_hdlc_frame_t rr_frame = { .address=0x01, .control=HDLC_S_CTRL(0, 2, 0) };
     atc_hdlc_u32 len = 0;
     atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
@@ -388,7 +388,7 @@ void test_gobackn_retransmit(void) {
     }
 
     // Now peer replies with RR and F=1 (Response uses peer's own address = 0x02)
-    atc_hdlc_frame_t f1_response = { .address=0x02, .control=hdlc_create_s_ctrl(0x00, 0, 1) }; // RR, NR=0, F=1
+    atc_hdlc_frame_t f1_response = { .address=0x02, .control=HDLC_S_CTRL(0x00, 0, 1) }; // RR, NR=0, F=1
     atc_hdlc_u32 rr_len = 0;
     atc_hdlc_frame_pack(&f1_response, temp_input_buffer, sizeof(temp_input_buffer), &rr_len);
     
@@ -449,7 +449,7 @@ void test_window7_mid_rej(void) {
     atc_hdlc_u32 frames_before = ctx.stats.tx_i_frames;
 
     atc_hdlc_frame_t rej_frame = {
-        .address = 0x01, .control = hdlc_create_s_ctrl(0x02, 3, 0),
+        .address = 0x01, .control = HDLC_S_CTRL(0x02, 3, 0),
         .information = NULL, .information_len = 0
     };
     atc_hdlc_u32 rej_len = 0;
@@ -471,7 +471,7 @@ void test_window7_mid_rej(void) {
 
     /* Phase 4: ACK all with RR N(R)=7, window reopens */
     atc_hdlc_frame_t rr_frame = {
-        .address = 0x01, .control = hdlc_create_s_ctrl(0x00, 7, 0),
+        .address = 0x01, .control = HDLC_S_CTRL(0x00, 7, 0),
         .information = NULL, .information_len = 0
     };
     atc_hdlc_u32 rr_len = 0;
@@ -540,7 +540,7 @@ static bench_result_t run_throughput_bench(int window_size) {
 
         atc_hdlc_frame_t rr_frame = {
             .address = 0x01,
-            .control = hdlc_create_s_ctrl(0x00, ctx.vs, 0), // RR, N(R)=VS
+            .control = HDLC_S_CTRL(0x00, ctx.vs, 0), // RR, N(R)=VS
             .information = NULL,
             .information_len = 0
         };
@@ -644,7 +644,7 @@ void test_nr_modulo_validation(void) {
         atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8 *)payload, 4);
     }
     // 2. Peer ACKs them: N(R)=6
-    atc_hdlc_frame_t rr_frame = { .address=0x01, .control=hdlc_create_s_ctrl(0x00, 6, 0) };
+    atc_hdlc_frame_t rr_frame = { .address=0x01, .control=HDLC_S_CTRL(0x00, 6, 0) };
     atc_hdlc_u32 len = 0;
     atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
@@ -664,7 +664,7 @@ void test_nr_modulo_validation(void) {
 
     // 4. Peer sends RR N(R)=6. This is perfectly valid (peer acknowledging up to 5, waiting for 6)
     // If hdlc_nr_valid has the bug, it will reject N(R)=6 because it thinks 6 is outside [6, 0].
-    atc_hdlc_frame_t rr_frame2 = { .address=0x01, .control=hdlc_create_s_ctrl(0x00, 6, 0) };
+    atc_hdlc_frame_t rr_frame2 = { .address=0x01, .control=HDLC_S_CTRL(0x00, 6, 0) };
     atc_hdlc_frame_pack(&rr_frame2, temp_input_buffer, sizeof(temp_input_buffer), &len);
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
@@ -724,7 +724,7 @@ void test_nr_edge_cases(void) {
         ctx.vs = cases[i].vs;
         ctx.t1_active = false; /* reset to observe change */
 
-        atc_hdlc_frame_t rr_frame = { .address=0x01, .control=hdlc_create_s_ctrl(0x00, cases[i].nr, 0) };
+        atc_hdlc_frame_t rr_frame = { .address=0x01, .control=HDLC_S_CTRL(0x00, cases[i].nr, 0) };
         atc_hdlc_u32 len = 0;
         atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
         
@@ -777,7 +777,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     // Simulate peer sending an I-frame so V(R) increments to 1
     atc_hdlc_frame_t peer_i_frame = {
         .address = 0x01,
-        .control = hdlc_create_i_ctrl(0, 0, 0),
+        .control = HDLC_I_CTRL(0, 0, 0),
         .information = (atc_hdlc_u8 *)"PEER",
         .information_len = 4
     };
@@ -786,7 +786,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
     
     // Simulate peer sending RR N(R)=1 so V(A) increments to 1
-    atc_hdlc_frame_t peer_rr = { .address = 0x01, .control = hdlc_create_s_ctrl(0x00, 1, 0) };
+    atc_hdlc_frame_t peer_rr = { .address = 0x01, .control = HDLC_S_CTRL(0x00, 1, 0) };
     atc_hdlc_frame_pack(&peer_rr, temp_input_buffer, sizeof(temp_input_buffer), &len);
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
@@ -848,7 +848,7 @@ void test_public_query_api(void) {
         test_fail("Query API", "has_pending_ack should be false before receiving I-frame");
 
     /* Simulate receiving an I-frame → T2 starts */
-    atc_hdlc_u8 i_ctrl = hdlc_create_i_ctrl(0, 0, 0);
+    atc_hdlc_u8 i_ctrl = HDLC_I_CTRL(0, 0, 0);
     atc_hdlc_frame_t iframe = { .address = 0x01, .control = i_ctrl,
                                   .information = payload, .information_len = 1 };
     atc_hdlc_u8 i_raw[64]; atc_hdlc_u32 i_len = 0;
@@ -946,7 +946,7 @@ void test_local_busy_rnr_response(void) {
 
     /* Peer sends I-frame N(S)=0, N(R)=0 */
     atc_hdlc_u8 payload[] = {0xAB};
-    atc_hdlc_u8 i_ctrl = hdlc_create_i_ctrl(0, 0, 0);
+    atc_hdlc_u8 i_ctrl = HDLC_I_CTRL(0, 0, 0);
     atc_hdlc_frame_t iframe = { .address = 0x01, .control = i_ctrl,
                                   .information = payload, .information_len = 1 };
     atc_hdlc_u8 i_raw[64]; atc_hdlc_u32 i_len = 0;
@@ -982,7 +982,7 @@ void test_rnr_reception(void) {
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
 
     /* Build RNR(P=0, N(R)=0) from peer (address = my_address = 0x01) */
-    atc_hdlc_u8 rnr_ctrl = hdlc_create_s_ctrl(HDLC_S_RNR, 0, 0);
+    atc_hdlc_u8 rnr_ctrl = HDLC_S_CTRL(HDLC_S_RNR, 0, 0);
     atc_hdlc_frame_t rnr = { .address = 0x01, .control = rnr_ctrl,
                                .information = NULL, .information_len = 0 };
     atc_hdlc_u8 rnr_raw[32]; atc_hdlc_u32 rnr_len = 0;
@@ -1001,7 +1001,7 @@ void test_rnr_reception(void) {
         test_fail("RNR Reception", "transmit_i should return REMOTE_BUSY");
 
     /* Build RR(P=0, N(R)=0) from peer to clear busy */
-    atc_hdlc_u8 rr_ctrl = hdlc_create_s_ctrl(HDLC_S_RR, 0, 0);
+    atc_hdlc_u8 rr_ctrl = HDLC_S_CTRL(HDLC_S_RR, 0, 0);
     atc_hdlc_frame_t rr = { .address = 0x01, .control = rr_ctrl,
                               .information = NULL, .information_len = 0 };
     atc_hdlc_u8 rr_raw[32]; atc_hdlc_u32 rr_len = 0;
@@ -1034,7 +1034,7 @@ void test_t2_timer_callbacks(void) {
 
     /* Receive I-frame → T2 must start */
     atc_hdlc_u8 payload[] = {0x01, 0x02};
-    atc_hdlc_u8 i_ctrl = hdlc_create_i_ctrl(0, 0, 0);
+    atc_hdlc_u8 i_ctrl = HDLC_I_CTRL(0, 0, 0);
     atc_hdlc_frame_t iframe = { .address = 0x01, .control = i_ctrl,
                                   .information = payload, .information_len = 2 };
     atc_hdlc_u8 i_raw[64]; atc_hdlc_u32 i_len = 0;
@@ -1067,7 +1067,7 @@ void test_t2_timer_callbacks(void) {
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
     ctx.vs = 0; ctx.vr = 0; ctx.va = 0;
     /* Receive I-frame N(S)=0, N(R)=0 → vr becomes 1, T2 starts */
-    atc_hdlc_u8 i_ctrl2 = hdlc_create_i_ctrl(0, 0, 0); /* N(S)=0, N(R)=0 */
+    atc_hdlc_u8 i_ctrl2 = HDLC_I_CTRL(0, 0, 0); /* N(S)=0, N(R)=0 */
     atc_hdlc_frame_t iframe2 = { .address = 0x01, .control = i_ctrl2,
                                    .information = payload, .information_len = 2 };
     atc_hdlc_u8 i_raw2[64]; atc_hdlc_u32 i_len2 = 0;

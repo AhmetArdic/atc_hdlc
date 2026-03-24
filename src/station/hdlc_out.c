@@ -97,7 +97,7 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t *ctx,
     ATC_HDLC_LOG_DEBUG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
     atc_hdlc_frame_t frame = {
         .address = ctx->peer_address,
-        .control = hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0),
+        .control = HDLC_I_CTRL(ctx->vs, ctx->vr, 0),
         .information = data,
         .information_len = len
     };

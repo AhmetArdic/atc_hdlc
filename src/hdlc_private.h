@@ -58,25 +58,14 @@
 #define HDLC_FRAME_TYPE_MASK_U      (0x03)
 #define HDLC_FRAME_TYPE_VAL_U       (0x03)
 
-#define HDLC_CTRL_PF_MASK          (0x01)
-#define HDLC_CTRL_PF_SHIFT         (4)
-#define HDLC_CTRL_NR_MASK          (0x07)
-#define HDLC_CTRL_NR_SHIFT         (5)
-#define HDLC_CTRL_I_NS_MASK        (0x07)
-#define HDLC_CTRL_I_NS_SHIFT       (1)
-#define HDLC_CTRL_S_BITS_MASK      (0x03)
-#define HDLC_CTRL_S_BITS_SHIFT     (2)
-#define HDLC_CTRL_U_M_LO_MASK      (0x03)
-#define HDLC_CTRL_U_M_LO_SHIFT     (2)
-#define HDLC_CTRL_U_M_HI_MASK      (0x07)
-#define HDLC_CTRL_U_M_HI_SHIFT     (5)
+#define HDLC_CTRL_PF(ctrl)      (((ctrl) >> 4) & 0x01)
+#define HDLC_CTRL_NR(ctrl)      (((ctrl) >> 5) & 0x07)
+#define HDLC_CTRL_I_NS(ctrl)    (((ctrl) >> 1) & 0x07)
+#define HDLC_CTRL_S_BITS(ctrl)  (((ctrl) >> 2) & 0x03)
 
-#define HDLC_CTRL_PF(ctrl)         (((ctrl) >> HDLC_CTRL_PF_SHIFT) & HDLC_CTRL_PF_MASK)
-#define HDLC_CTRL_NR(ctrl)         (((ctrl) >> HDLC_CTRL_NR_SHIFT) & HDLC_CTRL_NR_MASK)
-#define HDLC_CTRL_I_NS(ctrl)       (((ctrl) >> HDLC_CTRL_I_NS_SHIFT) & HDLC_CTRL_I_NS_MASK)
-#define HDLC_CTRL_S_BITS(ctrl)     (((ctrl) >> HDLC_CTRL_S_BITS_SHIFT) & HDLC_CTRL_S_BITS_MASK)
-#define HDLC_CTRL_U_M_LO(ctrl)     (((ctrl) >> HDLC_CTRL_U_M_LO_SHIFT) & HDLC_CTRL_U_M_LO_MASK)
-#define HDLC_CTRL_U_M_HI(ctrl)     (((ctrl) >> HDLC_CTRL_U_M_HI_SHIFT) & HDLC_CTRL_U_M_HI_MASK)
+#define HDLC_I_CTRL(ns, nr, pf) ((atc_hdlc_u8)(((ns) & 0x07) << 1 | ((pf) & 0x01) << 4 | ((nr) & 0x07) << 5))
+#define HDLC_S_CTRL(s, nr, pf)  ((atc_hdlc_u8)(0x01 | ((s) & 0x03) << 2 | ((pf) & 0x01) << 4 | ((nr) & 0x07) << 5))
+#define HDLC_U_CTRL(cmd, pf)    ((atc_hdlc_u8)((cmd) | ((pf) ? HDLC_PF_BIT : 0)))
 
 #define HDLC_SEQUENCE_MODULUS   8
 
@@ -97,17 +86,6 @@
 #define HDLC_U_SNRME  0xCF
 #define HDLC_U_SARME  0x4F
 #define HDLC_PF_BIT   0x10
-
-/* Encode a U-frame control byte from a command/response code and P/F bit */
-#define HDLC_U_CTRL(cmd, pf)  ((atc_hdlc_u8)((cmd) | ((pf) ? HDLC_PF_BIT : 0)))
-
-#define HDLC_FRMR_INFO_MIN_LEN  3
-
-#define HDLC_FRMR_VS_SHIFT      1
-#define HDLC_FRMR_VS_MASK       0x07
-#define HDLC_FRMR_CR_BIT        0x10
-#define HDLC_FRMR_VR_SHIFT      5
-#define HDLC_FRMR_VR_MASK       0x07
 
 #define HDLC_FRMR_W_BIT         0x01
 #define HDLC_FRMR_X_BIT         0x02
@@ -160,8 +138,6 @@ void hdlc_process_complete_frame(atc_hdlc_context_t *ctx);
 
 void hdlc_reset_connection_state(atc_hdlc_context_t *ctx);
 
-atc_hdlc_u8 hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
-atc_hdlc_u8 hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
 
 void hdlc_send_frmr(atc_hdlc_context_t *ctx,
                     atc_hdlc_u8 rejected_ctrl,
@@ -260,8 +236,7 @@ static inline void hdlc_send_dm(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
 }
 
 static inline void hdlc_send_s_frame(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
-    atc_hdlc_u8 ctrl = hdlc_create_s_ctrl(s_bits, nr, pf);
-    atc_hdlc_transmit_start(ctx, address, ctrl);
+    atc_hdlc_transmit_start(ctx, address, HDLC_S_CTRL(s_bits, nr, pf));
     atc_hdlc_transmit_end(ctx);
 }
 

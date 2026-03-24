@@ -676,7 +676,7 @@ void test_frmr_send_invalid_nr(void) {
     ctx.va = 0; ctx.vs = 2; /* outstanding frames 0..1 */
 
     /* Send RR with N(R)=5 — invalid (outside V(A)..V(S) = 0..2) */
-    atc_hdlc_u8 rr_ctrl = hdlc_create_s_ctrl(HDLC_S_RR, 5, 0);
+    atc_hdlc_u8 rr_ctrl = HDLC_S_CTRL(HDLC_S_RR, 5, 0);
     atc_hdlc_frame_t rr = { .address = 0x01, .control = rr_ctrl,
                               .information = NULL, .information_len = 0 };
     atc_hdlc_u8 rr_raw[32]; atc_hdlc_u32 rr_len = 0;
@@ -804,7 +804,7 @@ void test_duplicate_rej_guard(void) {
     ctx.vr = 0;
 
     /* Send I-frame N(S)=1 (out of sequence, expect N(S)=0) → REJ sent */
-    atc_hdlc_u8 i_ctrl = hdlc_create_i_ctrl(1, 0, 0);
+    atc_hdlc_u8 i_ctrl = HDLC_I_CTRL(1, 0, 0);
     atc_hdlc_u8 payload[] = {0xBB};
     atc_hdlc_frame_t iframe = { .address = 0x01, .control = i_ctrl,
                                   .information = payload, .information_len = 1 };
@@ -820,7 +820,7 @@ void test_duplicate_rej_guard(void) {
         test_fail("Duplicate REJ", "No REJ sent on first OOS");
 
     /* Send second OOS I-frame N(S)=2 — REJ must NOT be sent again */
-    atc_hdlc_u8 i_ctrl2 = hdlc_create_i_ctrl(2, 0, 0);
+    atc_hdlc_u8 i_ctrl2 = HDLC_I_CTRL(2, 0, 0);
     atc_hdlc_frame_t iframe2 = { .address = 0x01, .control = i_ctrl2,
                                    .information = payload, .information_len = 1 };
     atc_hdlc_u8 i_raw2[64]; atc_hdlc_u32 i_len2 = 0;

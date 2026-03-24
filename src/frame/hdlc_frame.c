@@ -161,20 +161,6 @@ atc_hdlc_bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer, atc_hdlc_u32 buff
   return true;
 }
 
-atc_hdlc_u8 hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
-  return HDLC_FRAME_TYPE_VAL_I |
-         ((ns & HDLC_CTRL_I_NS_MASK) << HDLC_CTRL_I_NS_SHIFT) |
-         ((pf & HDLC_CTRL_PF_MASK)   << HDLC_CTRL_PF_SHIFT)   |
-         ((nr & HDLC_CTRL_NR_MASK)   << HDLC_CTRL_NR_SHIFT);
-}
-
-atc_hdlc_u8 hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
-  return HDLC_FRAME_TYPE_VAL_S |
-         ((s_bits & HDLC_CTRL_S_BITS_MASK) << HDLC_CTRL_S_BITS_SHIFT) |
-         ((pf     & HDLC_CTRL_PF_MASK)     << HDLC_CTRL_PF_SHIFT)     |
-         ((nr     & HDLC_CTRL_NR_MASK)     << HDLC_CTRL_NR_SHIFT);
-}
-
 
 atc_hdlc_s_frame_sub_type_t atc_hdlc_get_s_frame_sub_type(atc_hdlc_u8 control) {
     if (hdlc_resolve_frame_type(control) == ATC_HDLC_FRAME_S) {

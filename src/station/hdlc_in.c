@@ -221,7 +221,7 @@ static void hdlc_retransmit_go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_
 
         atc_hdlc_frame_t frame = {
             .address = ctx->peer_address,
-            .control = hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0),
+            .control = HDLC_I_CTRL(ctx->vs, ctx->vr, 0),
             .information = ctx->tx_window->slots + (slot * ctx->tx_window->slot_capacity),
             .information_len = ctx->tx_window->slot_lens[slot]
         };
