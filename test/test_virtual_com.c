@@ -191,7 +191,7 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     node1->hdlc_cfg.window_size = (atc_hdlc_u8)window_size;
     node1->hdlc_cfg.max_frame_size = CHUNK_SIZE; node1->hdlc_cfg.max_retries = 25;
     node1->hdlc_cfg.t1_ms = 20; node1->hdlc_cfg.t2_ms = 10;
-    node1->hdlc_cfg.t3_ms = 5000; node1->hdlc_cfg.use_extended = false;
+    node1->hdlc_cfg.use_extended = false;
 
     node1->hdlc_plat.on_send   = node_output_cb;
     node1->hdlc_plat.on_data   = node_on_data_cb;
@@ -220,7 +220,7 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     node2->hdlc_cfg.max_frame_size = CHUNK_SIZE; node2->hdlc_cfg.max_retries = 25;
 
     node2->hdlc_cfg.t1_ms = 20; node2->hdlc_cfg.t2_ms = 10;
-    node2->hdlc_cfg.t3_ms = 5000; node2->hdlc_cfg.use_extended = false;
+    node2->hdlc_cfg.use_extended = false;
 
     node2->hdlc_plat.on_send   = node_output_cb;
     node2->hdlc_plat.on_data   = node_on_data_cb;

@@ -210,18 +210,6 @@ void atc_hdlc_t2_expired(atc_hdlc_context_t *ctx) {
     hdlc_send_rr(ctx, 0);
 }
 
-void atc_hdlc_t3_expired(atc_hdlc_context_t *ctx) {
-    if (ctx == NULL) return;
-
-    ctx->t3_active = false;
-
-    if (ctx->current_state == ATC_HDLC_STATE_CONNECTED) {
-        ATC_HDLC_LOG_DEBUG("tx: T3 expired, sending keep-alive RR(P=1)");
-        hdlc_send_rr(ctx, 1);
-        hdlc_t1_start(ctx);
-    }
-}
-
 atc_hdlc_state_t atc_hdlc_get_state(const atc_hdlc_context_t *ctx) {
     if (ctx == NULL) return ATC_HDLC_STATE_DISCONNECTED;
     return ctx->current_state;
@@ -260,14 +248,6 @@ void hdlc_set_protocol_state(atc_hdlc_context_t *ctx,
         ATC_HDLC_LOG_DEBUG("state: %d -> %d (event: %d)",
                            ctx->current_state, new_state, event);
         ctx->current_state = new_state;
-
-        if (new_state == ATC_HDLC_STATE_CONNECTED) {
-            if (ctx->config && ctx->config->t3_ms > 0) {
-                hdlc_t3_start(ctx);
-            }
-        } else if (ctx->t3_active) {
-            hdlc_t3_stop(ctx);
-        }
 
         hdlc_fire_event(ctx, event);
     }

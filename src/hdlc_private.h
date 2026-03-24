@@ -11,6 +11,7 @@
 #define ATC_HDLC_PRIVATE_H
 
 #include "../inc/hdlc_types.h"
+#include "frame/hdlc_crc.h"
 
 #if ATC_HDLC_ENABLE_STATS
 #   define HDLC_STAT_INC(ctx, field)     ((ctx)->stats.field++)
@@ -199,22 +200,24 @@ static inline void hdlc_t2_stop(atc_hdlc_context_t *ctx) {
     ctx->t2_active = false;
 }
 
-static inline void hdlc_t3_start(atc_hdlc_context_t *ctx) {
-    if (ctx->platform && ctx->platform->t3_start && ctx->config) {
-        ctx->platform->t3_start(ctx->config->t3_ms, ctx->platform->user_ctx);
-    }
-    ctx->t3_active = true;
+static inline void atc_hdlc_transmit_start(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 control) {
+  if (ctx == NULL) {
+    return;
+  }
+
+  ctx->tx_crc = ATC_HDLC_FCS_INIT_VALUE;
+
+  hdlc_encode_ctx_t enc = {.ctx = ctx, .success = true};
+
+  ATC_HDLC_LOG_DEBUG("tx: Frame start (Addr: 0x%02X, Ctrl: 0x%02X)", address, control);
+
+  hdlc_write_byte(&enc, HDLC_FLAG, false);
+
+  hdlc_pack_escaped_crc(&enc, hdlc_write_byte, address, &ctx->tx_crc);
+  hdlc_pack_escaped_crc(&enc, hdlc_write_byte, control, &ctx->tx_crc);
 }
 
-static inline void hdlc_t3_stop(atc_hdlc_context_t *ctx) {
-    if (ctx->t3_active && ctx->platform && ctx->platform->t3_stop) {
-        ctx->platform->t3_stop(ctx->platform->user_ctx);
-    }
-    ctx->t3_active = false;
-}
-
-void atc_hdlc_transmit_start(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 control);
-void atc_hdlc_transmit_data_bytes(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
+void atc_hdlc_transmit_data(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
 void atc_hdlc_transmit_end(atc_hdlc_context_t *ctx);
 
 void hdlc_write_byte(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush);
@@ -226,11 +229,23 @@ void hdlc_process_complete_frame(atc_hdlc_context_t *ctx);
 
 void hdlc_reset_connection_state(atc_hdlc_context_t *ctx);
 
-void hdlc_transmit_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame);
-
 atc_hdlc_u8 hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
 atc_hdlc_u8 hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
 atc_hdlc_u8 hdlc_create_u_ctrl(atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf);
+
+static inline void hdlc_transmit_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
+  if (ctx == NULL || frame == NULL) {
+    return;
+  }
+
+  hdlc_encode_ctx_t enc_ctx = {.ctx = ctx,
+                               .buffer = NULL,
+                               .buffer_len = 0,
+                               .current_len = 0,
+                               .success = true};
+
+  (void)hdlc_frame_pack_core(frame, hdlc_write_byte, &enc_ctx);
+}
 
 static inline atc_hdlc_frame_type_t hdlc_resolve_frame_type(atc_hdlc_u8 ctrl) {
     if ((ctrl & HDLC_FRAME_TYPE_MASK_I) == HDLC_FRAME_TYPE_VAL_I) return ATC_HDLC_FRAME_I;

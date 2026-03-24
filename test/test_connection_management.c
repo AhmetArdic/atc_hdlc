@@ -66,7 +66,7 @@ void setup_context(void) {
         .max_frame_size = 1024, .max_retries = 3,
         .t1_ms = ATC_HDLC_DEFAULT_T1_TIMEOUT,
         .t2_ms = ATC_HDLC_DEFAULT_T2_TIMEOUT,
-        .t3_ms = 30000, .use_extended = false,
+        .use_extended = false,
     };
     static const atc_hdlc_platform_t plat = {
         .on_send = mock_send_cb,
@@ -709,37 +709,6 @@ void test_t1_timer_callbacks(void) {
     test_pass("T1 Timer Callbacks");
 }
 
-int main(void) {
-    printf("\n%sSTARTING CONNECTION MANAGEMENT TESTS%s\n", COL_YELLOW, COL_RESET);
-    printf("----------------------------------------\n\n");
-    
-    test_init_state();
-    test_connect_sends_sabm();
-    test_connect_complete_on_ua();
-    test_disconnect_flow();
-    test_passive_open();
-    test_frmr_reception();
-    test_mode_rejection();
-    test_extended_mode_rejection();
-    test_contention_resolution_winner();
-    test_contention_resolution_loser();
-    test_link_reset();
-    test_peer_disconnect();
-    test_event_callbacks();
-    test_t1_timer_callbacks();
-    test_frmr_send_invalid_nr();
-    test_frmr_error_lockdown();
-    test_t3_timer_on_connect();
-    test_duplicate_rej_guard();
-
-    printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
-    return 0;
-}
-
-/* ================================================================
- *  Phase 4 tests — state machine expansion
- * ================================================================ */
-
 /**
  * @brief Test: FRMR is sent for invalid N(R) (out of V(A)..V(S) window).
  */
@@ -835,68 +804,6 @@ void test_frmr_error_lockdown(void) {
 }
 
 /**
- * @brief Test: T3 keep-alive timer starts on CONNECTED entry and
- *        restarts on every received frame.
- */
-void test_t3_timer_on_connect(void) {
-    printf("TEST: T3 timer on CONNECTED entry\n");
-
-    /* Use a config with t3_ms > 0 */
-    static atc_hdlc_config_t cfg_t3;
-    static atc_hdlc_platform_t plat_t3;
-    static atc_hdlc_rx_buffer_t rx_t3;
-    static atc_hdlc_u8 rx_buf_t3[1028];
-
-    cfg_t3 = (atc_hdlc_config_t){
-        .mode = ATC_HDLC_MODE_ABM, .address = 0x01, .window_size = 1,
-        .max_frame_size = 1024, .max_retries = 3,
-        .t1_ms = 1000, .t2_ms = 10, .t3_ms = 5000, .use_extended = false
-    };
-    plat_t3 = (atc_hdlc_platform_t){
-        .on_send = mock_send_cb, .on_data = mock_on_data_cb,
-        .on_event = mock_on_event_cb, .user_ctx = NULL,
-        .t1_start = mock_t1_start_cb, .t1_stop = mock_t1_stop_cb,
-        .t2_start = mock_t2_start_cb, .t2_stop = mock_t2_stop_cb,
-        .t3_start = mock_t3_start_cb, .t3_stop = mock_t3_stop_cb,
-    };
-    rx_t3.buffer = rx_buf_t3; rx_t3.capacity = sizeof(rx_buf_t3);
-
-    atc_hdlc_context_t ctx;
-    reset_test_state();
-    atc_hdlc_init(&ctx, &cfg_t3, &plat_t3, NULL, &rx_t3);
-    ctx.peer_address = 0x02;
-
-    /* link_setup → CONNECTING (T3 should NOT start yet) */
-    atc_hdlc_link_setup(&ctx, 0x02);
-    if (ctx.t3_active)
-        test_fail("T3 Timer", "T3 should not be active in CONNECTING");
-
-    /* Feed UA → CONNECTED: T3 should start */
-    atc_hdlc_u8 ua_ctrl = hdlc_create_u_ctrl(
-        HDLC_U_MODIFIER_LO_UA, HDLC_U_MODIFIER_HI_UA, 1);
-    atc_hdlc_frame_t ua = { .address = 0x02, .control = ua_ctrl,
-                              .information = NULL, .information_len = 0 };
-    atc_hdlc_u8 ua_raw[32]; atc_hdlc_u32 ua_len = 0;
-    atc_hdlc_frame_pack(&ua, ua_raw, sizeof(ua_raw), &ua_len);
-    reset_test_state();
-    atc_hdlc_data_in_bytes(&ctx, ua_raw, ua_len);
-    if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
-        test_fail("T3 Timer", "Not CONNECTED after UA");
-    if (!ctx.t3_active)
-        test_fail("T3 Timer", "T3 not started on entering CONNECTED");
-    if (mock_t3_start_count < 1)
-        test_fail("T3 Timer", "T3 start callback not invoked");
-
-    /* T3 expiry: RR(P=1) should be sent */
-    reset_test_state();
-    atc_hdlc_t3_expired(&ctx);
-    if (mock_output_len < 6)
-        test_fail("T3 Timer", "No keep-alive RR after T3 expiry");
-
-    test_pass("T3 timer on CONNECTED entry");
-}
-
-/**
  * @brief Test: Duplicate REJ guard — second OOS I-frame does not send another REJ.
  */
 void test_duplicate_rej_guard(void) {
@@ -944,5 +851,31 @@ void test_duplicate_rej_guard(void) {
     }
 
     test_pass("Duplicate REJ guard");
+}
+
+int main(void) {
+    printf("\n%sSTARTING CONNECTION MANAGEMENT TESTS%s\n", COL_YELLOW, COL_RESET);
+    printf("----------------------------------------\n\n");
+    
+    test_init_state();
+    test_connect_sends_sabm();
+    test_connect_complete_on_ua();
+    test_disconnect_flow();
+    test_passive_open();
+    test_frmr_reception();
+    test_mode_rejection();
+    test_extended_mode_rejection();
+    test_contention_resolution_winner();
+    test_contention_resolution_loser();
+    test_link_reset();
+    test_peer_disconnect();
+    test_event_callbacks();
+    test_t1_timer_callbacks();
+    test_frmr_send_invalid_nr();
+    test_frmr_error_lockdown();
+    test_duplicate_rej_guard();
+
+    printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
+    return 0;
 }
 

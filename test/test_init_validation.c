@@ -34,7 +34,6 @@ static atc_hdlc_config_t make_valid_cfg(void) {
     c.max_retries    = 3;
     c.t1_ms          = 1000;
     c.t2_ms          = 10;
-    c.t3_ms          = 0;
     c.use_extended   = false;
     return c;
 }
@@ -50,8 +49,6 @@ static atc_hdlc_platform_t make_valid_plat(void) {
     p.t1_stop  = mock_t1_stop_cb;
     p.t2_start = mock_t2_start_cb;
     p.t2_stop  = mock_t2_stop_cb;
-    p.t3_start = NULL;
-    p.t3_stop  = NULL;
     return p;
 }
 
@@ -268,7 +265,7 @@ void test_init_success_sets_state(void) {
     if (ctx.vs != 0 || ctx.vr != 0 || ctx.va != 0)
         test_fail("Init Success", "Sequence variables should be 0 after init");
 
-    if (ctx.t1_active || ctx.t2_active || ctx.t3_active)
+    if (ctx.t1_active || ctx.t2_active)
         test_fail("Init Success", "No timers should be active after init");
 
     if (ctx.config != &cfg)

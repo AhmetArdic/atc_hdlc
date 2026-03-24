@@ -23,9 +23,6 @@ atc_hdlc_u32  mock_t1_last_ms     = 0;
 int           mock_t2_start_count = 0;
 int           mock_t2_stop_count  = 0;
 atc_hdlc_u32  mock_t2_last_ms     = 0;
-int           mock_t3_start_count = 0;
-int           mock_t3_stop_count  = 0;
-atc_hdlc_u32  mock_t3_last_ms     = 0;
 
 /* ================================================================
  *  Mock platform callbacks
@@ -73,15 +70,6 @@ void mock_t2_stop_cb(void *user_ctx) {
     (void)user_ctx;
     mock_t2_stop_count++;
 }
-void mock_t3_start_cb(atc_hdlc_u32 ms, void *user_ctx) {
-    (void)user_ctx;
-    mock_t3_start_count++;
-    mock_t3_last_ms = ms;
-}
-void mock_t3_stop_cb(void *user_ctx) {
-    (void)user_ctx;
-    mock_t3_stop_count++;
-}
 
 /* ================================================================
  *  Default config / platform / storage
@@ -95,7 +83,6 @@ static const atc_hdlc_config_t s_default_config = {
     .max_retries    = 3,
     .t1_ms          = ATC_HDLC_DEFAULT_T1_TIMEOUT,
     .t2_ms          = ATC_HDLC_DEFAULT_T2_TIMEOUT,
-    .t3_ms          = 30000,
     .use_extended   = false,
 };
 
@@ -109,8 +96,6 @@ static const atc_hdlc_platform_t s_default_platform = {
     .t1_stop   = mock_t1_stop_cb,
     .t2_start  = mock_t2_start_cb,
     .t2_stop   = mock_t2_stop_cb,
-    .t3_start  = mock_t3_start_cb,
-    .t3_stop   = mock_t3_stop_cb,
 };
 
 /* Static backing storage for default single-slot TX window */
@@ -187,7 +172,6 @@ void reset_test_state(void) {
     last_event          = (atc_hdlc_event_t)-1;
     mock_t1_start_count = 0;  mock_t1_stop_count = 0;  mock_t1_last_ms = 0;
     mock_t2_start_count = 0;  mock_t2_stop_count = 0;  mock_t2_last_ms = 0;
-    mock_t3_start_count = 0;  mock_t3_stop_count = 0;  mock_t3_last_ms = 0;
     memset(mock_output_buffer, 0, sizeof(mock_output_buffer));
     memset(last_data_payload,  0, sizeof(last_data_payload));
     memset(mock_rx_buffer,     0, sizeof(mock_rx_buffer));

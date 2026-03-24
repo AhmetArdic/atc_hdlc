@@ -52,15 +52,6 @@ void atc_hdlc_t1_expired(atc_hdlc_context_t *ctx);
 void atc_hdlc_t2_expired(atc_hdlc_context_t *ctx);
 
 /**
- * @brief T3 timer expired (keep-alive).
- *
- * Call from your timer callback. Sends poll to peer.
- *
- * @param ctx Context.
- */
-void atc_hdlc_t3_expired(atc_hdlc_context_t *ctx);
-
-/**
  * @brief Connect to peer (sends SABM).
  *
  * @param ctx       Context.
@@ -172,19 +163,6 @@ void atc_hdlc_data_in_bytes(atc_hdlc_context_t *ctx,
                              atc_hdlc_u32        len);
 
 /**
- * @brief Start streaming TX.
- *
- * For memory-constrained devices.
- *
- * @param ctx     Context.
- * @param address Address byte.
- * @param control Control byte.
- */
-void atc_hdlc_transmit_start(atc_hdlc_context_t *ctx,
-                              atc_hdlc_u8 address,
-                              atc_hdlc_u8 control);
-
-/**
  * @brief Start UI frame TX.
  *
  * @param ctx     Context.
@@ -194,33 +172,15 @@ void atc_hdlc_transmit_start_ui(atc_hdlc_context_t *ctx,
                                  atc_hdlc_u8 address);
 
 /**
- * @brief Start TEST frame TX.
- *
- * @param ctx     Context.
- * @param address Address.
- */
-void atc_hdlc_transmit_start_test(atc_hdlc_context_t *ctx,
-                                  atc_hdlc_u8 address);
-
-/**
- * @brief Add byte to TX stream.
- *
- * @param ctx  Context.
- * @param byte Data byte.
- */
-void atc_hdlc_transmit_data_byte(atc_hdlc_context_t *ctx,
-                                  atc_hdlc_u8 byte);
-
-/**
  * @brief Add bytes to TX stream.
  *
  * @param ctx  Context.
  * @param data Data.
  * @param len  Length.
  */
-void atc_hdlc_transmit_data_bytes(atc_hdlc_context_t *ctx,
-                                   const atc_hdlc_u8  *data,
-                                   atc_hdlc_u32        len);
+void atc_hdlc_transmit_data(atc_hdlc_context_t *ctx,
+                            const atc_hdlc_u8  *data,
+                            atc_hdlc_u32        len);
 
 /**
  * @brief Finish streaming TX.

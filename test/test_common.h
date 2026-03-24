@@ -36,9 +36,6 @@ extern atc_hdlc_u32  mock_t1_last_ms;
 extern int           mock_t2_start_count;
 extern int           mock_t2_stop_count;
 extern atc_hdlc_u32  mock_t2_last_ms;
-extern int           mock_t3_start_count;
-extern int           mock_t3_stop_count;
-extern atc_hdlc_u32  mock_t3_last_ms;
 
 /* --- Mock platform callbacks --- */
 int  mock_send_cb     (atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_ctx);
@@ -49,8 +46,6 @@ void mock_t1_start_cb (atc_hdlc_u32 ms, void *user_ctx);
 void mock_t1_stop_cb  (void *user_ctx);
 void mock_t2_start_cb (atc_hdlc_u32 ms, void *user_ctx);
 void mock_t2_stop_cb  (void *user_ctx);
-void mock_t3_start_cb (atc_hdlc_u32 ms, void *user_ctx);
-void mock_t3_stop_cb  (void *user_ctx);
 
 /* --- Context setup variants ---
  *

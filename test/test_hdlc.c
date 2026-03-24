@@ -342,7 +342,7 @@ void test_input_buffer_overflow() {
   static const atc_hdlc_config_t small_cfg = {
       .mode = ATC_HDLC_MODE_ABM, .address = 0x01, .window_size = 1,
       .max_frame_size = 8, .max_retries = 3,
-      .t1_ms = 1000, .t2_ms = 10, .t3_ms = 30000, .use_extended = false,
+      .t1_ms = 1000, .t2_ms = 10, .use_extended = false,
   };
   static const atc_hdlc_platform_t small_plat = {
       .on_send = mock_send_cb, .on_data = mock_on_data_cb,
@@ -385,7 +385,8 @@ void test_streaming_large_payload(void) {
         
         atc_hdlc_transmit_start(&ctx, 0xFF, 0x03);
         for (int i = 0; i < size; i++) {
-            atc_hdlc_transmit_data_byte(&ctx, (atc_hdlc_u8)(i & 0xFF));
+            atc_hdlc_u8 byte = (atc_hdlc_u8)(i & 0xFF);
+            atc_hdlc_transmit_data(&ctx, &byte, 1);
         }
         atc_hdlc_transmit_end(&ctx);
 
@@ -524,7 +525,7 @@ void test_ui_frame_reception(void) {
     // Construct a valid UI frame addressed to ME (0x01)
     // Addr=0x01, Ctrl=0x03 (UI, P=0), Data="WORLD"
     atc_hdlc_transmit_start(&ctx, 0x01, 0x03); 
-    atc_hdlc_transmit_data_bytes(&ctx, (atc_hdlc_u8*)"WORLD", 5);
+    atc_hdlc_transmit_data(&ctx, (atc_hdlc_u8*)"WORLD", 5);
     atc_hdlc_transmit_end(&ctx);
     
     // Now Feed it back

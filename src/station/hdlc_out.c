@@ -12,49 +12,7 @@
 #include "../hdlc_private.h"
 #include <string.h>
 
-void hdlc_transmit_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
-  if (ctx == NULL || frame == NULL) {
-    return;
-  }
-
-  hdlc_encode_ctx_t enc_ctx = {.ctx = ctx,
-                               .buffer = NULL,
-                               .buffer_len = 0,
-                               .current_len = 0,
-                               .success = true};
-
-  (void)hdlc_frame_pack_core(frame, hdlc_write_byte, &enc_ctx);
-
-  HDLC_STAT_INC(ctx, tx_i_frames);
-}
-
-void atc_hdlc_transmit_start(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 control) {
-  if (ctx == NULL) {
-    return;
-  }
-
-  ctx->tx_crc = ATC_HDLC_FCS_INIT_VALUE;
-
-  hdlc_encode_ctx_t enc = {.ctx = ctx, .success = true};
-
-  ATC_HDLC_LOG_DEBUG("tx: Frame start (Addr: 0x%02X, Ctrl: 0x%02X)", address, control);
-
-  hdlc_write_byte(&enc, HDLC_FLAG, false);
-
-  hdlc_pack_escaped_crc(&enc, hdlc_write_byte, address, &ctx->tx_crc);
-  hdlc_pack_escaped_crc(&enc, hdlc_write_byte, control, &ctx->tx_crc);
-}
-
-void atc_hdlc_transmit_data_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
-  if (ctx == NULL) {
-    return;
-  }
-
-  hdlc_encode_ctx_t enc = {.ctx = ctx, .success = true};
-  hdlc_pack_escaped_crc(&enc, hdlc_write_byte, byte, &ctx->tx_crc);
-}
-
-void atc_hdlc_transmit_data_bytes(atc_hdlc_context_t *ctx,
+void atc_hdlc_transmit_data(atc_hdlc_context_t *ctx,
                                    const atc_hdlc_u8  *data,
                                    atc_hdlc_u32        len) {
   if (ctx == NULL || (data == NULL && len > 0)) {
@@ -82,8 +40,6 @@ void atc_hdlc_transmit_end(atc_hdlc_context_t *ctx) {
   hdlc_pack_escaped(&enc, hdlc_write_byte, fcs_lo);
 
   hdlc_write_byte(&enc, HDLC_FLAG, true);
-
-  HDLC_STAT_INC(ctx, tx_i_frames);
 }
 
 void atc_hdlc_transmit_start_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address) {
@@ -91,14 +47,6 @@ void atc_hdlc_transmit_start_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address) {
     return;
   }
   atc_hdlc_u8 ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_UI, HDLC_U_MODIFIER_HI_UI, 0);
-  atc_hdlc_transmit_start(ctx, address, ctrl);
-}
-
-void atc_hdlc_transmit_start_test(atc_hdlc_context_t *ctx, atc_hdlc_u8 address) {
-  if (ctx == NULL) {
-    return;
-  }
-  atc_hdlc_u8 ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST, 1);
   atc_hdlc_transmit_start(ctx, address, ctrl);
 }
 
@@ -113,7 +61,7 @@ atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_context_t *ctx,
 
     atc_hdlc_transmit_start_ui(ctx, address);
     if (data != NULL && len > 0) {
-        atc_hdlc_transmit_data_bytes(ctx, data, len);
+        atc_hdlc_transmit_data(ctx, data, len);
     }
     atc_hdlc_transmit_end(ctx);
     return ATC_HDLC_OK;
@@ -134,9 +82,10 @@ atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_context_t *ctx,
     ctx->test_pending     = true;
     ctx->stats.test_sent++;
 
-    atc_hdlc_transmit_start_test(ctx, address);
+    atc_hdlc_u8 ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST, 1);
+    atc_hdlc_transmit_start(ctx, address, ctrl);
     if (data != NULL && len > 0) {
-        atc_hdlc_transmit_data_bytes(ctx, data, len);
+        atc_hdlc_transmit_data(ctx, data, len);
     }
     atc_hdlc_transmit_end(ctx);
 
@@ -181,7 +130,7 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t *ctx,
     atc_hdlc_u8 ctrl = hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
     atc_hdlc_transmit_start(ctx, ctx->peer_address, ctrl);
     if (data != NULL && len > 0) {
-        atc_hdlc_transmit_data_bytes(ctx, data, len);
+        atc_hdlc_transmit_data(ctx, data, len);
     }
     atc_hdlc_transmit_end(ctx);
 

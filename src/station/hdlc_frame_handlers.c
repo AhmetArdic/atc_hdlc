@@ -40,7 +40,6 @@ void hdlc_reset_connection_state(atc_hdlc_context_t *ctx) {
     ctx->retry_count   = 0;
     hdlc_t1_stop(ctx);
     hdlc_t2_stop(ctx);
-    hdlc_t3_stop(ctx);
 }
 
 void hdlc_send_frmr(atc_hdlc_context_t *ctx,
@@ -62,7 +61,7 @@ void hdlc_send_frmr(atc_hdlc_context_t *ctx,
 
     atc_hdlc_u8 ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_FRMR, HDLC_U_MODIFIER_HI_FRMR, 0);
     atc_hdlc_transmit_start(ctx, ctx->my_address, ctrl);
-    atc_hdlc_transmit_data_bytes(ctx, info, sizeof(info));
+    atc_hdlc_transmit_data(ctx, info, sizeof(info));
     atc_hdlc_transmit_end(ctx);
 
     HDLC_STAT_INC(ctx, frmr_count);
@@ -83,11 +82,6 @@ static inline void hdlc_enter_frmr_state(atc_hdlc_context_t *ctx,
 void hdlc_process_complete_frame(atc_hdlc_context_t *ctx) {
     atc_hdlc_u8 ctrl = ctx->rx_frame.control;
     ctx->rx_frame.type = hdlc_resolve_frame_type(ctrl);
-
-    if (ctx->current_state == ATC_HDLC_STATE_CONNECTED && ctx->t3_active) {
-        hdlc_t3_stop(ctx);
-        hdlc_t3_start(ctx);
-    }
 
     switch (ctx->current_state) {
         case ATC_HDLC_STATE_DISCONNECTED:
@@ -125,7 +119,6 @@ static void hdlc_state_disconnected(atc_hdlc_context_t *ctx, const atc_hdlc_fram
             hdlc_send_ua(ctx, HDLC_CTRL_PF(frame->control));
             hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTED,
                                      ATC_HDLC_EVENT_INCOMING_CONNECT);
-            hdlc_t3_start(ctx);
             break;
 
         case ATC_HDLC_U_FRAME_TYPE_DISC:
@@ -168,7 +161,6 @@ static void hdlc_state_connecting(atc_hdlc_context_t *ctx, const atc_hdlc_frame_
                 hdlc_send_ua(ctx, HDLC_CTRL_PF(frame->control));
                 hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTED,
                                          ATC_HDLC_EVENT_INCOMING_CONNECT);
-                hdlc_t3_start(ctx);
                 break;
 
             case ATC_HDLC_U_FRAME_TYPE_UA:
@@ -178,7 +170,6 @@ static void hdlc_state_connecting(atc_hdlc_context_t *ctx, const atc_hdlc_frame_
                     hdlc_reset_connection_state(ctx);
                     hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTED,
                                              ATC_HDLC_EVENT_CONNECT_ACCEPTED);
-                    hdlc_t3_start(ctx);
                 }
                 break;
 
@@ -254,11 +245,12 @@ static void hdlc_retransmit_go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_
         atc_hdlc_u8 ctrl = hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
         atc_hdlc_transmit_start(ctx, ctx->peer_address, ctrl);
         if (ctx->tx_window->slot_lens[slot] > 0 && ctx->tx_window->slots != NULL) {
-            atc_hdlc_transmit_data_bytes(ctx,
+            atc_hdlc_transmit_data(ctx,
                 ctx->tx_window->slots + (slot * ctx->tx_window->slot_capacity),
                 ctx->tx_window->slot_lens[slot]);
         }
         atc_hdlc_transmit_end(ctx);
+        HDLC_STAT_INC(ctx, tx_i_frames);
         ctx->vs = (ctx->vs + 1) % HDLC_SEQUENCE_MODULUS;
         if (ctx->tx_window->slots != NULL)
             ctx->next_tx_slot = (ctx->next_tx_slot + 1) % ctx->window_size;
@@ -424,8 +416,8 @@ static void hdlc_state_connected(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t
                         HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST, msg_pf);
                     atc_hdlc_transmit_start(ctx, ctx->my_address, resp_ctrl);
                     if (frame->information != NULL && frame->information_len > 0)
-                        atc_hdlc_transmit_data_bytes(ctx, frame->information,
-                                                      frame->information_len);
+                        atc_hdlc_transmit_data(ctx, frame->information,
+                                               frame->information_len);
                     atc_hdlc_transmit_end(ctx);
                 } else {
                     if (ctx->platform && ctx->platform->on_data &&
@@ -512,7 +504,6 @@ static void hdlc_state_frmr_error(atc_hdlc_context_t *ctx, const atc_hdlc_frame_
             hdlc_send_ua(ctx, HDLC_CTRL_PF(frame->control));
             hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTED,
                                      ATC_HDLC_EVENT_INCOMING_CONNECT);
-            hdlc_t3_start(ctx);
             break;
 
         default:

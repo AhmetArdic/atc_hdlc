@@ -627,7 +627,6 @@ static bool node_init(physical_node_t *node, uint32_t recv_len, uint8_t window_s
     node->cfg.max_retries    = 10;
     node->cfg.t1_ms          = ATC_HDLC_DEFAULT_T1_TIMEOUT;
     node->cfg.t2_ms          = 1;  /* Minimal ACK delay for high-baud physical link */
-    node->cfg.t3_ms          = 0;
     node->cfg.use_extended   = false;
 
     node->plat.on_send  = node_output_cb;
@@ -638,8 +637,6 @@ static bool node_init(physical_node_t *node, uint32_t recv_len, uint8_t window_s
     node->plat.t1_stop  = phys_t1_stop_cb;
     node->plat.t2_start = phys_t2_start_cb;
     node->plat.t2_stop  = phys_t2_stop_cb;
-    node->plat.t3_start = NULL;
-    node->plat.t3_stop  = NULL;
 
     node->tw.slots         = node->retransmit_slots;
     node->tw.slot_lens     = node->retransmit_lens;

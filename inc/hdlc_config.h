@@ -29,11 +29,6 @@ extern "C" {
 #define ATC_HDLC_DEFAULT_T2_TIMEOUT 10
 #endif
 
-/** @brief Default T3 keepalive timeout (ms). */
-#ifndef ATC_HDLC_DEFAULT_T3_TIMEOUT
-#define ATC_HDLC_DEFAULT_T3_TIMEOUT 100
-#endif
-
 /** @brief Default max retry count (N2). */
 #ifndef ATC_HDLC_DEFAULT_N2_RETRY_COUNT
 #define ATC_HDLC_DEFAULT_N2_RETRY_COUNT 3

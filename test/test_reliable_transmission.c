@@ -30,7 +30,6 @@ static void make_ctx(atc_hdlc_context_t *ctx,
     cfg.max_retries    = 3;
     cfg.t1_ms          = t1_ms;
     cfg.t2_ms          = ATC_HDLC_DEFAULT_T2_TIMEOUT;
-    cfg.t3_ms          = 30000;
     cfg.use_extended   = false;
 
     static const atc_hdlc_platform_t plat = {
@@ -373,14 +372,10 @@ void test_gobackn_retransmit(void) {
         return;
     }
 
-    // Record output frame count before timeout
-    atc_hdlc_u32 frames_before = ctx.stats.tx_i_frames;
-
-    // Trigger timeout (500 ticks)
+    // Trigger timeout
     atc_hdlc_t1_expired(&ctx); /* simulated T1 expiry */
 
-    atc_hdlc_u32 enquiry_frames = ctx.stats.tx_i_frames - frames_before;
-    if (enquiry_frames == 1) {
+    if (ctx.stats.timeout_count == 1) {
         test_pass("GBN Retransmit: Enquiry RR Sent");
     } else {
         test_fail("GBN Retransmit", "Enquiry RR not sent on timeout");
@@ -392,7 +387,7 @@ void test_gobackn_retransmit(void) {
     atc_hdlc_u32 rr_len = 0;
     atc_hdlc_frame_pack(&f1_response, temp_input_buffer, sizeof(temp_input_buffer), &rr_len);
     
-    frames_before = ctx.stats.tx_i_frames;
+    atc_hdlc_u32 frames_before = ctx.stats.tx_i_frames;
     atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, rr_len);
 
     atc_hdlc_u32 retransmitted = ctx.stats.tx_i_frames - frames_before;

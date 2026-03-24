@@ -128,7 +128,6 @@ typedef struct {
     atc_hdlc_u8          max_retries;       /**< N2: maximum retransmission attempts before link failure. */
     atc_hdlc_u32         t1_ms;             /**< T1 retransmission timer in ms (typical 200–3000). */
     atc_hdlc_u32         t2_ms;             /**< T2 acknowledgement delay timer in ms (must be < t1_ms). */
-    atc_hdlc_u32         t3_ms;             /**< T3 idle/keep-alive timer in ms (typical 10000–60000). */
     atc_hdlc_bool        use_extended;      /**< Extended (mod-128) mode flag. Must be false in v1. */
 } atc_hdlc_config_t;
 
@@ -173,8 +172,6 @@ typedef struct {
     atc_hdlc_timer_stop_fn t1_stop;    /**< T1 stop */
     atc_hdlc_timer_start_fn t2_start;  /**< T2 (delayed-ACK) start */
     atc_hdlc_timer_stop_fn t2_stop;    /**< T2 stop */
-    atc_hdlc_timer_start_fn t3_start;  /**< T3 (idle/keep-alive) start */
-    atc_hdlc_timer_stop_fn t3_stop;    /**< T3 stop */
 } atc_hdlc_platform_t;
 
 typedef struct {
@@ -243,7 +240,6 @@ typedef struct {
     atc_hdlc_bool test_pending;  /**< A TEST(P=1) has been sent; awaiting TEST(F=1) response. */
     atc_hdlc_bool t1_active; /**< T1 retransmission timer is currently running. */
     atc_hdlc_bool t2_active; /**< T2 delayed-ACK timer is currently running. */
-    atc_hdlc_bool t3_active; /**< T3 idle/keep-alive timer is currently running. */
 } atc_hdlc_context_t;
 
 #ifdef __cplusplus
