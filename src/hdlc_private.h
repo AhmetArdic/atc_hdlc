@@ -167,6 +167,22 @@ typedef void (*hdlc_put_byte_fn)(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, a
 
 void hdlc_set_protocol_state(atc_hdlc_context_t *ctx, atc_hdlc_state_t new_state, atc_hdlc_event_t event);
 
+void atc_hdlc_transmit_data(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
+void atc_hdlc_transmit_end(atc_hdlc_context_t *ctx);
+
+void hdlc_write_byte(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush);
+void hdlc_pack_escaped(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hdlc_u8 byte);
+void hdlc_pack_escaped_crc(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hdlc_u8 byte, atc_hdlc_u16 *crc);
+atc_hdlc_bool hdlc_frame_pack_core(const atc_hdlc_frame_t *frame, hdlc_put_byte_fn put_fn, hdlc_encode_ctx_t *enc_ctx);
+
+void hdlc_process_complete_frame(atc_hdlc_context_t *ctx);
+
+void hdlc_reset_connection_state(atc_hdlc_context_t *ctx);
+
+atc_hdlc_u8 hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
+atc_hdlc_u8 hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
+atc_hdlc_u8 hdlc_create_u_ctrl(atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf);
+
 void hdlc_send_frmr(atc_hdlc_context_t *ctx,
                     atc_hdlc_u8 rejected_ctrl,
                     atc_hdlc_bool w, atc_hdlc_bool x,
@@ -216,22 +232,6 @@ static inline void atc_hdlc_transmit_start(atc_hdlc_context_t *ctx, atc_hdlc_u8 
   hdlc_pack_escaped_crc(&enc, hdlc_write_byte, address, &ctx->tx_crc);
   hdlc_pack_escaped_crc(&enc, hdlc_write_byte, control, &ctx->tx_crc);
 }
-
-void atc_hdlc_transmit_data(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len);
-void atc_hdlc_transmit_end(atc_hdlc_context_t *ctx);
-
-void hdlc_write_byte(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush);
-void hdlc_pack_escaped(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hdlc_u8 byte);
-void hdlc_pack_escaped_crc(hdlc_encode_ctx_t *ctx, hdlc_put_byte_fn put_fn, atc_hdlc_u8 byte, atc_hdlc_u16 *crc);
-atc_hdlc_bool hdlc_frame_pack_core(const atc_hdlc_frame_t *frame, hdlc_put_byte_fn put_fn, hdlc_encode_ctx_t *enc_ctx);
-
-void hdlc_process_complete_frame(atc_hdlc_context_t *ctx);
-
-void hdlc_reset_connection_state(atc_hdlc_context_t *ctx);
-
-atc_hdlc_u8 hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
-atc_hdlc_u8 hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
-atc_hdlc_u8 hdlc_create_u_ctrl(atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf);
 
 static inline void hdlc_transmit_frame(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
   if (ctx == NULL || frame == NULL) {
