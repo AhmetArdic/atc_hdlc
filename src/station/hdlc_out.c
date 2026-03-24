@@ -95,6 +95,7 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t *ctx,
     ctx->tx_window->slot_lens[slot] = len;
 
     ATC_HDLC_LOG_DEBUG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
+    
     atc_hdlc_frame_t frame = {
         .address = ctx->peer_address,
         .control = HDLC_I_CTRL(ctx->vs, ctx->vr, 0),
@@ -122,7 +123,7 @@ void atc_hdlc_transmit_start_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address) {
     return;
   }
   atc_hdlc_u8 ctrl = HDLC_U_CTRL(HDLC_U_UI, 0);
-  atc_hdlc_transmit_start(ctx, address, ctrl);
+  hdlc_transmit_start(ctx, address, ctrl);
 }
 
 void atc_hdlc_transmit_data(atc_hdlc_context_t *ctx,

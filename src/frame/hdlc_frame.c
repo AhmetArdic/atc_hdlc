@@ -11,12 +11,6 @@
 #include "hdlc_crc.h"
 #include "../hdlc_private.h"
 
-void hdlc_write_byte(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush) {
-  if (enc_ctx->ctx && enc_ctx->ctx->platform && enc_ctx->ctx->platform->on_send) {
-    enc_ctx->ctx->platform->on_send(byte, flush, enc_ctx->ctx->platform->user_ctx);
-  }
-}
-
 static void hdlc_write_byte_to_buf(hdlc_encode_ctx_t *enc_ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush) {
   (void)flush;
   if (enc_ctx->current_len < enc_ctx->buffer_len) {
@@ -66,13 +60,10 @@ atc_hdlc_bool hdlc_frame_pack_core(const atc_hdlc_frame_t *frame, hdlc_put_byte_
     }
   }
 
-  atc_hdlc_u8 fcs_hi = (atc_hdlc_u8)((crc >> 8) & 0xFF);
-  atc_hdlc_u8 fcs_lo = (atc_hdlc_u8)(crc & 0xFF);
-
-  hdlc_pack_escaped(enc_ctx, put_fn, fcs_hi);
+  hdlc_pack_escaped(enc_ctx, put_fn, (atc_hdlc_u8)((crc >> 8) & 0xFF));
   if (!enc_ctx->success) return false;
 
-  hdlc_pack_escaped(enc_ctx, put_fn, fcs_lo);
+  hdlc_pack_escaped(enc_ctx, put_fn, (atc_hdlc_u8)(crc & 0xFF));
   if (!enc_ctx->success) return false;
 
   hdlc_put_byte(enc_ctx, put_fn, HDLC_FLAG, true);

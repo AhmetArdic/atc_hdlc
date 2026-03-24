@@ -364,7 +364,9 @@ void test_streaming_large_payload(void) {
         int size = sizes[s];
         printf("   Testing payload size: %d bytes... ", size);
         
-        atc_hdlc_transmit_start(&ctx, 0xFF, 0x03);
+
+
+        atc_hdlc_transmit_start_ui(&ctx, 0xFF);
         for (int i = 0; i < size; i++) {
             atc_hdlc_u8 byte = (atc_hdlc_u8)(i & 0xFF);
             atc_hdlc_transmit_data(&ctx, &byte, 1);
@@ -503,7 +505,7 @@ void test_ui_frame_reception(void) {
 
     // Construct a valid UI frame addressed to ME (0x01)
     // Addr=0x01, Ctrl=0x03 (UI, P=0), Data="WORLD"
-    atc_hdlc_transmit_start(&ctx, 0x01, 0x03); 
+    atc_hdlc_transmit_start_ui(&ctx, 0x01); 
     atc_hdlc_transmit_data(&ctx, (atc_hdlc_u8*)"WORLD", 5);
     atc_hdlc_transmit_end(&ctx);
     
