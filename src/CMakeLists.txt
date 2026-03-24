@@ -4,7 +4,6 @@ add_library(hdlc STATIC
     station/hdlc_station.c
     station/hdlc_in.c
     station/hdlc_out.c
-    station/hdlc_frame_handlers.c
 )
 
 target_include_directories(hdlc PUBLIC ${CMAKE_SOURCE_DIR}/inc)
