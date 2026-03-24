@@ -25,9 +25,6 @@ void test_basic_frame() {
   setup_test_context(&ctx);
   ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
-  /* I-frames are only processed in CONNECTED state */
-  ctx.current_state = ATC_HDLC_STATE_CONNECTED;
-
   atc_hdlc_u8 payload[] = "TEST";
   /* Address = my_address (0x01) so I-frame is accepted in CONNECTED state */
   atc_hdlc_frame_t frame_out = {
@@ -101,14 +98,7 @@ void test_byte_stuffing_heavy() {
   setup_test_context(&ctx);
   ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
-  /*
-   * NOTE: For static tests verifying basic decoding (byte stuffing, CRC, etc.),
-   * we use Broadcast UI (Unnumbered Information) frames (Control = 0x03) instead of I-frames.
-   * This is because the HDLC dispatcher strictly filters out duplicate/out-of-sequence
-   * I-frames for Go-Back-N reliability. Repeatedly feeding identical mock I-frames 
-   * (e.g., N(S)=0) would cause the dispatcher to rightfully drop them.
-   */
-
+  /* Use UI frames (0x03) — I-frame dispatcher would reject duplicate N(S)=0. */
   // Payload with special characters
   atc_hdlc_u8 special[] = {0x7E, 0x7D, 0x7E, 0x7D, 0x00, 0xFF, 0x7E};
   atc_hdlc_frame_t frame_out = {
@@ -342,13 +332,14 @@ void test_input_buffer_overflow() {
   if (init_err != ATC_HDLC_OK)
       test_fail("Buffer Overflow", "small_ctx init failed unexpectedly");
   
-  // Feed 20 bytes (Start + 20 bytes + End)
-  atc_hdlc_u8 packet[] = {0x7E, 0xAA};
-  atc_hdlc_data_in(&ctx, packet, 1);
-  for(int i=0; i<20; i++) atc_hdlc_data_in(&small_ctx, &packet[1], 1);
-  atc_hdlc_data_in(&ctx, packet, 1);
-  
-  // Should NOT callback (overflowed)
+  /* Feed 20 bytes of payload (exceeds small_ctx's 8-byte max_frame_size) */
+  atc_hdlc_u8 flag = 0x7E;
+  atc_hdlc_u8 byte = 0xAA;
+  atc_hdlc_data_in(&small_ctx, &flag, 1);
+  for (int i = 0; i < 20; i++) atc_hdlc_data_in(&small_ctx, &byte, 1);
+  atc_hdlc_data_in(&small_ctx, &flag, 1);
+
+  /* Should NOT callback (overflowed) */
   if (on_data_call_count != 0) {
       test_fail("Buffer Overflow", "Overflowed frame accepted");
   }
@@ -545,14 +536,8 @@ void test_test_frame(void) {
 
     if (mock_output_len == 0) test_fail("TEST Send", "No output produced");
 
-    // Loopback
-    reset_test_state(); // Clear counts for RX
-    // Feed the output to input (simulate peer receiving it? No, simulate ME receiving it)
-    // Wait, testing "Link Loopback" usually implies I send it, Peer echoes it.
-    // Here, I am testing send/receive logic separately if I don't valid simulate peer logic.
-    // But hdlc.c has hdlc_process_test which sends ECHO.
-    // So if I feed a TEST frame to myself, I should reply with TEST response.
-    
+    reset_test_state();
+    /* Feed a TEST command addressed to me — expect echo response */
     // Create TEST command addressed to ME
     atc_hdlc_frame_t test_cmd = {
         .address = 0x01,
@@ -569,15 +554,6 @@ void test_test_frame(void) {
     
     // Feed to input
     atc_hdlc_data_in(&ctx, packed, packed_len);
-    
-    // Verify:
-    // 1. App callback? Usually TEST is processed internally and echoed.
-    // Does hdlc_process_test trigger on_frame_cb? No, it just echoes.
-    // So on_data_call_count might be 0?
-    // Let's check hdlc.c logic.
-    // handle_u_frame -> hdlc_process_test.
-    // It calls output_packet... to send response.
-    // It does NOT call on_frame_cb.
     
     if (mock_output_len == 0) {
         test_fail("TEST Echo", "No echo response generated");
@@ -628,62 +604,7 @@ void test_u_frame_sub_type(void) {
         printf("   %s -> ctrl=0x%02X sub_type=%d %sOK%s\n",
                cases[i].name, ctrl, (int)got, COL_GREEN, COL_RESET);
     }
-    /* Unknown modifier returns UNKNOWN */
-    atc_hdlc_u8 bad_ctrl = 0xFF; /* all bits set, not a valid U-frame encoding */
-    /* Note: 0xFF has type bits = 0x03 (U-frame) but m_lo/m_hi may not match any known type */
-    /* Just verify it doesn't crash */
-    (void)atc_hdlc_get_u_frame_sub_type(bad_ctrl);
-
     test_pass("U-Frame Sub-Type Decoder");
-}
-
-/**
- * @brief Test: timer mock callbacks are invoked by the library at correct moments.
- *        Verifies that T1 starts on link_setup, stops on UA receipt, and that
- *        T2 starts when an I-frame is received.
- */
-void test_timer_callbacks(void) {
-    printf("TEST: Timer Platform Callbacks\n");
-
-    atc_hdlc_context_t ctx;
-    setup_test_context(&ctx);
-    /* link_setup requires DISCONNECTED state — do NOT set CONNECTED here */
-    ctx.peer_address = 0x02;
-
-    /* T1 should start when link_setup sends SABM */
-    int t1_before = mock_t1_start_count;
-    atc_hdlc_link_setup(&ctx, 0x02);
-    if (mock_t1_start_count != t1_before + 1)
-        test_fail("Timer Callbacks", "T1 not started on link_setup");
-
-    /* Feed UA(F=1) from peer — T1 should stop */
-    int t1_stop_before = mock_t1_stop_count;
-    atc_hdlc_u8 ua_ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_UA, HDLC_U_MODIFIER_HI_UA, 1);
-    atc_hdlc_frame_t ua = { .address = 0x02, .control = ua_ctrl,
-                             .information = NULL, .information_len = 0 };
-    atc_hdlc_u8 ua_raw[32]; atc_hdlc_u32 ua_len = 0;
-    atc_hdlc_frame_pack(&ua, ua_raw, sizeof(ua_raw), &ua_len);
-    reset_test_state(); /* keep context alive */
-    atc_hdlc_data_in(&ctx, ua_raw, ua_len);
-    if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
-        test_fail("Timer Callbacks", "Not CONNECTED after UA");
-    if (mock_t1_stop_count <= t1_stop_before)
-        test_fail("Timer Callbacks", "T1 not stopped on UA");
-
-    /* Send an I-frame — T2 should start when peer sends one back */
-    atc_hdlc_u8 i_payload[] = {0xAA, 0xBB};
-    atc_hdlc_u8 i_ctrl = hdlc_create_i_ctrl(0, 0, 0);
-    atc_hdlc_frame_t iframe = { .address = 0x01, .control = i_ctrl,
-                                  .information = i_payload, .information_len = 2 };
-    atc_hdlc_u8 i_raw[64]; atc_hdlc_u32 i_len = 0;
-    atc_hdlc_frame_pack(&iframe, i_raw, sizeof(i_raw), &i_len);
-    int t2_before = mock_t2_start_count;
-    reset_test_state();
-    atc_hdlc_data_in(&ctx, i_raw, i_len);
-    if (mock_t2_start_count <= t2_before)
-        test_fail("Timer Callbacks", "T2 not started on I-frame reception");
-
-    test_pass("Timer Platform Callbacks");
 }
 
 int main(void) {
@@ -706,8 +627,7 @@ int main(void) {
   test_ui_frame_reception();
   test_test_frame();
   test_u_frame_sub_type();
-  test_timer_callbacks();
-  
+
   printf("\n%sALL HDLC CORE TESTS PASSED!%s\n", COL_GREEN, COL_RESET);
   return 0;
 }

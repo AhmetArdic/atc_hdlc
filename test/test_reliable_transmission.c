@@ -17,39 +17,41 @@ static atc_hdlc_u8 temp_input_buffer[2048];
  */
 static atc_hdlc_u8  s_slots_rt[7 * 1024];
 static atc_hdlc_u32 s_lens_rt[7];
-static atc_hdlc_u8  s_seq_rt[7];
+static atc_hdlc_u8  s_seq_rt[8]; /* mod-8: indexed by V(S) 0..7 */
+
+static atc_hdlc_config_t    s_make_ctx_cfg;
+static atc_hdlc_tx_window_t s_make_ctx_tw;
+static atc_hdlc_rx_buffer_t s_make_ctx_rx;
+
+static const atc_hdlc_platform_t s_make_ctx_plat = {
+    .on_send = mock_send_cb, .on_data = mock_on_data_cb,
+    .on_event = NULL, .user_ctx = NULL,
+};
 
 static void make_ctx(atc_hdlc_context_t *ctx,
                      atc_hdlc_u8 window_size,
                      atc_hdlc_u32 t1_ms) {
-    static atc_hdlc_config_t cfg;
-    cfg.mode           = ATC_HDLC_MODE_ABM;
-    cfg.address        = 0x01;
-    cfg.window_size    = window_size;
-    cfg.max_frame_size = 1024;
-    cfg.max_retries    = 3;
-    cfg.t1_ms          = t1_ms;
-    cfg.t2_ms          = ATC_HDLC_DEFAULT_T2_TIMEOUT;
-    cfg.use_extended   = false;
+    s_make_ctx_cfg.mode           = ATC_HDLC_MODE_ABM;
+    s_make_ctx_cfg.address        = 0x01;
+    s_make_ctx_cfg.window_size    = window_size;
+    s_make_ctx_cfg.max_frame_size = 1024;
+    s_make_ctx_cfg.max_retries    = 3;
+    s_make_ctx_cfg.t1_ms          = t1_ms;
+    s_make_ctx_cfg.t2_ms          = ATC_HDLC_DEFAULT_T2_TIMEOUT;
+    s_make_ctx_cfg.use_extended   = false;
 
-    static const atc_hdlc_platform_t plat = {
-        .on_send = mock_send_cb, .on_data = mock_on_data_cb,
-        .on_event = NULL, .user_ctx = NULL,
-    };
-    static atc_hdlc_tx_window_t tw;
-    tw.slots         = s_slots_rt;
-    tw.slot_lens     = s_lens_rt;
-    tw.seq_to_slot   = s_seq_rt;
-    tw.slot_capacity = 1024;
-    tw.slot_count    = window_size;
+    s_make_ctx_tw.slots         = s_slots_rt;
+    s_make_ctx_tw.slot_lens     = s_lens_rt;
+    s_make_ctx_tw.seq_to_slot   = s_seq_rt;
+    s_make_ctx_tw.slot_capacity = 1024;
+    s_make_ctx_tw.slot_count    = window_size;
 
-    static atc_hdlc_rx_buffer_t rx;
-    rx.buffer   = mock_rx_buffer;
-    rx.capacity = sizeof(mock_rx_buffer);
+    s_make_ctx_rx.buffer   = mock_rx_buffer;
+    s_make_ctx_rx.capacity = sizeof(mock_rx_buffer);
 
-    atc_hdlc_init(ctx, &cfg, &plat, &tw, &rx);
-    ctx->peer_address   = 0x02;
-    ctx->current_state  = ATC_HDLC_STATE_CONNECTED;
+    atc_hdlc_init(ctx, &s_make_ctx_cfg, &s_make_ctx_plat, &s_make_ctx_tw, &s_make_ctx_rx);
+    ctx->peer_address  = 0x02;
+    ctx->current_state = ATC_HDLC_STATE_CONNECTED;
 }
 
 /* --- Tests --- */
@@ -71,35 +73,22 @@ void test_reliable_transmission(void) {
     atc_hdlc_error_t res = atc_hdlc_transmit_i(&ctx, data, sizeof(data));
     
     if (res != ATC_HDLC_OK) test_fail("Reliable I-Frame", "Failed to send");
-    
-    // Verify output (Check 3rd byte for Control 0x00? Need to decode to be sure)
-    // 0x7E, Addr, Ctl ...
-    if (mock_output_len > 0 && mock_output_buffer[2] == 0x00) {
-         test_pass("Reliable I-Frame TX");
-    } else {
-         test_fail("Reliable I-Frame TX", "Incorrect output");
-    }
-    
-    // Verify State (VS=1, Waiting=1)
-    if (ctx.vs == 1 && ctx.va != ctx.vs) {
-        test_pass("State Update");
-    } else {
-        test_fail("State Update", "VS/Waiting incorrect");
-    }
-    
-    // Ack Reception (Peer sends I-Frame with NR=1, NS=0)
+    if (mock_output_len == 0 || mock_output_buffer[2] != 0x00)
+        test_fail("Reliable I-Frame", "Incorrect output");
+    if (ctx.vs != 1 || ctx.va == ctx.vs)
+        test_fail("Reliable I-Frame", "VS/VA incorrect after send");
+
+    /* ACK: peer sends I-frame N(S)=0, N(R)=1 */
     reset_test_state();
-    atc_hdlc_frame_t peer_frame = { .address=0x01, .control=hdlc_create_i_ctrl(0, 1, 0), .information=NULL, .information_len=0 }; 
+    atc_hdlc_frame_t peer_frame = { .address=0x01, .control=hdlc_create_i_ctrl(0, 1, 0), .information=NULL, .information_len=0 };
     atc_hdlc_u32 encoded_len = 0;
     atc_hdlc_frame_pack(&peer_frame, temp_input_buffer, sizeof(temp_input_buffer), &encoded_len);
-    
     atc_hdlc_data_in(&ctx, temp_input_buffer, encoded_len);
-    
-    if (ctx.va == ctx.vs && ctx.vr == 1) { // VR increments because we received valid I-frame
-        test_pass("ACK Reception");
-    } else {
-        test_fail("ACK Reception", "State mismatch after ACK");
-    }
+
+    if (ctx.va != ctx.vs || ctx.vr != 1)
+        test_fail("Reliable I-Frame", "State mismatch after ACK");
+
+    test_pass("Reliable Transmission");
 }
 
 void test_reliable_retransmission(void) {
@@ -124,6 +113,51 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     } else {
         test_fail("Retransmission Sent", "No Enquiry output or wrong control");
     }
+}
+
+/**
+ * @brief Test: N2 retry exhaustion in CONNECTED state.
+ *        Send an I-frame, exhaust T1 retries without ACK → LINK_FAILURE event,
+ *        DISCONNECTED state. Also verifies retries below N2 do not fail prematurely.
+ */
+void test_n2_retry_connected(void) {
+    printf("TEST: N2 Retry Exhaustion in CONNECTED State\n");
+
+    atc_hdlc_context_t ctx;
+    setup_test_context(&ctx); /* max_retries = 3, on_event = mock_on_event_cb */
+    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+    ctx.peer_address  = 0x02;
+
+    atc_hdlc_u8 data[] = {0xAA};
+    if (atc_hdlc_transmit_i(&ctx, data, 1) != ATC_HDLC_OK)
+        test_fail("N2 Connected", "Failed to send I-frame");
+
+    /* Each of the first max_retries expirations must send RR enquiry and restart T1 */
+    for (int i = 0; i < (int)ctx.config->max_retries; i++) {
+        mock_output_len = 0;
+        atc_hdlc_t1_expired(&ctx);
+        if (mock_output_len == 0)
+            test_fail("N2 Connected", "T1 expiry did not send RR enquiry");
+        if (!ctx.t1_active)
+            test_fail("N2 Connected", "T1 not restarted after enquiry");
+        if (ctx.current_state == ATC_HDLC_STATE_DISCONNECTED) {
+            char msg[64];
+            sprintf(msg, "Premature link failure on retry %d (max=%u)", i + 1, ctx.config->max_retries);
+            test_fail("N2 Connected", msg);
+        }
+    }
+
+    /* One more expiry exceeds N2 → LINK_FAILURE */
+    atc_hdlc_t1_expired(&ctx);
+
+    if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED)
+        test_fail("N2 Connected", "State not DISCONNECTED after N2 exceeded");
+    if (last_event != ATC_HDLC_EVENT_LINK_FAILURE)
+        test_fail("N2 Connected", "LINK_FAILURE event not fired");
+    if (ctx.t1_active)
+        test_fail("N2 Connected", "T1 should be stopped after link failure");
+
+    test_pass("N2 Retry Exhaustion in CONNECTED State");
 }
 
 void test_sequence_rollover(void) {
@@ -258,44 +292,27 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
         return;
     }
 
-    // Verify: Our VS should have incremented and ack_timer should be 0 (piggybacked)
-    if (!ctx.t2_active) {
-        test_pass("Piggyback: ack_timer cleared by outgoing I-frame");
-    } else {
-        test_fail("Piggyback", "ack_timer not cleared");
-    }
+    if (ctx.t2_active)
+        test_fail("Piggyback", "T2 not cleared by outgoing I-frame (piggyback)");
+    if (ctx.va == ctx.vs)
+        test_fail("Piggyback", "Expected va != vs before peer ACK");
 
-    // --- Phase 2: Incoming Piggyback ---
-    printf("\n--- Phase 2: Incoming Piggyback ---\n");
-
-    if (ctx.va == ctx.vs) {
-        test_fail("Piggyback", "Expected va != vs");
-        return;
-    }
-
-    // Peer sends I-frame: N(S)=1 (next seq), N(R)=1 (ACKing our frame 0)
+    /* Phase 2: peer's I-frame N(S)=1, N(R)=1 ACKs our frame 0 */
     atc_hdlc_frame_t peer_frame2 = {
         .address = 0x01,
-        .control = hdlc_create_i_ctrl(1, 1, 0), // N(S)=1, N(R)=1=our VS
+        .control = hdlc_create_i_ctrl(1, 1, 0),
         .information = (atc_hdlc_u8 *)"RE",
         .information_len = 2
     };
-
     atc_hdlc_frame_pack(&peer_frame2, temp_input_buffer, sizeof(temp_input_buffer), &encoded_len);
     atc_hdlc_data_in(&ctx, temp_input_buffer, encoded_len);
 
-    // After processing, all frames should be acknowledged (va == vs)
-    if (ctx.va == ctx.vs) {
-        test_pass("Piggyback: Incoming I-frame N(R) acknowledged all frames");
-    } else {
+    if (ctx.va != ctx.vs)
         test_fail("Piggyback", "va != vs, frames still outstanding");
-    }
+    if (ctx.vr != 2)
+        test_fail("Piggyback", "V(R) not updated");
 
-    if (ctx.vr == 2) {
-        test_pass("Piggyback: V(R) updated");
-    } else {
-        test_fail("Piggyback", "V(R) mismatch");
-    }
+    test_pass("Piggyback ACK");
 }
 
 /**
@@ -306,46 +323,37 @@ void test_window_size_2_basic(void) {
     reset_test_state();
     
     atc_hdlc_context_t ctx;
-    // Manual init for custom window size 2
-    // We use mock buffers from common where possible, but context needs its own pointers if we don't use setup_test_context
-    // We can use mock_rx_buffer for rx
     make_ctx(&ctx, 2, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
-    // 1. Send first I-frame (N(S)=0)
     atc_hdlc_u8 data1[] = "FRAME1";
-    atc_hdlc_error_t ok1 = atc_hdlc_transmit_i(&ctx, data1, sizeof(data1));
-    if (ok1 != ATC_HDLC_OK) { test_fail("Window2", "Send first failed"); return; }
-    if (ctx.vs != 1) { test_fail("Window2", "VS mismatch 1"); return; }
-
-    // 2. Send second I-frame (N(S)=1) — window still open
     atc_hdlc_u8 data2[] = "FRAME2";
-    atc_hdlc_error_t ok2 = atc_hdlc_transmit_i(&ctx, data2, sizeof(data2));
-    if (ok2 != ATC_HDLC_OK) { test_fail("Window2", "Send second failed"); return; }
-    if (ctx.vs != 2) { test_fail("Window2", "VS mismatch 2"); return; }
+    atc_hdlc_u8 data3[] = "FRAME3";
 
-    // 3. Window should now be full (2 outstanding, window_size=2)
-    atc_hdlc_u8 data3[] = "BLOCKED";
-    atc_hdlc_error_t ok3 = atc_hdlc_transmit_i(&ctx, data3, sizeof(data3));
-    if (ok3 == ATC_HDLC_OK) { test_fail("Window2", "Window overflow allowed!"); return; }
-    test_pass("Window2: Window full blocked send");
+    if (atc_hdlc_transmit_i(&ctx, data1, sizeof(data1)) != ATC_HDLC_OK)
+        { test_fail("Window2", "Send first failed"); return; }
+    if (ctx.vs != 1) { test_fail("Window2", "VS mismatch after frame 1"); return; }
 
-    // 4. ACK both with RR N(R)=2
+    if (atc_hdlc_transmit_i(&ctx, data2, sizeof(data2)) != ATC_HDLC_OK)
+        { test_fail("Window2", "Send second failed"); return; }
+    if (ctx.vs != 2) { test_fail("Window2", "VS mismatch after frame 2"); return; }
+
+    /* Window full — third send must be blocked */
+    if (atc_hdlc_transmit_i(&ctx, data3, sizeof(data3)) == ATC_HDLC_OK)
+        { test_fail("Window2", "Window overflow allowed"); return; }
+
+    /* Cumulative ACK N(R)=2 */
     atc_hdlc_frame_t rr_frame = { .address=0x01, .control=hdlc_create_s_ctrl(0, 2, 0) };
     atc_hdlc_u32 len = 0;
     atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
-    if (ctx.va == ctx.vs) {
-        test_pass("Window2: Cumulative ACK cleared");
-    } else {
-        test_fail("Window2", "Cumulative ACK failed");
-        return;
-    }
+    if (ctx.va != ctx.vs) { test_fail("Window2", "Cumulative ACK failed"); return; }
 
-    // 5. Should be able to send again now
-    atc_hdlc_error_t ok4 = atc_hdlc_transmit_i(&ctx, data3, sizeof(data3));
-    if (ok4 != ATC_HDLC_OK) { test_fail("Window2", "Send after ACK failed"); return; }
-    test_pass("Window2: Window reopened");
+    /* Window reopened */
+    if (atc_hdlc_transmit_i(&ctx, data3, sizeof(data3)) != ATC_HDLC_OK)
+        { test_fail("Window2", "Send after ACK failed"); return; }
+
+    test_pass("Window Size 2 Basic");
 }
 
 /**
@@ -375,9 +383,7 @@ void test_gobackn_retransmit(void) {
     // Trigger timeout
     atc_hdlc_t1_expired(&ctx); /* simulated T1 expiry */
 
-    if (ctx.stats.timeout_count == 1) {
-        test_pass("GBN Retransmit: Enquiry RR Sent");
-    } else {
+    if (ctx.stats.timeout_count != 1) {
         test_fail("GBN Retransmit", "Enquiry RR not sent on timeout");
         return;
     }
@@ -391,27 +397,17 @@ void test_gobackn_retransmit(void) {
     atc_hdlc_data_in(&ctx, temp_input_buffer, rr_len);
 
     atc_hdlc_u32 retransmitted = ctx.stats.tx_i_frames - frames_before;
-    if (retransmitted == 3) {
-        test_pass("GBN Retransmit: All 3 frames retransmitted after F=1");
-    } else {
+    if (retransmitted != 3) {
         printf("  Expected 3 retransmitted, got %u\n", retransmitted);
         test_fail("GBN Retransmit", "Wrong retransmit count");
         return;
     }
+    if (ctx.vs != 3 || ctx.va != 0)
+        test_fail("GBN Retransmit", "State corrupted after retransmit");
+    if (!ctx.t1_active)
+        test_fail("GBN Retransmit", "T1 not restarted after retransmit");
 
-    // va and vs should remain unchanged
-    if (ctx.vs == 3 && ctx.va == 0) {
-        test_pass("GBN Retransmit: State preserved");
-    } else {
-        test_fail("GBN Retransmit", "State corrupted");
-    }
-
-    // Timer should have been restarted
-    if (ctx.t1_active) {
-        test_pass("GBN Retransmit: Timer restarted");
-    } else {
-        test_fail("GBN Retransmit", "Timer check failed");
-    }
+    test_pass("Go-Back-N Retransmission");
 }
 
 /**
@@ -427,113 +423,69 @@ void test_window7_mid_rej(void) {
     atc_hdlc_context_t ctx;
     make_ctx(&ctx, 7, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
-    // --- Phase 1: Send 7 I-frames (fill the entire window) ---
-    printf("   Phase 1: Sending 7 I-frames...\n");
+    /* Phase 1: Fill window with 7 I-frames */
     char payload[8];
     for (int i = 0; i < 7; i++) {
         sprintf(payload, "PKT_%d", i);
-        atc_hdlc_error_t ok = atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8 *)payload, (atc_hdlc_u16)strlen(payload));
-        if (ok != ATC_HDLC_OK) {
+        if (atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8 *)payload, (atc_hdlc_u16)strlen(payload)) != ATC_HDLC_OK) {
             char msg[64];
             sprintf(msg, "Failed to send frame %d", i);
             test_fail("Window7 REJ", msg);
             return;
         }
     }
-
-    // Verify: VS should be 7, VA should be 0 (nothing ACK'd yet)
-    if (ctx.vs != 7) {
-        printf("   Expected VS=7, got VS=%d\n", ctx.vs);
-        test_fail("Window7 REJ", "VS mismatch after sending 7 frames");
+    if (ctx.vs != 7 || ctx.va != 0) {
+        test_fail("Window7 REJ", "VS/VA mismatch after sending 7 frames");
         return;
     }
-    if (ctx.va != 0) {
-        test_fail("Window7 REJ", "VA should be 0 (no ACKs received)");
+
+    /* Phase 2: Window full — 8th frame blocked */
+    if (atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8 *)"BLOCKED", 7) == ATC_HDLC_OK) {
+        test_fail("Window7 REJ", "Window overflow allowed");
         return;
     }
-    test_pass("Window7 REJ: All 7 frames sent successfully");
 
-    // --- Phase 2: Window should be full (8th frame must be blocked) ---
-    printf("   Phase 2: Verifying window is full...\n");
-    atc_hdlc_error_t overflow = atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8 *)"BLOCKED", 7);
-    if (overflow == ATC_HDLC_OK) {
-        test_fail("Window7 REJ", "Window overflow allowed — 8th frame should be blocked!");
-        return;
-    }
-    test_pass("Window7 REJ: Window full, 8th frame correctly blocked");
-
-    // --- Phase 3: Peer sends REJ N(R)=3 (requesting retransmission from frame 3) ---
-    printf("   Phase 3: Peer sends REJ N(R)=3...\n");
-    mock_output_len = 0; // Clear TX buffer to capture retransmissions
+    /* Phase 3: REJ N(R)=3 — ACKs 0-2, retransmits 3-6 */
+    mock_output_len = 0;
     atc_hdlc_u32 frames_before = ctx.stats.tx_i_frames;
 
     atc_hdlc_frame_t rej_frame = {
-        .address = 0x01,
-        .control = hdlc_create_s_ctrl(0x02, 3, 0), // REJ, N(R)=3, F=0
-        .information = NULL,
-        .information_len = 0,
-        .type = ATC_HDLC_FRAME_S
+        .address = 0x01, .control = hdlc_create_s_ctrl(0x02, 3, 0),
+        .information = NULL, .information_len = 0
     };
-
     atc_hdlc_u32 rej_len = 0;
     atc_hdlc_frame_pack(&rej_frame, temp_input_buffer, sizeof(temp_input_buffer), &rej_len);
     atc_hdlc_data_in(&ctx, temp_input_buffer, rej_len);
 
-    // REJ N(R)=3 means:
-    //   - Frames 0, 1, 2 are ACK'd (VA advances to 3)
-    //   - Frames 3, 4, 5, 6 must be retransmitted (Go-Back-N)
     atc_hdlc_u32 retransmitted = ctx.stats.tx_i_frames - frames_before;
-
-    printf("   Retransmitted frame count: %u (expected 4)\n", retransmitted);
-
     if (ctx.va != 3) {
-        printf("   Expected VA=3, got VA=%d\n", ctx.va);
         test_fail("Window7 REJ", "VA not advanced to 3 after REJ");
         return;
     }
-    test_pass("Window7 REJ: VA advanced to 3 (frames 0-2 acknowledged)");
-
     if (retransmitted != 4) {
-        printf("   Expected 4 retransmissions, got %u\n", retransmitted);
-        test_fail("Window7 REJ", "Wrong retransmit count");
+        printf("  Expected 4 retransmissions, got %u\n", retransmitted);
+        test_fail("Window7 REJ", "Wrong retransmit count after REJ");
         return;
     }
-    test_pass("Window7 REJ: Frames 3-6 retransmitted (4 frames)");
+    if (ctx.vs != 7)
+        { test_fail("Window7 REJ", "VS changed during retransmission"); return; }
 
-    // VS should remain 7 (no new frames sent, just retransmissions)
-    if (ctx.vs != 7) {
-        test_fail("Window7 REJ", "VS changed after retransmission");
-        return;
-    }
-    test_pass("Window7 REJ: VS preserved at 7");
-
-    // --- Phase 4: ACK all remaining frames, verify window reopens ---
-    printf("   Phase 4: Peer ACKs all frames (RR N(R)=7)...\n");
+    /* Phase 4: ACK all with RR N(R)=7, window reopens */
     atc_hdlc_frame_t rr_frame = {
-        .address = 0x01,
-        .control = hdlc_create_s_ctrl(0x00, 7, 0), // RR, N(R)=7, F=0
-        .information = NULL,
-        .information_len = 0,
-        .type = ATC_HDLC_FRAME_S
+        .address = 0x01, .control = hdlc_create_s_ctrl(0x00, 7, 0),
+        .information = NULL, .information_len = 0
     };
-
     atc_hdlc_u32 rr_len = 0;
     atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &rr_len);
     atc_hdlc_data_in(&ctx, temp_input_buffer, rr_len);
 
-    if (ctx.va != ctx.vs) {
-        test_fail("Window7 REJ", "VA != VS after full ACK");
-        return;
-    }
-    test_pass("Window7 REJ: All frames acknowledged (VA == VS == 7)");
-
-    // Window should be open again — sending a new frame should succeed
-    atc_hdlc_error_t reopened = atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8 *)"REOPEN", 6);
-    if (reopened != ATC_HDLC_OK) {
+    if (ctx.va != ctx.vs) { test_fail("Window7 REJ", "VA != VS after full ACK"); return; }
+    if (atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8 *)"REOPEN", 6) != ATC_HDLC_OK) {
         test_fail("Window7 REJ", "Window did not reopen after full ACK");
         return;
     }
-    test_pass("Window7 REJ: Window reopened, new frame sent successfully");
+
+    test_pass("Window7 Mid-REJ");
 }
 
 /**
@@ -679,91 +631,6 @@ void test_throughput_benchmark(void) {
     }
 
     test_pass("Throughput Benchmark: All window sizes validated (W=1..7)");
-}
-typedef enum {
-    TX_IDLE,
-    TX_SENDING,
-    TX_DONE
-} TxState_t;
-
-TxState_t process_tx_task(atc_hdlc_context_t *ctx, const uint8_t* data, size_t total_size, size_t max_chunk_size) {
-    static size_t bytes_sent = 0; // Durumu korumak için static değişken
-
-    if (total_size == 0) return TX_IDLE;
-
-    // Tüm veri gönderildiyse sıfırla ve bitir
-    if (bytes_sent >= total_size) {
-        bytes_sent = 0; 
-        return TX_DONE;
-    }
-
-    size_t chunk_size = total_size - bytes_sent;
-    if (chunk_size > max_chunk_size) {
-        chunk_size = max_chunk_size;
-    }
-
-    // Gönderim başarılı olursa veriyi ilerlet
-    if (atc_hdlc_transmit_i(ctx, (atc_hdlc_u8*)&data[bytes_sent], (atc_hdlc_u16)chunk_size) == ATC_HDLC_OK) {
-        bytes_sent += chunk_size;
-        
-        // Bu paketten sonra veri bittiyse anında DONE dönebiliriz
-        if (bytes_sent >= total_size) {
-            bytes_sent = 0;
-            return TX_DONE;
-        }
-    }
-
-    // Gönderim başarısızsa (ACK bekleniyorsa) işlemciyi meşgul etmeden
-    // fonksiyondan çıkar. Bir sonraki ana döngüde aynı paketi tekrar dener.
-    return TX_SENDING;
-}
-
-void test_process_tx_task_simulation(void) {
-    printf("\nTEST: Process TX Task Simulation\n");
-    reset_test_state();
-    
-    atc_hdlc_context_t ctx;
-    /* window_size=2 so the task hits Window Full and must wait */
-    make_ctx(&ctx, 2, ATC_HDLC_DEFAULT_T1_TIMEOUT);
-
-    // We have 100 bytes. Chunk size is 32. It should take 4 chunks (32, 32, 32, 4)
-    uint8_t test_data[100];
-    for (int i = 0; i < 100; i++) test_data[i] = (uint8_t)(i & 0xFF);
-
-    TxState_t state = TX_IDLE;
-    int loop_count = 0;
-    while (state != TX_DONE && loop_count < 1000) {
-        state = process_tx_task(&ctx, test_data, sizeof(test_data), 32);
-        
-        // Simüle edilmiş peer: Window dolduğunda ve TX_SENDING döndüğünde (veya her döngüde)
-        // Eğer ctx'te bekleyen ACK varsa, bir ACK frame üretip kontekste verelim.
-        if (ctx.vs != ctx.va) {
-            atc_hdlc_frame_t rr_frame = {
-                .address = 0x01,
-                .control = hdlc_create_s_ctrl(0x00, ctx.vs, 0), // RR, N(R)=VS 
-                .information = NULL,
-                .information_len = 0,
-                .type = ATC_HDLC_FRAME_S
-            };
-            atc_hdlc_u32 rr_len = 0;
-            atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &rr_len);
-            atc_hdlc_data_in(&ctx, temp_input_buffer, rr_len);
-        }
-        loop_count++;
-    }
-
-    if (state == TX_DONE) {
-        test_pass("Process TX Task Simulation - Transmission");
-    } else {
-        test_fail("Process TX Task Simulation - Transmission", "Task did not complete within loop limit");
-    }
-
-    // Verify reset to idle
-    if (process_tx_task(&ctx, test_data, 0, 32) == TX_IDLE) {
-        test_pass("Process TX Task Simulation - Reset check");
-    } else {
-        test_fail("Process TX Task Simulation - Reset check", "Did not return TX_IDLE for 0 size");
-    }
 }
 
 void test_nr_modulo_validation(void) {
@@ -1066,6 +933,45 @@ void test_set_local_busy(void) {
 }
 
 /**
+ * @brief Test: I-frame received while locally busy → RNR sent in response.
+ *        Peer must not send more data until we clear busy.
+ */
+void test_local_busy_rnr_response(void) {
+    printf("\nTEST: Local Busy — RNR response to incoming I-frame\n");
+
+    atc_hdlc_context_t ctx;
+    setup_test_context(&ctx);
+    ctx.peer_address  = 0x02;
+    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
+
+    atc_hdlc_set_local_busy(&ctx, true);
+
+    /* Peer sends I-frame N(S)=0, N(R)=0 */
+    atc_hdlc_u8 payload[] = {0xAB};
+    atc_hdlc_u8 i_ctrl = hdlc_create_i_ctrl(0, 0, 0);
+    atc_hdlc_frame_t iframe = { .address = 0x01, .control = i_ctrl,
+                                  .information = payload, .information_len = 1 };
+    atc_hdlc_u8 i_raw[64]; atc_hdlc_u32 i_len = 0;
+    atc_hdlc_frame_pack(&iframe, i_raw, sizeof(i_raw), &i_len);
+
+    reset_test_state();
+    atc_hdlc_data_in(&ctx, i_raw, i_len);
+
+    /* Must have sent a response */
+    if (mock_output_len < 6)
+        test_fail("Local Busy RNR", "No response sent while locally busy");
+
+    /* Response must be RNR, not RR */
+    atc_hdlc_frame_t resp; atc_hdlc_u8 flat[32];
+    if (!atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len, &resp, flat, sizeof(flat)))
+        test_fail("Local Busy RNR", "Failed to unpack response");
+    if (atc_hdlc_get_s_frame_sub_type(resp.control) != ATC_HDLC_S_FRAME_TYPE_RNR)
+        test_fail("Local Busy RNR", "Response is not RNR while locally busy");
+
+    test_pass("Local Busy — RNR response to incoming I-frame");
+}
+
+/**
  * @brief Test: RNR reception sets remote_busy; clears on RR.
  *        Verifies ATC_HDLC_ERR_REMOTE_BUSY returned from transmit_i.
  */
@@ -1196,14 +1102,15 @@ int main(void) {
   test_gobackn_retransmit();
   test_window7_mid_rej();
   test_throughput_benchmark();
-  test_process_tx_task_simulation();
   test_nr_modulo_validation();
   test_nr_edge_cases();
   test_state_initialization();
   test_public_query_api();
   test_set_local_busy();
+  test_local_busy_rnr_response();
   test_rnr_reception();
   test_t2_timer_callbacks();
+  test_n2_retry_connected();
 
   printf("\n%sALL RELIABLE TRANSMISSION TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
   return 0;

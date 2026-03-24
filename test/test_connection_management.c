@@ -349,76 +349,37 @@ void test_extended_mode_rejection(void) {
     printf("TEST: Extended Mode Rejection (SABME, SNRME, SARME)\n");
     setup_context();
 
-    // 1. SABME (0x7F if P=1)
-    {
-        atc_hdlc_frame_t frame_in;
-        frame_in.address = 0x01;
-        frame_in.control = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SABME, HDLC_U_MODIFIER_HI_SABME, 1);
-        frame_in.information = NULL;
-        frame_in.information_len = 0;
-        frame_in.type = ATC_HDLC_FRAME_U;
+    static const struct {
+        atc_hdlc_u8 m_lo, m_hi;
+        const char *name;
+    } cases[] = {
+        { HDLC_U_MODIFIER_LO_SABME, HDLC_U_MODIFIER_HI_SABME, "SABME" },
+        { HDLC_U_MODIFIER_LO_SNRME, HDLC_U_MODIFIER_HI_SNRME, "SNRME" },
+        { HDLC_U_MODIFIER_LO_SARME, HDLC_U_MODIFIER_HI_SARME, "SARME" },
+    };
 
-        uint8_t packed[32];
-        uint32_t packed_len = 0;
+    for (int i = 0; i < 3; i++) {
+        atc_hdlc_frame_t frame_in = {
+            .address = 0x01,
+            .control = hdlc_create_u_ctrl(cases[i].m_lo, cases[i].m_hi, 1),
+            .information = NULL, .information_len = 0,
+            .type = ATC_HDLC_FRAME_U
+        };
+        atc_hdlc_u8 packed[32]; atc_hdlc_u32 packed_len = 0;
         atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
 
         mock_output_len = 0;
         atc_hdlc_data_in(&ctx, packed, packed_len);
 
         atc_hdlc_frame_t frame_out;
-        uint8_t flat[32];
+        atc_hdlc_u8 flat[32];
         decode_last_tx(&frame_out, flat, sizeof(flat));
 
-        if (frame_out.control != 0x1F) // DM with F=1
-            test_fail("Ext Rejection SABME", "Did not send DM");
-    }
-
-    // 2. SNRME (0xDF if P=1)
-    {
-        atc_hdlc_frame_t frame_in;
-        frame_in.address = 0x01;
-        frame_in.control = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SNRME, HDLC_U_MODIFIER_HI_SNRME, 1);
-        frame_in.information = NULL;
-        frame_in.information_len = 0;
-        frame_in.type = ATC_HDLC_FRAME_U;
-
-        uint8_t packed[32];
-        uint32_t packed_len = 0;
-        atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
-
-        mock_output_len = 0;
-        atc_hdlc_data_in(&ctx, packed, packed_len);
-
-        atc_hdlc_frame_t frame_out;
-        uint8_t flat[32];
-        decode_last_tx(&frame_out, flat, sizeof(flat));
-
-        if (frame_out.control != 0x1F) // DM with F=1
-            test_fail("Ext Rejection SNRME", "Did not send DM");
-    }
-
-    // 3. SARME (0x5F if P=1)
-    {
-        atc_hdlc_frame_t frame_in;
-        frame_in.address = 0x01;
-        frame_in.control = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_SARME, HDLC_U_MODIFIER_HI_SARME, 1);
-        frame_in.information = NULL;
-        frame_in.information_len = 0;
-        frame_in.type = ATC_HDLC_FRAME_U;
-
-        uint8_t packed[32];
-        uint32_t packed_len = 0;
-        atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
-
-        mock_output_len = 0;
-        atc_hdlc_data_in(&ctx, packed, packed_len);
-
-        atc_hdlc_frame_t frame_out;
-        uint8_t flat[32];
-        decode_last_tx(&frame_out, flat, sizeof(flat));
-
-        if (frame_out.control != 0x1F) // DM with F=1
-            test_fail("Ext Rejection SARME", "Did not send DM");
+        if (frame_out.control != 0x1F) { /* DM with F=1 */
+            char msg[64];
+            sprintf(msg, "%s did not send DM(F=1)", cases[i].name);
+            test_fail("Ext Mode Rejection", msg);
+        }
     }
 
     test_pass("Extended Mode Rejection");
@@ -806,6 +767,41 @@ void test_frmr_error_lockdown(void) {
 /**
  * @brief Test: Duplicate REJ guard — second OOS I-frame does not send another REJ.
  */
+/**
+ * @brief Test: DM received in CONNECTING state.
+ *        Peer refuses our SABM with DM(F=1) — must fire PEER_REJECT and
+ *        return to DISCONNECTED.
+ */
+void test_dm_on_connecting(void) {
+    printf("TEST: DM received in CONNECTING state\n");
+    atc_hdlc_context_t ctx;
+    setup_test_context(&ctx);
+    ctx.peer_address = 0x02;
+
+    atc_hdlc_link_setup(&ctx, 0x02);
+    if (ctx.current_state != ATC_HDLC_STATE_CONNECTING)
+        test_fail("DM on Connecting", "Setup failed — not CONNECTING");
+
+    /* Peer sends DM(F=1) to our address */
+    atc_hdlc_u8 dm_ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_DM, HDLC_U_MODIFIER_HI_DM, 1);
+    atc_hdlc_frame_t dm = { .address = 0x01, .control = dm_ctrl,
+                              .information = NULL, .information_len = 0 };
+    atc_hdlc_u8 dm_raw[32]; atc_hdlc_u32 dm_len = 0;
+    atc_hdlc_frame_pack(&dm, dm_raw, sizeof(dm_raw), &dm_len);
+
+    reset_test_state();
+    atc_hdlc_data_in(&ctx, dm_raw, dm_len);
+
+    if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED)
+        test_fail("DM on Connecting", "State not DISCONNECTED after DM");
+    if (last_event != ATC_HDLC_EVENT_PEER_REJECT)
+        test_fail("DM on Connecting", "PEER_REJECT event not fired");
+    if (ctx.t1_active)
+        test_fail("DM on Connecting", "T1 should be stopped after DM");
+
+    test_pass("DM received in CONNECTING state");
+}
+
 void test_duplicate_rej_guard(void) {
     printf("TEST: Duplicate REJ guard\n");
 
@@ -873,6 +869,7 @@ int main(void) {
     test_t1_timer_callbacks();
     test_frmr_send_invalid_nr();
     test_frmr_error_lockdown();
+    test_dm_on_connecting();
     test_duplicate_rej_guard();
 
     printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
