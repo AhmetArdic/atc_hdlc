@@ -298,7 +298,7 @@ static void hdlc_state_connected(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t
     } else if (hdlc_is_s_frame(ctrl)) {
         atc_hdlc_u8 s_bits = HDLC_CTRL_S_BITS(ctrl);
         atc_hdlc_u8 msg_nr = HDLC_CTRL_NR(ctrl);
-        bool is_cmd = (frame->address == ctx->my_address);
+        bool is_cmd = hdlc_is_cmd(ctx, frame);
 
         ATC_HDLC_LOG_DEBUG("S3 RX S s=%u N(R)=%u P/F=%u", s_bits, msg_nr, msg_pf);
 
@@ -385,7 +385,7 @@ static void hdlc_state_connected(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t
                 break;
 
             case ATC_HDLC_U_FRAME_TYPE_TEST:
-                if (frame->address == ctx->my_address) {
+                if (hdlc_is_cmd(ctx, frame)) {
                     atc_hdlc_u8 resp_ctrl = HDLC_U_CTRL(HDLC_U_TEST, msg_pf);
                     atc_hdlc_transmit_start(ctx, ctx->my_address, resp_ctrl);
                     if (frame->information != NULL && frame->information_len > 0)

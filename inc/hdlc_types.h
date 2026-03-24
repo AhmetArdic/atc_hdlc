@@ -222,6 +222,7 @@ typedef struct {
     atc_hdlc_test_result_t test_result;/**< Result of the most recent TEST round-trip. */
     atc_hdlc_u32 rx_index;         /**< Current write index into rx_buf->buffer. */
     volatile atc_hdlc_state_t current_state; /**< Current station state. */
+    atc_hdlc_station_role_t role;            /**< Station role (set at init; always COMBINED for ABM). */
     atc_hdlc_u16 tx_crc;            /**< Running FCS accumulator for the streaming TX path. */
     atc_hdlc_u16 test_pattern_len;  /**< Length of the outgoing test payload in octets. */
     atc_hdlc_u8 my_address;   /**< Local station address (set at init time). */

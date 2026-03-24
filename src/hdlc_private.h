@@ -222,6 +222,10 @@ static inline int hdlc_is_u_frame(atc_hdlc_u8 ctrl) {
     return (ctrl & HDLC_FRAME_TYPE_MASK_U) == HDLC_FRAME_TYPE_VAL_U;
 }
 
+static inline int hdlc_is_cmd(const atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame) {
+    return frame->address == ctx->my_address;
+}
+
 static inline void hdlc_send_u_frame(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl) {
     atc_hdlc_transmit_start(ctx, address, ctrl);
     atc_hdlc_transmit_end(ctx);

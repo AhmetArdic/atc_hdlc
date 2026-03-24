@@ -70,6 +70,7 @@ atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t        *ctx,
 
     ctx->my_address = config->address;
     ctx->window_size = config->window_size;
+    ctx->role = ATC_HDLC_ROLE_COMBINED;
 
     ctx->rx_state = HDLC_RX_STATE_HUNT;
 
