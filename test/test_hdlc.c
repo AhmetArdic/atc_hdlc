@@ -45,9 +45,7 @@ void test_basic_frame() {
 
   // Loopback: Feed output to input
   int loop_len = mock_output_len;
-  for (int i = 0; i < loop_len; i++) {
-    atc_hdlc_data_in(&ctx, mock_output_buffer[i]);
-  }
+  atc_hdlc_data_in(&ctx, mock_output_buffer, loop_len);
 
   // Verify Reception
   if (on_data_call_count != 1) {
@@ -79,9 +77,7 @@ void test_empty_information() {
   hdlc_transmit_frame(&ctx, &frame_out);
   
   int loop_len = mock_output_len;
-  for (int i = 0; i < loop_len; i++) {
-    atc_hdlc_data_in(&ctx, mock_output_buffer[i]);
-  }
+  atc_hdlc_data_in(&ctx, mock_output_buffer, loop_len);
 
   if (on_data_call_count != 1) {
     test_fail("Empty Frame", "Frame not received");
@@ -134,9 +130,7 @@ void test_byte_stuffing_heavy() {
 
   // Loopback
   int loop_len = mock_output_len;
-  for (int i = 0; i < loop_len; i++) {
-    atc_hdlc_data_in(&ctx, mock_output_buffer[i]);
-  }
+  atc_hdlc_data_in(&ctx, mock_output_buffer, loop_len);
 
   if (on_data_call_count != 1) {
     test_fail("Stuffing", "Frame decode failed");
@@ -176,13 +170,13 @@ void test_garbage_noise() {
 
   // 1. Feed Garbage
   atc_hdlc_u8 noise[] = {0x00, 0x01, 0xFF, 0x55, 0xAA, 0x7D}; // No 0x7E
-  for(size_t i=0; i<sizeof(noise); i++) atc_hdlc_data_in(&ctx, noise[i]);
+  atc_hdlc_data_in(&ctx, noise, sizeof(noise));
   
   // 2. Feed Valid Frame
-  for(int i=0; i<valid_len; i++) atc_hdlc_data_in(&ctx, valid_bytes[i]);
+  atc_hdlc_data_in(&ctx, valid_bytes, valid_len);
   
   // 3. Feed More Garbage
-  for(size_t i=0; i<sizeof(noise); i++) atc_hdlc_data_in(&ctx, noise[i]);
+  atc_hdlc_data_in(&ctx, noise, sizeof(noise));
 
   if (on_data_call_count != 1) {
       test_fail("Garbage Noise", "Valid frame not extracted from noise");
@@ -212,13 +206,12 @@ void test_consecutive_flags() {
   memcpy(frame_bytes, mock_output_buffer, frame_len);
 
   // Input: 7E 7E 7E [Frame] 7E 7E [Frame] 7E
-  atc_hdlc_data_in(&ctx, 0x7E);
-  atc_hdlc_data_in(&ctx, 0x7E);
-  for(int i=0; i<frame_len; i++) atc_hdlc_data_in(&ctx, frame_bytes[i]);
-  atc_hdlc_data_in(&ctx, 0x7E);
-  atc_hdlc_data_in(&ctx, 0x7E);
-  for(int i=0; i<frame_len; i++) atc_hdlc_data_in(&ctx, frame_bytes[i]);
-  atc_hdlc_data_in(&ctx, 0x7E);
+  atc_hdlc_u8 flag[] = {0x7E, 0x7E, 0x7E, 0x7E, 0x7E, 0x7E};
+  atc_hdlc_data_in(&ctx, flag, 2);
+  atc_hdlc_data_in(&ctx, frame_bytes, frame_len);
+  atc_hdlc_data_in(&ctx, flag, 2);
+  atc_hdlc_data_in(&ctx, frame_bytes, frame_len);
+  atc_hdlc_data_in(&ctx, flag, 1);
 
   if (on_data_call_count != 2) {
       char msg[64];
@@ -242,9 +235,8 @@ void test_min_size_rejection() {
 
   // Min size is usually ~4 bytes (Addr+Ctrl+FCS). 
   // Send 0x7E 0xFF 0x7E (Too short)
-  atc_hdlc_data_in(&ctx, 0x7E);
-  atc_hdlc_data_in(&ctx, 0xFF); // Just address
-  atc_hdlc_data_in(&ctx, 0x7E);
+  atc_hdlc_u8 short_packet[] = {0x7E, 0xFF, 0x7E}; // 0xFF is just address
+  atc_hdlc_data_in(&ctx, short_packet, 3);
   
   if (on_data_call_count != 0) {
       test_fail("Min Size", "Short frame accepted");
@@ -268,15 +260,12 @@ void test_aborted_frame() {
   ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   // Send start of frame: 7E Addr Ctrl Data...
-  atc_hdlc_data_in(&ctx, 0x7E);
-  atc_hdlc_data_in(&ctx, 0xFF);
-  atc_hdlc_data_in(&ctx, 0x00);
-  atc_hdlc_data_in(&ctx, 'A');
-  atc_hdlc_data_in(&ctx, 'B');
+  atc_hdlc_u8 packet[] = {0x7E, 0xFF, 0x00, 'A', 'B'};
+  atc_hdlc_data_in(&ctx, packet, 5);
   
   // Then unexpected Flag (Terminates previous, starts new or empty)
   // The previous frame 'AB' is incomplete (no FCS). Should be discarded.
-  atc_hdlc_data_in(&ctx, 0x7E);
+  atc_hdlc_data_in(&ctx, packet, 1); // 0x7E
   
   if (on_data_call_count != 0) {
       test_fail("Aborted Frame", "Incomplete frame reported as valid");
@@ -310,8 +299,8 @@ void test_crc_error_injection() {
   
   // Feed back
   int loop_len = mock_output_len;
-  for(int i=0; i<loop_len; i++) atc_hdlc_data_in(&ctx, mock_output_buffer[i]);
-  
+  atc_hdlc_data_in(&ctx, mock_output_buffer, loop_len);
+    
   if (on_data_call_count != 0) {
       test_fail("CRC Error", "Corrupted frame accepted");
   }
@@ -354,9 +343,10 @@ void test_input_buffer_overflow() {
       test_fail("Buffer Overflow", "small_ctx init failed unexpectedly");
   
   // Feed 20 bytes (Start + 20 bytes + End)
-  atc_hdlc_data_in(&small_ctx, 0x7E);
-  for(int i=0; i<20; i++) atc_hdlc_data_in(&small_ctx, 0xAA);
-  atc_hdlc_data_in(&small_ctx, 0x7E);
+  atc_hdlc_u8 packet[] = {0x7E, 0xAA};
+  atc_hdlc_data_in(&ctx, packet, 1);
+  for(int i=0; i<20; i++) atc_hdlc_data_in(&small_ctx, &packet[1], 1);
+  atc_hdlc_data_in(&ctx, packet, 1);
   
   // Should NOT callback (overflowed)
   if (on_data_call_count != 0) {
@@ -392,9 +382,7 @@ void test_streaming_large_payload(void) {
 
         // Feed back
         int loop_len = mock_output_len;
-        for (int i = 0; i < loop_len; i++) {
-            atc_hdlc_data_in(&ctx, mock_output_buffer[i]);
-        }
+        atc_hdlc_data_in(&ctx, mock_output_buffer, loop_len);
 
         if (on_data_call_count != 1) {
             printf("[FAIL]\n");
@@ -494,7 +482,7 @@ void test_ui_frame_transmission(void) {
     
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
-  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
+    ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
     ctx.peer_address = 0x02; /* peer address set directly for test */
 
     const char *payload = "HELLO";
@@ -519,7 +507,7 @@ void test_ui_frame_reception(void) {
     
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
-  ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
+    ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
     ctx.peer_address = 0x02; /* peer address set directly for test */
 
     // Construct a valid UI frame addressed to ME (0x01)
@@ -529,9 +517,8 @@ void test_ui_frame_reception(void) {
     atc_hdlc_transmit_end(&ctx);
     
     // Now Feed it back
-    for (int i = 0, limit = mock_output_len; i < limit; i++) {
-        atc_hdlc_data_in(&ctx, mock_output_buffer[i]);
-    }
+    int loop_len = mock_output_len;
+    atc_hdlc_data_in(&ctx, mock_output_buffer, loop_len);
     
     /* UI frame: payload should be delivered via on_data */
     if (on_data_call_count == 1 &&
@@ -581,7 +568,7 @@ void test_test_frame(void) {
     atc_hdlc_frame_pack(&test_cmd, packed, sizeof(packed), &packed_len);
     
     // Feed to input
-    atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
+    atc_hdlc_data_in(&ctx, packed, packed_len);
     
     // Verify:
     // 1. App callback? Usually TEST is processed internally and echoed.
@@ -677,7 +664,7 @@ void test_timer_callbacks(void) {
     atc_hdlc_u8 ua_raw[32]; atc_hdlc_u32 ua_len = 0;
     atc_hdlc_frame_pack(&ua, ua_raw, sizeof(ua_raw), &ua_len);
     reset_test_state(); /* keep context alive */
-    atc_hdlc_data_in_bytes(&ctx, ua_raw, ua_len);
+    atc_hdlc_data_in(&ctx, ua_raw, ua_len);
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
         test_fail("Timer Callbacks", "Not CONNECTED after UA");
     if (mock_t1_stop_count <= t1_stop_before)
@@ -692,7 +679,7 @@ void test_timer_callbacks(void) {
     atc_hdlc_frame_pack(&iframe, i_raw, sizeof(i_raw), &i_len);
     int t2_before = mock_t2_start_count;
     reset_test_state();
-    atc_hdlc_data_in_bytes(&ctx, i_raw, i_len);
+    atc_hdlc_data_in(&ctx, i_raw, i_len);
     if (mock_t2_start_count <= t2_before)
         test_fail("Timer Callbacks", "T2 not started on I-frame reception");
 

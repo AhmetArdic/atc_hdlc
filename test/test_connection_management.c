@@ -165,7 +165,7 @@ void test_connect_complete_on_ua(void) {
     atc_hdlc_frame_pack(&ua_frame, packed, sizeof(packed), &packed_len);
 
     // Feed bytes
-    atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
+    atc_hdlc_data_in(&ctx, packed, packed_len);
 
     // Verify State Change
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
@@ -217,7 +217,7 @@ void test_disconnect_flow(void) {
     uint8_t packed[32];
     uint32_t packed_len = 0;
     atc_hdlc_frame_pack(&ua_frame, packed, sizeof(packed), &packed_len);
-    atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
+    atc_hdlc_data_in(&ctx, packed, packed_len);
 
     // Check State
     if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED)
@@ -243,7 +243,7 @@ void test_passive_open(void) {
     uint32_t packed_len = 0;
     atc_hdlc_frame_pack(&sabm_frame, packed, sizeof(packed), &packed_len);
     
-    atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
+    atc_hdlc_data_in(&ctx, packed, packed_len);
 
     // 1. Should be CONNECTED
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
@@ -288,7 +288,7 @@ void test_frmr_reception(void) {
     atc_hdlc_frame_pack(&frmr_frame, packed, sizeof(packed), &packed_len);
 
     // Feed bytes
-    atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
+    atc_hdlc_data_in(&ctx, packed, packed_len);
 
     /* FRMR now transitions to FRMR_ERROR (lock-down state), not DISCONNECTED.
      * The peer rejected one of our frames; only link_reset or disconnect is valid. */
@@ -323,7 +323,7 @@ void test_mode_rejection(void) {
     mock_output_len = 0;
 
     // Feed bytes
-    atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
+    atc_hdlc_data_in(&ctx, packed, packed_len);
     
     // Inspect captured bytes dump using helper
     print_hexdump("Captured TX", mock_output_buffer, mock_output_len);
@@ -363,7 +363,7 @@ void test_extended_mode_rejection(void) {
         atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
 
         mock_output_len = 0;
-        atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
+        atc_hdlc_data_in(&ctx, packed, packed_len);
 
         atc_hdlc_frame_t frame_out;
         uint8_t flat[32];
@@ -387,7 +387,7 @@ void test_extended_mode_rejection(void) {
         atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
 
         mock_output_len = 0;
-        atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
+        atc_hdlc_data_in(&ctx, packed, packed_len);
 
         atc_hdlc_frame_t frame_out;
         uint8_t flat[32];
@@ -411,7 +411,7 @@ void test_extended_mode_rejection(void) {
         atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
 
         mock_output_len = 0;
-        atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
+        atc_hdlc_data_in(&ctx, packed, packed_len);
 
         atc_hdlc_frame_t frame_out;
         uint8_t flat[32];
@@ -452,7 +452,7 @@ void test_contention_resolution_winner(void) {
     uint32_t packed_len = 0;
     atc_hdlc_frame_pack(&sabm_frame, packed, sizeof(packed), &packed_len);
     
-    atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
+    atc_hdlc_data_in(&ctx, packed, packed_len);
     
     // We are higher address (2 > 1), so we WIN.
     // Winner behaviour: Immediately reply with UA, and transition to CONNECTED.
@@ -494,7 +494,7 @@ void test_contention_resolution_loser(void) {
     uint32_t packed_len = 0;
     atc_hdlc_frame_pack(&sabm_frame, packed, sizeof(packed), &packed_len);
     
-    atc_hdlc_data_in_bytes(&ctx, packed, packed_len);
+    atc_hdlc_data_in(&ctx, packed, packed_len);
     
     // We are lower address (1 < 2), so we LOSE.
     // Loser behaviour: Do NOT send UA. Set contention timer. State remains CONNECTING.
@@ -592,7 +592,7 @@ void test_peer_disconnect(void) {
     atc_hdlc_frame_pack(&disc_frame, disc_raw, sizeof(disc_raw), &disc_len);
 
     reset_test_state();
-    atc_hdlc_data_in_bytes(&ctx, disc_raw, disc_len);
+    atc_hdlc_data_in(&ctx, disc_raw, disc_len);
 
     /* Must transition to DISCONNECTED */
     if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED)
@@ -646,7 +646,7 @@ void test_event_callbacks(void) {
     atc_hdlc_u8 ua_raw[32]; atc_hdlc_u32 ua_len = 0;
     atc_hdlc_frame_pack(&ua, ua_raw, sizeof(ua_raw), &ua_len);
     reset_test_state();
-    atc_hdlc_data_in_bytes(&ctx, ua_raw, ua_len);
+    atc_hdlc_data_in(&ctx, ua_raw, ua_len);
     if (last_event != ATC_HDLC_EVENT_CONNECT_ACCEPTED)
         test_fail("Event Callbacks", "CONNECT_ACCEPTED not fired");
 
@@ -658,7 +658,7 @@ void test_event_callbacks(void) {
 
     /* Feed UA → DISCONNECT_COMPLETE */
     reset_test_state();
-    atc_hdlc_data_in_bytes(&ctx, ua_raw, ua_len);
+    atc_hdlc_data_in(&ctx, ua_raw, ua_len);
     if (last_event != ATC_HDLC_EVENT_DISCONNECT_COMPLETE)
         test_fail("Event Callbacks", "DISCONNECT_COMPLETE not fired");
 
@@ -700,7 +700,7 @@ void test_t1_timer_callbacks(void) {
     atc_hdlc_u8 ua_raw[32]; atc_hdlc_u32 ua_len = 0;
     atc_hdlc_frame_pack(&ua, ua_raw, sizeof(ua_raw), &ua_len);
     reset_test_state();
-    atc_hdlc_data_in_bytes(&ctx, ua_raw, ua_len);
+    atc_hdlc_data_in(&ctx, ua_raw, ua_len);
     if (mock_t1_stop_count < 1)
         test_fail("T1 Callbacks", "T1 not stopped on UA");
     if (ctx.t1_active)
@@ -729,7 +729,7 @@ void test_frmr_send_invalid_nr(void) {
     atc_hdlc_frame_pack(&rr, rr_raw, sizeof(rr_raw), &rr_len);
 
     reset_test_state();
-    atc_hdlc_data_in_bytes(&ctx, rr_raw, rr_len);
+    atc_hdlc_data_in(&ctx, rr_raw, rr_len);
 
     /* State must be FRMR_ERROR */
     if (ctx.current_state != ATC_HDLC_STATE_FRMR_ERROR)
@@ -796,7 +796,7 @@ void test_frmr_error_lockdown(void) {
     atc_hdlc_u8 sabm_raw[32]; atc_hdlc_u32 sabm_len = 0;
     atc_hdlc_frame_pack(&sabm, sabm_raw, sizeof(sabm_raw), &sabm_len);
     reset_test_state();
-    atc_hdlc_data_in_bytes(&ctx, sabm_raw, sabm_len);
+    atc_hdlc_data_in(&ctx, sabm_raw, sabm_len);
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
         test_fail("FRMR Lock-down", "SABM from peer should re-establish CONNECTED from FRMR_ERROR");
 
@@ -824,7 +824,7 @@ void test_duplicate_rej_guard(void) {
     atc_hdlc_frame_pack(&iframe, i_raw, sizeof(i_raw), &i_len);
 
     reset_test_state();
-    atc_hdlc_data_in_bytes(&ctx, i_raw, i_len);
+    atc_hdlc_data_in(&ctx, i_raw, i_len);
     if (!ctx.rej_exception)
         test_fail("Duplicate REJ", "rej_exception not set after OOS frame");
     int first_output_len = mock_output_len;
@@ -838,7 +838,7 @@ void test_duplicate_rej_guard(void) {
     atc_hdlc_u8 i_raw2[64]; atc_hdlc_u32 i_len2 = 0;
     atc_hdlc_frame_pack(&iframe2, i_raw2, sizeof(i_raw2), &i_len2);
     reset_test_state();
-    atc_hdlc_data_in_bytes(&ctx, i_raw2, i_len2);
+    atc_hdlc_data_in(&ctx, i_raw2, i_len2);
     /* No REJ should be in output (rej_exception guards duplicate REJ) */
     if (mock_output_len >= 6) {
         /* Check that the output is NOT a REJ */

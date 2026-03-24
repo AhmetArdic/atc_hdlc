@@ -137,7 +137,7 @@ void* node_thread_func(void* arg) {
         MUTEX_LOCK(&node->ctx_lock);
 
         if (n > 0) {
-            atc_hdlc_data_in_bytes(&node->ctx, buf, n);
+            atc_hdlc_data_in(&node->ctx, buf, n);
             /* T2 start callback sets t2_started_at=0, t2_pending=true.
              * Fire immediately here while lock is held — no wall-clock
              * check needed for zero-latency virtual pipe. */

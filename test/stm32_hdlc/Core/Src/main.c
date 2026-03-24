@@ -353,9 +353,19 @@ int main(void)
     uint32_t dma_head = RX_RING_SIZE - __HAL_DMA_GET_COUNTER(huart2.hdmarx);
     if (dma_head == RX_RING_SIZE) dma_head = 0;
 
-    while (rx_tail != (uint16_t)dma_head) {
-        atc_hdlc_data_in(&hdlc_ctx, rx_ring[rx_tail]);
-        rx_tail = (rx_tail + 1u) & RX_RING_MASK;
+    if (rx_tail != (uint16_t)dma_head) {
+        if (dma_head > rx_tail) {
+            atc_hdlc_data_in(&hdlc_ctx, &rx_ring[rx_tail], dma_head - rx_tail);
+            rx_tail = (uint16_t)dma_head;
+        } else {
+            /* Wrap-around: linear tail→end, then 0→head */
+            atc_hdlc_data_in(&hdlc_ctx, &rx_ring[rx_tail], RX_RING_SIZE - rx_tail);
+            rx_tail = 0;
+            if (dma_head > 0) {
+                atc_hdlc_data_in(&hdlc_ctx, rx_ring, dma_head);
+                rx_tail = (uint16_t)dma_head;
+            }
+        }
     }
 
     /* ---- Fire T1 expiry if timeout has elapsed ---- */

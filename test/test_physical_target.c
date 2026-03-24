@@ -386,7 +386,7 @@ static void rx_thread_body(physical_node_t *node)
         mutex_lock(&node->ctx_lock);
 
         if (n > 0) {
-            atc_hdlc_data_in_bytes(&node->ctx, buf, (atc_hdlc_u32)n);
+            atc_hdlc_data_in(&node->ctx, buf, (atc_hdlc_u32)n);
         }
 
         /* T2: fire when t2_ms has elapsed — allows piggybacking on

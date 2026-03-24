@@ -93,7 +93,7 @@ void test_reliable_transmission(void) {
     atc_hdlc_u32 encoded_len = 0;
     atc_hdlc_frame_pack(&peer_frame, temp_input_buffer, sizeof(temp_input_buffer), &encoded_len);
     
-    for(int i=0; i<encoded_len; i++) atc_hdlc_data_in(&ctx, temp_input_buffer[i]);
+    atc_hdlc_data_in(&ctx, temp_input_buffer, encoded_len);
     
     if (ctx.va == ctx.vs && ctx.vr == 1) { // VR increments because we received valid I-frame
         test_pass("ACK Reception");
@@ -157,7 +157,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
         
         atc_hdlc_u32 len = 0;
         atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
-        atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, len);
+        atc_hdlc_data_in(&ctx, temp_input_buffer, len);
         
         if (ctx.va != ctx.vs) {
              test_fail("Sequence Rollover", "Failed to ACK");
@@ -181,12 +181,12 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     atc_hdlc_frame_t rr_frame = { .address=0x01, .control=hdlc_create_s_ctrl(0, 1, 0) };
     atc_hdlc_u32 len = 0;
     atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
-    atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, len);
+    atc_hdlc_data_in(&ctx, temp_input_buffer, len);
     
     if (ctx.va != ctx.vs) test_fail("Duplicate ACK", "First ACK failed");
     
     // Receive SAME ACK again
-    atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, len);
+    atc_hdlc_data_in(&ctx, temp_input_buffer, len);
     
     // Should stay not waiting, no error
     if (ctx.va != ctx.vs) test_fail("Duplicate ACK", "State regressed?");
@@ -209,7 +209,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     atc_hdlc_frame_t rej_frame = { .address=0x01, .control=hdlc_create_s_ctrl(2, 0, 0) }; // REJ=2
     atc_hdlc_u32 len = 0;
     atc_hdlc_frame_pack(&rej_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
-    atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, len);
+    atc_hdlc_data_in(&ctx, temp_input_buffer, len);
     
     // Verify we retransmitted
     if (mock_output_len > 0) {
@@ -241,7 +241,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     // Encode and feed peer's frame
     atc_hdlc_u32 encoded_len = 0;
     atc_hdlc_frame_pack(&peer_frame, temp_input_buffer, sizeof(temp_input_buffer), &encoded_len);
-    atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, encoded_len);
+    atc_hdlc_data_in(&ctx, temp_input_buffer, encoded_len);
 
     // After receiving, V(R) should be 1
     if (ctx.vr != 1) {
@@ -282,7 +282,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     };
 
     atc_hdlc_frame_pack(&peer_frame2, temp_input_buffer, sizeof(temp_input_buffer), &encoded_len);
-    atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, encoded_len);
+    atc_hdlc_data_in(&ctx, temp_input_buffer, encoded_len);
 
     // After processing, all frames should be acknowledged (va == vs)
     if (ctx.va == ctx.vs) {
@@ -333,7 +333,7 @@ void test_window_size_2_basic(void) {
     atc_hdlc_frame_t rr_frame = { .address=0x01, .control=hdlc_create_s_ctrl(0, 2, 0) };
     atc_hdlc_u32 len = 0;
     atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
-    atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, len);
+    atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
     if (ctx.va == ctx.vs) {
         test_pass("Window2: Cumulative ACK cleared");
@@ -388,7 +388,7 @@ void test_gobackn_retransmit(void) {
     atc_hdlc_frame_pack(&f1_response, temp_input_buffer, sizeof(temp_input_buffer), &rr_len);
     
     atc_hdlc_u32 frames_before = ctx.stats.tx_i_frames;
-    atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, rr_len);
+    atc_hdlc_data_in(&ctx, temp_input_buffer, rr_len);
 
     atc_hdlc_u32 retransmitted = ctx.stats.tx_i_frames - frames_before;
     if (retransmitted == 3) {
@@ -477,7 +477,7 @@ void test_window7_mid_rej(void) {
 
     atc_hdlc_u32 rej_len = 0;
     atc_hdlc_frame_pack(&rej_frame, temp_input_buffer, sizeof(temp_input_buffer), &rej_len);
-    atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, rej_len);
+    atc_hdlc_data_in(&ctx, temp_input_buffer, rej_len);
 
     // REJ N(R)=3 means:
     //   - Frames 0, 1, 2 are ACK'd (VA advances to 3)
@@ -519,7 +519,7 @@ void test_window7_mid_rej(void) {
 
     atc_hdlc_u32 rr_len = 0;
     atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &rr_len);
-    atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, rr_len);
+    atc_hdlc_data_in(&ctx, temp_input_buffer, rr_len);
 
     if (ctx.va != ctx.vs) {
         test_fail("Window7 REJ", "VA != VS after full ACK");
@@ -597,7 +597,7 @@ static bench_result_t run_throughput_bench(int window_size) {
 
         atc_hdlc_u32 rr_len = 0;
         atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &rr_len);
-        atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, rr_len);
+        atc_hdlc_data_in(&ctx, temp_input_buffer, rr_len);
     }
 
     result.total_tx_bytes = mock_output_len;
@@ -747,7 +747,7 @@ void test_process_tx_task_simulation(void) {
             };
             atc_hdlc_u32 rr_len = 0;
             atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &rr_len);
-            atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, rr_len);
+            atc_hdlc_data_in(&ctx, temp_input_buffer, rr_len);
         }
         loop_count++;
     }
@@ -782,7 +782,7 @@ void test_nr_modulo_validation(void) {
     atc_hdlc_frame_t rr_frame = { .address=0x01, .control=hdlc_create_s_ctrl(0x00, 6, 0) };
     atc_hdlc_u32 len = 0;
     atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
-    atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, len);
+    atc_hdlc_data_in(&ctx, temp_input_buffer, len);
     
     if (ctx.va != 6 || ctx.vs != 6) { test_fail("NR Bug Test", "Setup failed"); return; }
     
@@ -801,7 +801,7 @@ void test_nr_modulo_validation(void) {
     // If hdlc_nr_valid has the bug, it will reject N(R)=6 because it thinks 6 is outside [6, 0].
     atc_hdlc_frame_t rr_frame2 = { .address=0x01, .control=hdlc_create_s_ctrl(0x00, 6, 0) };
     atc_hdlc_frame_pack(&rr_frame2, temp_input_buffer, sizeof(temp_input_buffer), &len);
-    atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, len);
+    atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
     // If valid, the timer should be reset to timeout. If ignored, the timer continues ticking down.
     if (!ctx.t1_active) {
@@ -863,7 +863,7 @@ void test_nr_edge_cases(void) {
         atc_hdlc_u32 len = 0;
         atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
         
-        atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, len);
+        atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
         bool was_treated_as_valid = false;
         
@@ -918,12 +918,12 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     };
     atc_hdlc_u32 len = 0;
     atc_hdlc_frame_pack(&peer_i_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
-    atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, len);
+    atc_hdlc_data_in(&ctx, temp_input_buffer, len);
     
     // Simulate peer sending RR N(R)=1 so V(A) increments to 1
     atc_hdlc_frame_t peer_rr = { .address = 0x01, .control = hdlc_create_s_ctrl(0x00, 1, 0) };
     atc_hdlc_frame_pack(&peer_rr, temp_input_buffer, sizeof(temp_input_buffer), &len);
-    atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, len);
+    atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
     if (ctx.vs == 0 || ctx.vr == 0 || ctx.va == 0) {
         test_fail("State Init Setup", "Failed to advance state variables before reset");
@@ -937,7 +937,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
         .control = hdlc_create_u_ctrl(3, 1, 1), // SABM modifier lo=3, hi=1
     };
     atc_hdlc_frame_pack(&sabm_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
-    atc_hdlc_data_in_bytes(&ctx, temp_input_buffer, len);
+    atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
     // After processing SABM, we should be connected and state variables MUST be 0
     if (ctx.vs != 0 || ctx.vr != 0 || ctx.va != 0) {
@@ -989,7 +989,7 @@ void test_public_query_api(void) {
     atc_hdlc_u8 i_raw[64]; atc_hdlc_u32 i_len = 0;
     atc_hdlc_frame_pack(&iframe, i_raw, sizeof(i_raw), &i_len);
     reset_test_state();
-    atc_hdlc_data_in_bytes(&ctx, i_raw, i_len);
+    atc_hdlc_data_in(&ctx, i_raw, i_len);
     if (!atc_hdlc_has_pending_ack(&ctx))
         test_fail("Query API", "has_pending_ack should be true after I-frame");
 
@@ -1085,7 +1085,7 @@ void test_rnr_reception(void) {
     atc_hdlc_frame_pack(&rnr, rnr_raw, sizeof(rnr_raw), &rnr_len);
 
     reset_test_state();
-    atc_hdlc_data_in_bytes(&ctx, rnr_raw, rnr_len);
+    atc_hdlc_data_in(&ctx, rnr_raw, rnr_len);
 
     if (!ctx.remote_busy)
         test_fail("RNR Reception", "remote_busy not set after RNR");
@@ -1102,7 +1102,7 @@ void test_rnr_reception(void) {
                               .information = NULL, .information_len = 0 };
     atc_hdlc_u8 rr_raw[32]; atc_hdlc_u32 rr_len = 0;
     atc_hdlc_frame_pack(&rr, rr_raw, sizeof(rr_raw), &rr_len);
-    atc_hdlc_data_in_bytes(&ctx, rr_raw, rr_len);
+    atc_hdlc_data_in(&ctx, rr_raw, rr_len);
 
     /* remote_busy should clear on RR */
     if (ctx.remote_busy)
@@ -1137,7 +1137,7 @@ void test_t2_timer_callbacks(void) {
     atc_hdlc_frame_pack(&iframe, i_raw, sizeof(i_raw), &i_len);
 
     reset_test_state();
-    atc_hdlc_data_in_bytes(&ctx, i_raw, i_len);
+    atc_hdlc_data_in(&ctx, i_raw, i_len);
     if (mock_t2_start_count < 1)
         test_fail("T2 Callbacks", "T2 not started after I-frame");
     if (!ctx.t2_active)
@@ -1168,7 +1168,7 @@ void test_t2_timer_callbacks(void) {
                                    .information = payload, .information_len = 2 };
     atc_hdlc_u8 i_raw2[64]; atc_hdlc_u32 i_len2 = 0;
     atc_hdlc_frame_pack(&iframe2, i_raw2, sizeof(i_raw2), &i_len2);
-    atc_hdlc_data_in_bytes(&ctx, i_raw2, i_len2);
+    atc_hdlc_data_in(&ctx, i_raw2, i_len2);
     if (!ctx.t2_active)
         test_fail("T2 Callbacks", "T2 not started before piggybacked ACK test");
     int t2_stop_before = mock_t2_stop_count;

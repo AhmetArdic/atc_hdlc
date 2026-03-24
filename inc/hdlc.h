@@ -140,27 +140,17 @@ atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_context_t *ctx,
                                           atc_hdlc_u32        len);
 
 /**
- * @brief Feed one received byte.
- *
- * @warning Not ISR-safe. Use ring buffer.
- *
- * @param ctx  Context.
- * @param byte Received byte.
- */
-void atc_hdlc_data_in(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte);
-
-/**
  * @brief Feed multiple bytes.
  *
- * Wrapper around atc_hdlc_data_in.
+ * @warning Not ISR-safe
  *
  * @param ctx  Context.
  * @param data Byte array.
  * @param len  Count.
  */
-void atc_hdlc_data_in_bytes(atc_hdlc_context_t *ctx,
-                             const atc_hdlc_u8  *data,
-                             atc_hdlc_u32        len);
+void atc_hdlc_data_in(atc_hdlc_context_t *ctx,
+                      const atc_hdlc_u8  *data,
+                      atc_hdlc_u32        len);
 
 /**
  * @brief Start UI frame TX.

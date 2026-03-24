@@ -12,11 +12,7 @@
 #include "../hdlc_private.h"
 #include <string.h>
 
-void atc_hdlc_data_in(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
-  if (ctx == NULL) {
-    return;
-  }
-
+void hdlc_data_in(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
   if (byte == HDLC_FLAG) {
     if (ctx->rx_state != HDLC_RX_STATE_HUNT) {
       if (ctx->rx_index >= HDLC_MIN_FRAME_LEN) {
@@ -93,12 +89,12 @@ void atc_hdlc_data_in(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
   }
 }
 
-void atc_hdlc_data_in_bytes(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
+void atc_hdlc_data_in(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
   if (ctx == NULL || data == NULL) {
     return;
   }
 
   for (atc_hdlc_u32 i = 0; i < len; ++i) {
-    atc_hdlc_data_in(ctx, data[i]);
+    hdlc_data_in(ctx, data[i]);
   }
 }
