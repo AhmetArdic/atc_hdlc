@@ -187,7 +187,6 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
         rr_frame.control = hdlc_create_s_ctrl(0, expected_vs, 0); // RR, NR=VS
         rr_frame.information = NULL;
         rr_frame.information_len = 0;
-        rr_frame.type = ATC_HDLC_FRAME_S;
         
         atc_hdlc_u32 len = 0;
         atc_hdlc_frame_pack(&rr_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
@@ -543,8 +542,7 @@ static bench_result_t run_throughput_bench(int window_size) {
             .address = 0x01,
             .control = hdlc_create_s_ctrl(0x00, ctx.vs, 0), // RR, N(R)=VS
             .information = NULL,
-            .information_len = 0,
-            .type = ATC_HDLC_FRAME_S
+            .information_len = 0
         };
 
         atc_hdlc_u32 rr_len = 0;
@@ -801,7 +799,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     printf("   Peer sends SABM to trigger reset.\n");
     atc_hdlc_frame_t sabm_frame = {
         .address = 0x01,
-        .control = hdlc_create_u_ctrl(3, 1, 1), // SABM modifier lo=3, hi=1
+        .control = HDLC_U_CTRL(HDLC_U_SABM, 1),
     };
     atc_hdlc_frame_pack(&sabm_frame, temp_input_buffer, sizeof(temp_input_buffer), &len);
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);

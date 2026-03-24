@@ -60,7 +60,7 @@ void hdlc_send_frmr(atc_hdlc_context_t *ctx,
                        rejected_ctrl, (unsigned)w, (unsigned)x,
                        (unsigned)y, (unsigned)z);
 
-    atc_hdlc_u8 ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_FRMR, HDLC_U_MODIFIER_HI_FRMR, 0);
+    atc_hdlc_u8 ctrl = HDLC_U_CTRL(HDLC_U_FRMR, 0);
     atc_hdlc_transmit_start(ctx, ctx->my_address, ctrl);
     atc_hdlc_transmit_data(ctx, info, sizeof(info));
     atc_hdlc_transmit_end(ctx);
@@ -86,7 +86,7 @@ static inline atc_hdlc_u_frame_sub_type_t frame_u_type(const atc_hdlc_frame_t *f
 
 static void hdlc_state_disconnected(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame)
 {
-    if (frame->type != ATC_HDLC_FRAME_U) return;
+    if (!hdlc_is_u_frame(frame->control)) return;
 
     switch (frame_u_type(frame)) {
         case ATC_HDLC_U_FRAME_TYPE_SABM:
@@ -125,7 +125,7 @@ static void hdlc_state_disconnected(atc_hdlc_context_t *ctx, const atc_hdlc_fram
 
 static void hdlc_state_connecting(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame)
 {
-    if (frame->type == ATC_HDLC_FRAME_U) {
+    if (hdlc_is_u_frame(frame->control)) {
         switch (frame_u_type(frame)) {
             case ATC_HDLC_U_FRAME_TYPE_SABM:
                 if (ctx->peer_address > ctx->my_address) {
@@ -218,16 +218,20 @@ static void hdlc_retransmit_go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_
 
     while (ctx->vs != old_vs) {
         atc_hdlc_u8 slot = ctx->tx_window->seq_to_slot[ctx->vs];
-        atc_hdlc_u8 ctrl = hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0);
-        atc_hdlc_transmit_start(ctx, ctx->peer_address, ctrl);
-        if (ctx->tx_window->slot_lens[slot] > 0 && ctx->tx_window->slots != NULL) {
-            atc_hdlc_transmit_data(ctx,
-                ctx->tx_window->slots + (slot * ctx->tx_window->slot_capacity),
-                ctx->tx_window->slot_lens[slot]);
-        }
-        atc_hdlc_transmit_end(ctx);
+
+        atc_hdlc_frame_t frame = {
+            .address = ctx->peer_address,
+            .control = hdlc_create_i_ctrl(ctx->vs, ctx->vr, 0),
+            .information = ctx->tx_window->slots + (slot * ctx->tx_window->slot_capacity),
+            .information_len = ctx->tx_window->slot_lens[slot]
+        };
+
+        hdlc_transmit_frame(ctx, &frame);
+
         HDLC_STAT_INC(ctx, tx_i_frames);
+        
         ctx->vs = (ctx->vs + 1) % HDLC_SEQUENCE_MODULUS;
+        
         if (ctx->tx_window->slots != NULL)
             ctx->next_tx_slot = (ctx->next_tx_slot + 1) % ctx->window_size;
     }
@@ -239,9 +243,7 @@ static void hdlc_state_connected(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t
     atc_hdlc_u8 ctrl   = frame->control;
     atc_hdlc_u8 msg_pf = HDLC_CTRL_PF(ctrl);
 
-    switch (frame->type) {
-
-    case ATC_HDLC_FRAME_I: {
+    if (hdlc_is_i_frame(ctrl)) {
         atc_hdlc_u8 msg_ns = HDLC_CTRL_I_NS(ctrl);
         atc_hdlc_u8 msg_nr = HDLC_CTRL_NR(ctrl);
 
@@ -292,10 +294,8 @@ static void hdlc_state_connected(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t
                 hdlc_t2_stop(ctx);
             }
         }
-        break;
-    }
 
-    case ATC_HDLC_FRAME_S: {
+    } else if (hdlc_is_s_frame(ctrl)) {
         atc_hdlc_u8 s_bits = HDLC_CTRL_S_BITS(ctrl);
         atc_hdlc_u8 msg_nr = HDLC_CTRL_NR(ctrl);
         bool is_cmd = (frame->address == ctx->my_address);
@@ -345,10 +345,8 @@ static void hdlc_state_connected(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t
             if (ctx->va != ctx->vs)
                 hdlc_retransmit_go_back_n(ctx, ctx->va);
         }
-        break;
-    }
 
-    case ATC_HDLC_FRAME_U:
+    } else if (hdlc_is_u_frame(ctrl)) {
         switch (frame_u_type(frame)) {
             case ATC_HDLC_U_FRAME_TYPE_SABM:
                 ATC_HDLC_LOG_DEBUG("S3 RX SABM -> reset + UA");
@@ -388,8 +386,7 @@ static void hdlc_state_connected(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t
 
             case ATC_HDLC_U_FRAME_TYPE_TEST:
                 if (frame->address == ctx->my_address) {
-                    atc_hdlc_u8 resp_ctrl = hdlc_create_u_ctrl(
-                        HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST, msg_pf);
+                    atc_hdlc_u8 resp_ctrl = HDLC_U_CTRL(HDLC_U_TEST, msg_pf);
                     atc_hdlc_transmit_start(ctx, ctx->my_address, resp_ctrl);
                     if (frame->information != NULL && frame->information_len > 0)
                         atc_hdlc_transmit_data(ctx, frame->information,
@@ -417,16 +414,12 @@ static void hdlc_state_connected(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t
                 hdlc_enter_frmr_state(ctx, ctrl, true, false, false, false);
                 break;
         }
-        break;
-
-    default:
-        break;
     }
 }
 
 static void hdlc_state_disconnecting(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame)
 {
-    if (frame->type != ATC_HDLC_FRAME_U) {
+    if (!hdlc_is_u_frame(frame->control)) {
         if (HDLC_CTRL_PF(frame->control))
             hdlc_send_dm(ctx, 1);
         return;
@@ -469,7 +462,7 @@ static void hdlc_state_disconnecting(atc_hdlc_context_t *ctx, const atc_hdlc_fra
 
 static void hdlc_state_frmr_error(atc_hdlc_context_t *ctx, const atc_hdlc_frame_t *frame)
 {
-    if (frame->type != ATC_HDLC_FRAME_U) {
+    if (!hdlc_is_u_frame(frame->control)) {
         return;
     }
 
@@ -488,9 +481,6 @@ static void hdlc_state_frmr_error(atc_hdlc_context_t *ctx, const atc_hdlc_frame_
 }
 
 void hdlc_process_complete_frame(atc_hdlc_context_t *ctx) {
-    atc_hdlc_u8 ctrl = ctx->rx_frame.control;
-    ctx->rx_frame.type = hdlc_resolve_frame_type(ctrl);
-
     switch (ctx->current_state) {
         case ATC_HDLC_STATE_DISCONNECTED:
             hdlc_state_disconnected(ctx, &ctx->rx_frame);

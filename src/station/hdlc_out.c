@@ -23,7 +23,7 @@ atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_context_t *ctx,
 
     atc_hdlc_frame_t frame = {
         .address = address,
-        .control = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_UI, HDLC_U_MODIFIER_HI_UI, 0),
+        .control = HDLC_U_CTRL(HDLC_U_UI, 0),
         .information = data,
         .information_len = len
     };
@@ -50,7 +50,7 @@ atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_context_t *ctx,
 
     atc_hdlc_frame_t frame = {
         .address = address,
-        .control = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_TEST, HDLC_U_MODIFIER_HI_TEST, 1),
+        .control = HDLC_U_CTRL(HDLC_U_TEST, 1),
         .information = data,
         .information_len = len
     };
@@ -121,7 +121,7 @@ void atc_hdlc_transmit_start_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address) {
   if (ctx == NULL) {
     return;
   }
-  atc_hdlc_u8 ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_UI, HDLC_U_MODIFIER_HI_UI, 0);
+  atc_hdlc_u8 ctrl = HDLC_U_CTRL(HDLC_U_UI, 0);
   atc_hdlc_transmit_start(ctx, address, ctrl);
 }
 

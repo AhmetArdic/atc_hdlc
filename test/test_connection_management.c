@@ -158,7 +158,6 @@ void test_connect_complete_on_ua(void) {
     ua_frame.control = 0x73; // UA with F=1
     ua_frame.information = NULL;
     ua_frame.information_len = 0;
-    ua_frame.type = ATC_HDLC_FRAME_U;
 
     uint8_t packed[32];
     uint32_t packed_len = 0;
@@ -278,10 +277,9 @@ void test_frmr_reception(void) {
 
     atc_hdlc_frame_t frmr_frame;
     frmr_frame.address = 0x02; // From Peer
-    frmr_frame.control = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_FRMR, HDLC_U_MODIFIER_HI_FRMR, 0); // F=0
+    frmr_frame.control = HDLC_U_CTRL(HDLC_U_FRMR, 0);
     frmr_frame.information = frmr_payload;
     frmr_frame.information_len = sizeof(frmr_payload);
-    frmr_frame.type = ATC_HDLC_FRAME_U;
 
     uint8_t packed[32];
     uint32_t packed_len = 0;
@@ -310,10 +308,9 @@ void test_mode_rejection(void) {
     
     atc_hdlc_frame_t params_frame;
     params_frame.address = 0x01; // To Me
-    params_frame.control = hdlc_create_u_ctrl(0, 4, 1); // SNRM, P=1, Hi=4, Lo=0
+    params_frame.control = HDLC_U_CTRL(HDLC_U_SNRM, 1);
     params_frame.information = NULL;
     params_frame.information_len = 0;
-    params_frame.type = ATC_HDLC_FRAME_U;
 
     uint8_t packed[32];
     uint32_t packed_len = 0;
@@ -350,20 +347,19 @@ void test_extended_mode_rejection(void) {
     setup_context();
 
     static const struct {
-        atc_hdlc_u8 m_lo, m_hi;
+        atc_hdlc_u8 ctrl;
         const char *name;
     } cases[] = {
-        { HDLC_U_MODIFIER_LO_SABME, HDLC_U_MODIFIER_HI_SABME, "SABME" },
-        { HDLC_U_MODIFIER_LO_SNRME, HDLC_U_MODIFIER_HI_SNRME, "SNRME" },
-        { HDLC_U_MODIFIER_LO_SARME, HDLC_U_MODIFIER_HI_SARME, "SARME" },
+        { HDLC_U_CTRL(HDLC_U_SABME, 1), "SABME" },
+        { HDLC_U_CTRL(HDLC_U_SNRME, 1), "SNRME" },
+        { HDLC_U_CTRL(HDLC_U_SARME, 1), "SARME" },
     };
 
     for (int i = 0; i < 3; i++) {
         atc_hdlc_frame_t frame_in = {
             .address = 0x01,
-            .control = hdlc_create_u_ctrl(cases[i].m_lo, cases[i].m_hi, 1),
-            .information = NULL, .information_len = 0,
-            .type = ATC_HDLC_FRAME_U
+            .control = cases[i].ctrl,
+            .information = NULL, .information_len = 0
         };
         atc_hdlc_u8 packed[32]; atc_hdlc_u32 packed_len = 0;
         atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
@@ -544,8 +540,7 @@ void test_peer_disconnect(void) {
     ctx.peer_address  = 0x02;
 
     /* Build DISC(P=1) addressed to me (0x01) */
-    atc_hdlc_u8 disc_ctrl = hdlc_create_u_ctrl(
-        HDLC_U_MODIFIER_LO_DISC, HDLC_U_MODIFIER_HI_DISC, 1);
+    atc_hdlc_u8 disc_ctrl = HDLC_U_CTRL(HDLC_U_DISC, 1);
     atc_hdlc_frame_t disc_frame = {
         .address = 0x01, .control = disc_ctrl,
         .information = NULL, .information_len = 0 };
@@ -600,8 +595,7 @@ void test_event_callbacks(void) {
         test_fail("Event Callbacks", "on_event called wrong number of times");
 
     /* Feed UA → CONNECT_ACCEPTED */
-    atc_hdlc_u8 ua_ctrl = hdlc_create_u_ctrl(
-        HDLC_U_MODIFIER_LO_UA, HDLC_U_MODIFIER_HI_UA, 1);
+    atc_hdlc_u8 ua_ctrl = HDLC_U_CTRL(HDLC_U_UA, 1);
     atc_hdlc_frame_t ua = { .address = 0x02, .control = ua_ctrl,
                              .information = NULL, .information_len = 0 };
     atc_hdlc_u8 ua_raw[32]; atc_hdlc_u32 ua_len = 0;
@@ -654,8 +648,7 @@ void test_t1_timer_callbacks(void) {
         test_fail("T1 Callbacks", "No SABM retransmitted after T1 expiry");
 
     /* Feed UA → t1_stop */
-    atc_hdlc_u8 ua_ctrl = hdlc_create_u_ctrl(
-        HDLC_U_MODIFIER_LO_UA, HDLC_U_MODIFIER_HI_UA, 1);
+    atc_hdlc_u8 ua_ctrl = HDLC_U_CTRL(HDLC_U_UA, 1);
     atc_hdlc_frame_t ua = { .address = 0x02, .control = ua_ctrl,
                              .information = NULL, .information_len = 0 };
     atc_hdlc_u8 ua_raw[32]; atc_hdlc_u32 ua_len = 0;
@@ -750,8 +743,7 @@ void test_frmr_error_lockdown(void) {
 
     /* SABM from peer while in FRMR_ERROR: peer re-establishes → CONNECTED */
     ctx.current_state = ATC_HDLC_STATE_FRMR_ERROR;
-    atc_hdlc_u8 sabm_ctrl = hdlc_create_u_ctrl(
-        HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1);
+    atc_hdlc_u8 sabm_ctrl = HDLC_U_CTRL(HDLC_U_SABM, 1);
     atc_hdlc_frame_t sabm = { .address = 0x01, .control = sabm_ctrl,
                                 .information = NULL, .information_len = 0 };
     atc_hdlc_u8 sabm_raw[32]; atc_hdlc_u32 sabm_len = 0;
@@ -783,7 +775,7 @@ void test_dm_on_connecting(void) {
         test_fail("DM on Connecting", "Setup failed — not CONNECTING");
 
     /* Peer sends DM(F=1) to our address */
-    atc_hdlc_u8 dm_ctrl = hdlc_create_u_ctrl(HDLC_U_MODIFIER_LO_DM, HDLC_U_MODIFIER_HI_DM, 1);
+    atc_hdlc_u8 dm_ctrl = HDLC_U_CTRL(HDLC_U_DM, 1);
     atc_hdlc_frame_t dm = { .address = 0x01, .control = dm_ctrl,
                               .information = NULL, .information_len = 0 };
     atc_hdlc_u8 dm_raw[32]; atc_hdlc_u32 dm_len = 0;

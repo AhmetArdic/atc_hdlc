@@ -424,7 +424,7 @@ void test_control_field_i(void) {
   atc_hdlc_frame_t parsed_frame;
   atc_hdlc_u8 info_buf[256];
   if (atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len, &parsed_frame, info_buf, sizeof(info_buf))) {
-      if (parsed_frame.type == ATC_HDLC_FRAME_I &&
+      if (hdlc_resolve_frame_type(parsed_frame.control) == ATC_HDLC_FRAME_I &&
           HDLC_CTRL_I_NS(parsed_frame.control) == 3 &&
           HDLC_CTRL_PF(parsed_frame.control) == 1 &&
           HDLC_CTRL_NR(parsed_frame.control) == 5) {
@@ -453,7 +453,7 @@ void test_control_field_s(void) {
   atc_hdlc_frame_t parsed_frame;
   atc_hdlc_u8 info_buf[256];
   if (atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len, &parsed_frame, info_buf, sizeof(info_buf))) {
-    if (parsed_frame.type == ATC_HDLC_FRAME_S &&
+    if (hdlc_resolve_frame_type(parsed_frame.control) == ATC_HDLC_FRAME_S &&
         HDLC_CTRL_S_BITS(parsed_frame.control) == 0x02 && // REJ
         HDLC_CTRL_NR(parsed_frame.control) == 7 &&
         HDLC_CTRL_PF(parsed_frame.control) == 0 &&
@@ -541,10 +541,9 @@ void test_test_frame(void) {
     // Create TEST command addressed to ME
     atc_hdlc_frame_t test_cmd = {
         .address = 0x01,
-        .control = hdlc_create_u_ctrl(0, 7, 1), // TEST P=1
+        .control = HDLC_U_CTRL(HDLC_U_TEST, 1),
         .information = (atc_hdlc_u8*)"PING",
-        .information_len = 4,
-        .type = ATC_HDLC_FRAME_U
+        .information_len = 4
     };
     
     // We need to pack it first
@@ -579,30 +578,29 @@ void test_test_frame(void) {
 void test_u_frame_sub_type(void) {
     printf("TEST: U-Frame Sub-Type Decoder\n");
 
-    struct { atc_hdlc_u8 m_lo; atc_hdlc_u8 m_hi; atc_hdlc_u_frame_sub_type_t expected; const char *name; } cases[] = {
-        { HDLC_U_MODIFIER_LO_SABM,  HDLC_U_MODIFIER_HI_SABM,  ATC_HDLC_U_FRAME_TYPE_SABM,  "SABM"  },
-        { HDLC_U_MODIFIER_LO_SNRM,  HDLC_U_MODIFIER_HI_SNRM,  ATC_HDLC_U_FRAME_TYPE_SNRM,  "SNRM"  },
-        { HDLC_U_MODIFIER_LO_SABME, HDLC_U_MODIFIER_HI_SABME, ATC_HDLC_U_FRAME_TYPE_SABME, "SABME" },
-        { HDLC_U_MODIFIER_LO_SNRME, HDLC_U_MODIFIER_HI_SNRME, ATC_HDLC_U_FRAME_TYPE_SNRME, "SNRME" },
-        { HDLC_U_MODIFIER_LO_SARME, HDLC_U_MODIFIER_HI_SARME, ATC_HDLC_U_FRAME_TYPE_SARME, "SARME" },
-        { HDLC_U_MODIFIER_LO_DISC,  HDLC_U_MODIFIER_HI_DISC,  ATC_HDLC_U_FRAME_TYPE_DISC,  "DISC"  },
-        { HDLC_U_MODIFIER_LO_UA,    HDLC_U_MODIFIER_HI_UA,    ATC_HDLC_U_FRAME_TYPE_UA,    "UA"    },
-        { HDLC_U_MODIFIER_LO_DM,    HDLC_U_MODIFIER_HI_DM,    ATC_HDLC_U_FRAME_TYPE_DM,    "DM"    },
-        { HDLC_U_MODIFIER_LO_FRMR,  HDLC_U_MODIFIER_HI_FRMR,  ATC_HDLC_U_FRAME_TYPE_FRMR,  "FRMR"  },
-        { HDLC_U_MODIFIER_LO_UI,    HDLC_U_MODIFIER_HI_UI,    ATC_HDLC_U_FRAME_TYPE_UI,    "UI"    },
-        { HDLC_U_MODIFIER_LO_TEST,  HDLC_U_MODIFIER_HI_TEST,  ATC_HDLC_U_FRAME_TYPE_TEST,  "TEST"  },
+    struct { atc_hdlc_u8 ctrl; atc_hdlc_u_frame_sub_type_t expected; const char *name; } cases[] = {
+        { HDLC_U_SABM,  ATC_HDLC_U_FRAME_TYPE_SABM,  "SABM"  },
+        { HDLC_U_SNRM,  ATC_HDLC_U_FRAME_TYPE_SNRM,  "SNRM"  },
+        { HDLC_U_SABME, ATC_HDLC_U_FRAME_TYPE_SABME, "SABME" },
+        { HDLC_U_SNRME, ATC_HDLC_U_FRAME_TYPE_SNRME, "SNRME" },
+        { HDLC_U_SARME, ATC_HDLC_U_FRAME_TYPE_SARME, "SARME" },
+        { HDLC_U_DISC,  ATC_HDLC_U_FRAME_TYPE_DISC,  "DISC"  },
+        { HDLC_U_UA,    ATC_HDLC_U_FRAME_TYPE_UA,    "UA"    },
+        { HDLC_U_DM,    ATC_HDLC_U_FRAME_TYPE_DM,    "DM"    },
+        { HDLC_U_FRMR,  ATC_HDLC_U_FRAME_TYPE_FRMR,  "FRMR"  },
+        { HDLC_U_UI,    ATC_HDLC_U_FRAME_TYPE_UI,    "UI"    },
+        { HDLC_U_TEST,  ATC_HDLC_U_FRAME_TYPE_TEST,  "TEST"  },
     };
     int n = (int)(sizeof(cases) / sizeof(cases[0]));
     for (int i = 0; i < n; i++) {
-        atc_hdlc_u8 ctrl = hdlc_create_u_ctrl(cases[i].m_lo, cases[i].m_hi, 0);
-        atc_hdlc_u_frame_sub_type_t got = atc_hdlc_get_u_frame_sub_type(ctrl);
+        atc_hdlc_u_frame_sub_type_t got = atc_hdlc_get_u_frame_sub_type(cases[i].ctrl);
         if (got != cases[i].expected) {
             char msg[64];
             sprintf(msg, "%s: expected %d got %d", cases[i].name, cases[i].expected, (int)got);
             test_fail("U-Frame Sub-Type", msg);
         }
         printf("   %s -> ctrl=0x%02X sub_type=%d %sOK%s\n",
-               cases[i].name, ctrl, (int)got, COL_GREEN, COL_RESET);
+               cases[i].name, cases[i].ctrl, (int)got, COL_GREEN, COL_RESET);
     }
     test_pass("U-Frame Sub-Type Decoder");
 }

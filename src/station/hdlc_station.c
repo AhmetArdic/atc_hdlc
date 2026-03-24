@@ -86,8 +86,7 @@ atc_hdlc_error_t atc_hdlc_link_setup(atc_hdlc_context_t *ctx,
     ctx->peer_address = peer_addr;
 
     ATC_HDLC_LOG_DEBUG("tx: Sending SABM to peer 0x%02X", ctx->peer_address);
-    hdlc_send_u_frame(ctx, ctx->peer_address,
-                      HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1);
+    hdlc_send_u_frame(ctx, ctx->peer_address, HDLC_U_CTRL(HDLC_U_SABM, 1));
 
     hdlc_t1_start(ctx);
 
@@ -104,8 +103,7 @@ atc_hdlc_error_t atc_hdlc_disconnect(atc_hdlc_context_t *ctx) {
     }
 
     ATC_HDLC_LOG_DEBUG("tx: Sending DISC to peer 0x%02X", ctx->peer_address);
-    hdlc_send_u_frame(ctx, ctx->peer_address,
-                      HDLC_U_MODIFIER_LO_DISC, HDLC_U_MODIFIER_HI_DISC, 1);
+    hdlc_send_u_frame(ctx, ctx->peer_address, HDLC_U_CTRL(HDLC_U_DISC, 1));
 
     hdlc_t1_start(ctx);
 
@@ -122,8 +120,7 @@ atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_context_t *ctx) {
 
     hdlc_fire_event(ctx, ATC_HDLC_EVENT_RESET);
 
-    hdlc_send_u_frame(ctx, ctx->peer_address,
-                      HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1);
+    hdlc_send_u_frame(ctx, ctx->peer_address, HDLC_U_CTRL(HDLC_U_SABM, 1));
     hdlc_t1_start(ctx);
     ctx->current_state = ATC_HDLC_STATE_CONNECTING;
 
@@ -176,16 +173,14 @@ void atc_hdlc_t1_expired(atc_hdlc_context_t *ctx) {
         case ATC_HDLC_STATE_CONNECTING:
             ATC_HDLC_LOG_WARN("tx: T1 expired in CONNECTING, retry SABM (%u/%u)",
                               ctx->retry_count, max_retries);
-            hdlc_send_u_frame(ctx, ctx->peer_address,
-                              HDLC_U_MODIFIER_LO_SABM, HDLC_U_MODIFIER_HI_SABM, 1);
+            hdlc_send_u_frame(ctx, ctx->peer_address, HDLC_U_CTRL(HDLC_U_SABM, 1));
             hdlc_t1_start(ctx);
             break;
 
         case ATC_HDLC_STATE_DISCONNECTING:
             ATC_HDLC_LOG_WARN("tx: T1 expired in DISCONNECTING, retry DISC (%u/%u)",
                               ctx->retry_count, max_retries);
-            hdlc_send_u_frame(ctx, ctx->peer_address,
-                              HDLC_U_MODIFIER_LO_DISC, HDLC_U_MODIFIER_HI_DISC, 1);
+            hdlc_send_u_frame(ctx, ctx->peer_address, HDLC_U_CTRL(HDLC_U_DISC, 1));
             hdlc_t1_start(ctx);
             break;
 

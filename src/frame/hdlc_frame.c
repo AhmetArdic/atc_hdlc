@@ -158,8 +158,6 @@ atc_hdlc_bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer, atc_hdlc_u32 buff
     frame->information_len = 0;
   }
 
-  frame->type = hdlc_resolve_frame_type(frame->control);
-
   return true;
 }
 
@@ -177,12 +175,6 @@ atc_hdlc_u8 hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 p
          ((nr     & HDLC_CTRL_NR_MASK)     << HDLC_CTRL_NR_SHIFT);
 }
 
-atc_hdlc_u8 hdlc_create_u_ctrl(atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf) {
-  return HDLC_FRAME_TYPE_VAL_U |
-         ((m_lo & HDLC_CTRL_U_M_LO_MASK) << HDLC_CTRL_U_M_LO_SHIFT) |
-         ((pf   & HDLC_CTRL_PF_MASK)     << HDLC_CTRL_PF_SHIFT)      |
-          ((m_hi & HDLC_CTRL_U_M_HI_MASK) << HDLC_CTRL_U_M_HI_SHIFT);
-}
 
 atc_hdlc_s_frame_sub_type_t atc_hdlc_get_s_frame_sub_type(atc_hdlc_u8 control) {
     if (hdlc_resolve_frame_type(control) == ATC_HDLC_FRAME_S) {
@@ -197,24 +189,20 @@ atc_hdlc_s_frame_sub_type_t atc_hdlc_get_s_frame_sub_type(atc_hdlc_u8 control) {
 }
 
 atc_hdlc_u_frame_sub_type_t atc_hdlc_get_u_frame_sub_type(atc_hdlc_u8 control) {
-    if (hdlc_resolve_frame_type(control) == ATC_HDLC_FRAME_U) {
-        atc_hdlc_u8 m_hi = HDLC_CTRL_U_M_HI(control);
-        atc_hdlc_u8 m_lo = HDLC_CTRL_U_M_LO(control);
-
-        if (m_hi == HDLC_U_MODIFIER_HI_SABM  && m_lo == HDLC_U_MODIFIER_LO_SABM)  return ATC_HDLC_U_FRAME_TYPE_SABM;
-        if (m_hi == HDLC_U_MODIFIER_HI_SNRM  && m_lo == HDLC_U_MODIFIER_LO_SNRM)  return ATC_HDLC_U_FRAME_TYPE_SNRM;
-        if (m_hi == HDLC_U_MODIFIER_HI_SABME && m_lo == HDLC_U_MODIFIER_LO_SABME) return ATC_HDLC_U_FRAME_TYPE_SABME;
-        if (m_hi == HDLC_U_MODIFIER_HI_SNRME && m_lo == HDLC_U_MODIFIER_LO_SNRME) return ATC_HDLC_U_FRAME_TYPE_SNRME;
-        if (m_hi == HDLC_U_MODIFIER_HI_SARME && m_lo == HDLC_U_MODIFIER_LO_SARME) return ATC_HDLC_U_FRAME_TYPE_SARME;
-        if (m_hi == HDLC_U_MODIFIER_HI_DISC  && m_lo == HDLC_U_MODIFIER_LO_DISC)  return ATC_HDLC_U_FRAME_TYPE_DISC;
-        if (m_hi == HDLC_U_MODIFIER_HI_UA    && m_lo == HDLC_U_MODIFIER_LO_UA)    return ATC_HDLC_U_FRAME_TYPE_UA;
-        if (m_hi == HDLC_U_MODIFIER_HI_FRMR  && m_lo == HDLC_U_MODIFIER_LO_FRMR)  return ATC_HDLC_U_FRAME_TYPE_FRMR;
-        if (m_hi == HDLC_U_MODIFIER_HI_UI    && m_lo == HDLC_U_MODIFIER_LO_UI)    return ATC_HDLC_U_FRAME_TYPE_UI;
-        if (m_hi == HDLC_U_MODIFIER_HI_TEST  && m_lo == HDLC_U_MODIFIER_LO_TEST)  return ATC_HDLC_U_FRAME_TYPE_TEST;
-
-        if (m_hi == HDLC_U_MODIFIER_HI_DM && m_lo == HDLC_U_MODIFIER_LO_DM) {
-            return ATC_HDLC_U_FRAME_TYPE_DM;
-        }
+    if (!hdlc_is_u_frame(control))
+        return ATC_HDLC_U_FRAME_TYPE_UNKNOWN;
+    switch (control & ~HDLC_PF_BIT) {
+    case HDLC_U_SABM:  return ATC_HDLC_U_FRAME_TYPE_SABM;
+    case HDLC_U_DISC:  return ATC_HDLC_U_FRAME_TYPE_DISC;
+    case HDLC_U_UA:    return ATC_HDLC_U_FRAME_TYPE_UA;
+    case HDLC_U_DM:    return ATC_HDLC_U_FRAME_TYPE_DM;
+    case HDLC_U_FRMR:  return ATC_HDLC_U_FRAME_TYPE_FRMR;
+    case HDLC_U_UI:    return ATC_HDLC_U_FRAME_TYPE_UI;
+    case HDLC_U_TEST:  return ATC_HDLC_U_FRAME_TYPE_TEST;
+    case HDLC_U_SNRM:  return ATC_HDLC_U_FRAME_TYPE_SNRM;
+    case HDLC_U_SABME: return ATC_HDLC_U_FRAME_TYPE_SABME;
+    case HDLC_U_SNRME: return ATC_HDLC_U_FRAME_TYPE_SNRME;
+    case HDLC_U_SARME: return ATC_HDLC_U_FRAME_TYPE_SARME;
+    default:           return ATC_HDLC_U_FRAME_TYPE_UNKNOWN;
     }
-    return ATC_HDLC_U_FRAME_TYPE_UNKNOWN;
 }

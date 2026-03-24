@@ -84,41 +84,22 @@
 #define HDLC_S_RNR  1
 #define HDLC_S_REJ  2
 
-#define HDLC_U_MODIFIER_LO_SABM 3
-#define HDLC_U_MODIFIER_HI_SABM 1
+/* U-frame command/response codes (ctrl & ~HDLC_PF_BIT strips the P/F bit) */
+#define HDLC_U_SABM   0x2F
+#define HDLC_U_DISC   0x43
+#define HDLC_U_UA     0x63
+#define HDLC_U_DM     0x0F
+#define HDLC_U_FRMR   0x87
+#define HDLC_U_UI     0x03
+#define HDLC_U_TEST   0xE3
+#define HDLC_U_SNRM   0x83
+#define HDLC_U_SABME  0x6F
+#define HDLC_U_SNRME  0xCF
+#define HDLC_U_SARME  0x4F
+#define HDLC_PF_BIT   0x10
 
-#define HDLC_U_MODIFIER_LO_SNRM 0
-#define HDLC_U_MODIFIER_HI_SNRM 4
-
-#define HDLC_U_MODIFIER_LO_SARM 3
-#define HDLC_U_MODIFIER_HI_SARM 0
-
-#define HDLC_U_MODIFIER_LO_SABME 3
-#define HDLC_U_MODIFIER_HI_SABME 3
-
-#define HDLC_U_MODIFIER_LO_SNRME 3
-#define HDLC_U_MODIFIER_HI_SNRME 6
-
-#define HDLC_U_MODIFIER_LO_SARME 3
-#define HDLC_U_MODIFIER_HI_SARME 2
-
-#define HDLC_U_MODIFIER_LO_DISC 0
-#define HDLC_U_MODIFIER_HI_DISC 2
-
-#define HDLC_U_MODIFIER_LO_UA   0
-#define HDLC_U_MODIFIER_HI_UA   3
-
-#define HDLC_U_MODIFIER_LO_DM   3
-#define HDLC_U_MODIFIER_HI_DM   0
-
-#define HDLC_U_MODIFIER_LO_FRMR 1
-#define HDLC_U_MODIFIER_HI_FRMR 4
-
-#define HDLC_U_MODIFIER_LO_UI   0
-#define HDLC_U_MODIFIER_HI_UI   0
-
-#define HDLC_U_MODIFIER_LO_TEST 0
-#define HDLC_U_MODIFIER_HI_TEST 7
+/* Encode a U-frame control byte from a command/response code and P/F bit */
+#define HDLC_U_CTRL(cmd, pf)  ((atc_hdlc_u8)((cmd) | ((pf) ? HDLC_PF_BIT : 0)))
 
 #define HDLC_FRMR_INFO_MIN_LEN  3
 
@@ -181,7 +162,6 @@ void hdlc_reset_connection_state(atc_hdlc_context_t *ctx);
 
 atc_hdlc_u8 hdlc_create_i_ctrl(atc_hdlc_u8 ns, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
 atc_hdlc_u8 hdlc_create_s_ctrl(atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf);
-atc_hdlc_u8 hdlc_create_u_ctrl(atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf);
 
 void hdlc_send_frmr(atc_hdlc_context_t *ctx,
                     atc_hdlc_u8 rejected_ctrl,
@@ -254,18 +234,29 @@ static inline atc_hdlc_frame_type_t hdlc_resolve_frame_type(atc_hdlc_u8 ctrl) {
     return ATC_HDLC_FRAME_INVALID;
 }
 
-static inline void hdlc_send_u_frame(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 m_lo, atc_hdlc_u8 m_hi, atc_hdlc_u8 pf) {
-    atc_hdlc_u8 ctrl = hdlc_create_u_ctrl(m_lo, m_hi, pf);
+static inline int hdlc_is_i_frame(atc_hdlc_u8 ctrl) {
+    return (ctrl & HDLC_FRAME_TYPE_MASK_I) == HDLC_FRAME_TYPE_VAL_I;
+}
+
+static inline int hdlc_is_s_frame(atc_hdlc_u8 ctrl) {
+    return (ctrl & HDLC_FRAME_TYPE_MASK_S) == HDLC_FRAME_TYPE_VAL_S;
+}
+
+static inline int hdlc_is_u_frame(atc_hdlc_u8 ctrl) {
+    return (ctrl & HDLC_FRAME_TYPE_MASK_U) == HDLC_FRAME_TYPE_VAL_U;
+}
+
+static inline void hdlc_send_u_frame(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl) {
     atc_hdlc_transmit_start(ctx, address, ctrl);
     atc_hdlc_transmit_end(ctx);
 }
 
 static inline void hdlc_send_ua(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
-    hdlc_send_u_frame(ctx, ctx->my_address, HDLC_U_MODIFIER_LO_UA, HDLC_U_MODIFIER_HI_UA, pf);
+    hdlc_send_u_frame(ctx, ctx->my_address, HDLC_U_CTRL(HDLC_U_UA, pf));
 }
 
 static inline void hdlc_send_dm(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
-    hdlc_send_u_frame(ctx, ctx->my_address, HDLC_U_MODIFIER_LO_DM, HDLC_U_MODIFIER_HI_DM, pf);
+    hdlc_send_u_frame(ctx, ctx->my_address, HDLC_U_CTRL(HDLC_U_DM, pf));
 }
 
 static inline void hdlc_send_s_frame(atc_hdlc_context_t *ctx, atc_hdlc_u8 address, atc_hdlc_u8 s_bits, atc_hdlc_u8 nr, atc_hdlc_u8 pf) {

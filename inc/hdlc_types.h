@@ -56,11 +56,10 @@ typedef enum {
 } atc_hdlc_u_frame_sub_type_t;
 
 typedef struct {
-    const atc_hdlc_u8 *information;      /**< Pointer to Information Field (Payload). */
-    atc_hdlc_frame_type_t type;    /**< Resolved Frame Type (I/S/U). */
-    atc_hdlc_u16 information_len;  /**< Length of valid data in information. */
-    atc_hdlc_u8 address;           /**< Address Field. */
-    atc_hdlc_u8 control;           /**< Control Field. */
+    const atc_hdlc_u8 *information; /**< Pointer to Information Field (Payload). */
+    atc_hdlc_u16 information_len;   /**< Length of valid data in information. */
+    atc_hdlc_u8 address;            /**< Address Field. */
+    atc_hdlc_u8 control;            /**< Control Field. */
 } atc_hdlc_frame_t;
 
 typedef enum {
