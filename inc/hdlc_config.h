@@ -44,16 +44,6 @@ extern "C" {
 #define ATC_HDLC_ENABLE_STATS 1
 #endif
 
-/** @brief Enable runtime assertions. */
-#ifndef ATC_HDLC_ENABLE_ASSERT
-#define ATC_HDLC_ENABLE_ASSERT 0
-#endif
-
-/** @brief Use lookup table for CRC calculation. */
-#ifndef ATC_HDLC_FCS_USE_TABLE
-#define ATC_HDLC_FCS_USE_TABLE 1
-#endif
-
 /** @brief Enable debug logging. */
 #ifndef ATC_HDLC_ENABLE_DEBUG_LOGS
 #define ATC_HDLC_ENABLE_DEBUG_LOGS 0
@@ -62,8 +52,9 @@ extern "C" {
 /** @brief Log sink. Override before including this header to redirect logs
  *  without pulling in stdio.h (e.g. on bare-metal targets). */
 #ifndef ATC_HDLC_LOG_IMPL
-#  include <stdio.h>
-#  define ATC_HDLC_LOG_IMPL(level, fmt, ...) printf("[HDLC %s] " fmt "\n", level, ##__VA_ARGS__)
+#include <stdio.h>
+#define ATC_HDLC_LOG_IMPL(level, fmt, ...)                                     \
+  printf("[HDLC %s] " fmt "\n", level, ##__VA_ARGS__)
 #endif
 
 #ifdef __cplusplus
