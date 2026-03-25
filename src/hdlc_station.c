@@ -7,8 +7,8 @@
  * (at your option) any later version.
  */
 
-#include "../../inc/hdlc.h"
-#include "../hdlc_private.h"
+#include "../inc/hdlc.h"
+#include "hdlc_private.h"
 #include <string.h>
 
 static void hdlc_fire_event(atc_hdlc_context_t *ctx, atc_hdlc_event_t event);

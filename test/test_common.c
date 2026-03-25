@@ -1,5 +1,5 @@
 #include "test_common.h"
-#include "../src/frame/hdlc_crc.h"
+#include "../src/hdlc_crc.h"
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>

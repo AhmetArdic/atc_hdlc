@@ -11,7 +11,7 @@
 #define ATC_HDLC_PRIVATE_H
 
 #include "../inc/hdlc_types.h"
-#include "frame/hdlc_crc.h"
+#include "hdlc_crc.h"
 
 #if ATC_HDLC_ENABLE_DEBUG_LOGS
 #define ATC_HDLC_LOG_DEBUG(fmt, ...)                                           \

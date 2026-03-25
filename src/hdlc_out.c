@@ -7,8 +7,8 @@
  * (at your option) any later version.
  */
 
-#include "../../inc/hdlc.h"
-#include "../hdlc_private.h"
+#include "../inc/hdlc.h"
+#include "hdlc_private.h"
 #include <string.h>
 
 atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_context_t *ctx,
