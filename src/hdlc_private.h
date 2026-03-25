@@ -118,32 +118,32 @@ void dispatch_frame(atc_hdlc_context_t *ctx,
 
 /* --- Timer helpers --- */
 static inline void t1_start(atc_hdlc_context_t *ctx) {
-  if (ctx->platform && ctx->platform->t1_start && ctx->config)
+  if (ctx->platform->t1_start && ctx->config)
     ctx->platform->t1_start(ctx->config->t1_ms, ctx->platform->user_ctx);
   ctx->t1_active = true;
 }
 
 static inline void t1_stop(atc_hdlc_context_t *ctx) {
-  if (ctx->t1_active && ctx->platform && ctx->platform->t1_stop)
+  if (ctx->t1_active && ctx->platform->t1_stop)
     ctx->platform->t1_stop(ctx->platform->user_ctx);
   ctx->t1_active = false;
 }
 
 static inline void t2_start(atc_hdlc_context_t *ctx) {
-  if (ctx->platform && ctx->platform->t2_start && ctx->config)
+  if (ctx->platform->t2_start && ctx->config)
     ctx->platform->t2_start(ctx->config->t2_ms, ctx->platform->user_ctx);
   ctx->t2_active = true;
 }
 
 static inline void t2_stop(atc_hdlc_context_t *ctx) {
-  if (ctx->t2_active && ctx->platform && ctx->platform->t2_stop)
+  if (ctx->t2_active && ctx->platform->t2_stop)
     ctx->platform->t2_stop(ctx->platform->user_ctx);
   ctx->t2_active = false;
 }
 
 /* --- TX byte-level primitives --- */
 static inline void put_raw(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush) {
-  if (ctx->platform && ctx->platform->on_send)
+  if (ctx->platform->on_send)
     ctx->platform->on_send(byte, flush, ctx->platform->user_ctx);
 }
 

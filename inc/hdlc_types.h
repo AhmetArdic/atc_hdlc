@@ -164,6 +164,7 @@ typedef struct {
     const atc_hdlc_u8 *test_pattern; /**< Pointer to the outgoing test payload (user-owned). */
     atc_hdlc_test_result_t test_result;/**< Result of the most recent TEST round-trip. */
     atc_hdlc_u32 rx_index;         /**< Current write index into rx_buf->buffer. */
+    atc_hdlc_u16 rx_crc;           /**< Running FCS accumulator for the RX path (fed with 2-byte delay to exclude FCS bytes). */
     volatile atc_hdlc_state_t current_state; /**< Current station state. */
     atc_hdlc_station_role_t role;            /**< Station role (set at init; always COMBINED for ABM). */
     atc_hdlc_u16 tx_crc;            /**< Running FCS accumulator for the streaming TX path. */
@@ -176,7 +177,7 @@ typedef struct {
     atc_hdlc_u8 window_size;  /**< TX window size cached from config (1–7). */
     atc_hdlc_u8 next_tx_slot; /**< Index of the next slot to allocate in tx_window. */
     atc_hdlc_u8 retry_count;  /**< Current retransmission attempt count. */
-    atc_hdlc_u8 rx_state;     /**< RX byte-parser state (hdlc_rx_state_t). */
+    atc_hdlc_u8 rx_state;     /**< RX byte-parser state (rx_state_t). */
     atc_hdlc_u8 frmr_ctrl;  /**< Control byte of the rejected frame (for FRMR retransmission). */
     atc_hdlc_u8 frmr_flags; /**< FRMR reason bits W/X/Y/Z (for FRMR retransmission). */
     atc_hdlc_bool rej_exception; /**< REJ exception: suppresses duplicate REJ transmissions. */
