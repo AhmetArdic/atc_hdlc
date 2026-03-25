@@ -12,7 +12,7 @@ This library implements a highly capable subset of the ISO/IEC 13239 HDLC standa
 - **Reliable Data Transfer (Go-Back-N)**: Sliding window protocol (Modulo-8) with up to 7 outstanding I-frames. Uses `REJ` frames for swift error recovery.
 - **Piggybacked & Cumulative ACKs**: Information (I) frames carry receive sequence numbers `N(R)`. `RR` frames are only sent when delayed ACK (T2) times out, reducing overhead.
 - **Connectionless Data**: Unnumbered Information (`UI`) frames for broadcast or unacknowledged low-latency messages.
-- **Link Verification**: Automatic `TEST` frame responding with optional payload echoing to measure link health dynamically.
+- **Link Verification**: Automatic `TEST` frame responding with optional payload echoing.
 - **Collision Avoidance**: SABM contention resolution delay via address prioritization if both stations try to connect simultaneously.
 - **Flow Control**: RNR (Receive Not Ready) support with `atc_hdlc_set_local_busy()`.
 - **Frame Reject (FRMR) Handling**: Full generation and parsing of FRMR payload to gracefully report irrecoverable protocol violations.
@@ -32,26 +32,21 @@ This library implements a highly capable subset of the ISO/IEC 13239 HDLC standa
 ├── inc/
 │   ├── hdlc.h              # Public API (atc_hdlc_* functions)
 │   ├── hdlc_types.h        # Types, callbacks, error codes, context
-│   └── hdlc_config.h      # Configuration defaults (overridable via #define)
+│   └── hdlc_config.h       # Configuration defaults (overridable via #define)
 ├── src/
 │   ├── CMakeLists.txt
 │   ├── hdlc_private.h      # Internal constants, bit-field accessors, RX state machine
-│   ├── frame/
-│   │   ├── hdlc_crc.c      # CRC-16-CCITT LUT and update function
-│   │   ├── hdlc_crc.h
-│   │   └── hdlc_frame.c    # Stateless frame pack/unpack
-│   └── station/
-│       ├── hdlc_station.c  # Init, link setup/disconnect, state transitions
-│       ├── hdlc_in.c       # Byte-by-byte RX parser (byte-stuffing removal, CRC)
-│       └── hdlc_out.c      # TX streaming engine (byte-stuffing, frame construction)
+│   ├── hdlc_crc.c          # CRC-16-CCITT LUT and update function
+│   ├── hdlc_crc.h
+│   ├── hdlc_station.c      # Init, link setup/disconnect, state transitions
+│   ├── hdlc_in.c           # Byte-by-byte RX parser (byte-stuffing removal, CRC)
+│   └── hdlc_out.c          # TX streaming engine (byte-stuffing, frame construction)
 ├── test/
 │   ├── test_hdlc.c
 │   ├── test_reliable_transmission.c
 │   ├── test_connection_management.c
 │   ├── test_virtual_com.c
 │   ├── test_physical_target.c
-│   ├── test_virtual_pipe.c
-│   ├── test_virtual_pipe.h
 │   ├── test_common.c
 │   └── test_common.h
 ├── CMakeLists.txt
@@ -65,11 +60,10 @@ Three layers:
 **Public API** (`inc/`): `hdlc.h`, `hdlc_types.h`, `hdlc_config.h`.
 
 **Core Implementation** (`src/`):
-- `src/frame/` — Stateless frame pack/unpack and CRC-16 lookup table.
-- `src/station/` — Stateful protocol engine:
-  - `hdlc_station.c` — Init, link setup/disconnect, state transitions
-  - `hdlc_in.c` — RX parser (byte-stuffing removal, CRC validation, reassembly)
-  - `hdlc_out.c` — TX streaming engine (byte-stuffing, frame construction, flush)
+- `hdlc_crc.c` — CRC-16-CCITT lookup table.
+- `hdlc_station.c` — Init, link setup/disconnect, state transitions.
+- `hdlc_in.c` — RX parser (byte-stuffing removal, CRC validation, reassembly).
+- `hdlc_out.c` — TX streaming engine (byte-stuffing, frame construction, flush).
 
 ### Data Flow
 
@@ -125,9 +119,6 @@ void my_on_event(atc_hdlc_event_t event, void *ctx) {
             break;
         case ATC_HDLC_EVENT_WINDOW_OPEN:
             // Can send more I-frames
-            break;
-        case ATC_HDLC_EVENT_TEST_RESULT:
-            // Check test_result field
             break;
     }
 }
@@ -252,28 +243,6 @@ void T2_TIMER_IRQ(void) {  // Delayed ACK timeout
 }
 ```
 
-### 7. Stateless Mode
-
-```c
-// Pack frame to buffer
-atc_hdlc_frame_t frame = {
-    .address = 0x01,
-    .control = 0x00,
-    .information = (atc_hdlc_u8 *)"Hello",
-    .information_len = 5,
-};
-uint8_t buffer[128];
-atc_hdlc_u32 len;
-atc_hdlc_frame_pack(&frame, buffer, sizeof(buffer), &len);
-
-// Unpack frame from buffer
-atc_hdlc_frame_t rx_frame;
-uint8_t flat[128];
-if (atc_hdlc_frame_unpack(buffer, len, &rx_frame, flat, sizeof(flat))) {
-    // Valid frame
-}
-```
-
 ## API Reference
 
 ### Initialization & Connection
@@ -285,7 +254,6 @@ if (atc_hdlc_frame_unpack(buffer, len, &rx_frame, flat, sizeof(flat))) {
 | `atc_hdlc_disconnect()` | Terminate connection (sends DISC) |
 | `atc_hdlc_link_reset()` | Reset and reconnect (after FRMR) |
 | `atc_hdlc_abort()` | Abort on line break/framing error |
-| `atc_hdlc_is_connected()` | Check if CONNECTED |
 | `atc_hdlc_get_state()` | Get current state |
 
 ### Data Transfer
@@ -312,22 +280,6 @@ if (atc_hdlc_frame_unpack(buffer, len, &rx_frame, flat, sizeof(flat))) {
 | Function | Description |
 |---|---|
 | `atc_hdlc_set_local_busy()` | Set local RNR (tell peer to pause) |
-| `atc_hdlc_has_pending_ack()` | Check if T2 is running |
-
-### Diagnostics
-
-| Function | Description |
-|---|---|
-| `atc_hdlc_get_stats()` | Get runtime statistics |
-| `atc_hdlc_get_s_frame_sub_type()` | Decode S-frame type |
-| `atc_hdlc_get_u_frame_sub_type()` | Decode U-frame type |
-
-### Stateless Frame Operations
-
-| Function | Description |
-|---|---|
-| `atc_hdlc_frame_pack()` | Serialize frame to buffer |
-| `atc_hdlc_frame_unpack()` | Deserialize frame from buffer |
 
 ## Configuration
 
@@ -356,8 +308,8 @@ Override these macros before including `hdlc.h`:
 | `ATC_HDLC_DEFAULT_T2_TIMEOUT` | `10` | Default T2 timeout (ms) |
 | `ATC_HDLC_DEFAULT_N2_RETRY_COUNT` | `3` | Default N2 retry limit |
 | `ATC_HDLC_DEFAULT_WINDOW_SIZE` | `1` | Default window size (1–7) |
-| `ATC_HDLC_ENABLE_STATS` | `1` | Enable statistics collection |
 | `ATC_HDLC_ENABLE_DEBUG_LOGS` | `0` | Enable debug logging |
+| `ATC_HDLC_LOG_LEVEL` | `WRN` | Verbosity ceiling (`ERR`/`WRN`/`INFO`/`DBG`) |
 
 To redirect debug output on bare-metal targets:
 
