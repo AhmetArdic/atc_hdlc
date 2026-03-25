@@ -1,3 +1,6 @@
+# Reference implementation (never commit)
+reference/
+
 # Build directories
 build/
 bin/
