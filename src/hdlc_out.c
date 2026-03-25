@@ -32,20 +32,14 @@ atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_context_t *ctx,
                                           const atc_hdlc_u8  *data,
                                           atc_hdlc_u32        len) {
   if (!ctx) return ATC_HDLC_ERR_INVALID_PARAM;
-  if (ctx->test_pending) return ATC_HDLC_ERR_TEST_PENDING;
   if (ctx->config && len > ctx->config->max_frame_size)
     return ATC_HDLC_ERR_FRAME_TOO_LARGE;
-
-  ctx->test_pattern     = data;
-  ctx->test_pattern_len = (atc_hdlc_u16)len;
-  ctx->test_pending     = true;
 
   frame_begin(ctx, address, U_CTRL(U_TEST, 1));
   for (atc_hdlc_u32 i = 0; i < len; i++)
     emit(ctx, data[i]);
   frame_end(ctx);
 
-  t1_start(ctx);
   return ATC_HDLC_OK;
 }
 

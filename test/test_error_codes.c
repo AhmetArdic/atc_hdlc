@@ -190,29 +190,6 @@ void test_err_remote_busy(void) {
 }
 
 /**
- * @brief ATC_HDLC_ERR_TEST_PENDING — second transmit_test while first pending.
- */
-void test_err_test_pending(void) {
-    printf("TEST: ATC_HDLC_ERR_TEST_PENDING\n");
-
-    atc_hdlc_context_t ctx;
-    setup_test_context(&ctx);
-
-    atc_hdlc_u8 pattern[] = {0xDE, 0xAD};
-
-    /* First TEST — OK */
-    if (atc_hdlc_transmit_test(&ctx, 0x02, pattern, 2) != ATC_HDLC_OK)
-        test_fail("ERR_TEST_PENDING", "First transmit_test should succeed");
-
-    /* Second TEST while first pending — must fail */
-    atc_hdlc_error_t err = atc_hdlc_transmit_test(&ctx, 0x02, pattern, 2);
-    if (err != ATC_HDLC_ERR_TEST_PENDING)
-        test_fail("ERR_TEST_PENDING", "Second transmit_test should return TEST_PENDING");
-
-    test_pass("ATC_HDLC_ERR_TEST_PENDING");
-}
-
-/**
  * @brief ATC_HDLC_ERR_MAX_RETRY — N2 retries exceeded causes link failure.
  */
 void test_err_max_retry(void) {
@@ -253,7 +230,6 @@ int main(void) {
     test_err_window_full();
     test_err_frame_too_large();
     test_err_remote_busy();
-    test_err_test_pending();
     test_err_max_retry();
 
     printf("\n%sALL ERROR CODE TESTS PASSED!%s\n", COL_GREEN, COL_RESET);

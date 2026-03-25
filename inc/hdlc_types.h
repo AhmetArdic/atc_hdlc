@@ -47,7 +47,6 @@ typedef enum {
     ATC_HDLC_EVENT_REMOTE_BUSY_ON,     /**< Peer sent RNR; outgoing I-frame transmission suspended. */
     ATC_HDLC_EVENT_REMOTE_BUSY_OFF,    /**< Peer sent RR after RNR; transmission resumed. */
     ATC_HDLC_EVENT_WINDOW_OPEN,        /**< TX window slot freed; application may send again. */
-    ATC_HDLC_EVENT_TEST_RESULT,        /**< TEST frame round-trip complete; check test_result field. */
 } atc_hdlc_event_t;
 
 typedef enum {
@@ -67,7 +66,6 @@ typedef enum {
     ATC_HDLC_ERR_REMOTE_BUSY          = -13,    /**< Peer is busy (RNR received); TX suspended. */
     ATC_HDLC_ERR_WINDOW_FULL          = -14,    /**< TX window full; no free slots. */
     ATC_HDLC_ERR_FRAME_TOO_LARGE      = -15,    /**< Payload exceeds max_frame_size (MRU). */
-    ATC_HDLC_ERR_TEST_PENDING         = -16,    /**< A TEST frame is already awaiting response. */
 } atc_hdlc_error_t;
 
 typedef enum {
@@ -149,26 +147,17 @@ typedef struct {
     atc_hdlc_u32  capacity; /**< Buffer capacity in octets. */
 } atc_hdlc_rx_buffer_t;
 
-typedef struct {
-    atc_hdlc_bool success;      /**< True if the peer echoed the correct payload. */
-    atc_hdlc_bool timed_out;    /**< True if T1 expired before a response arrived. */
-    atc_hdlc_u16  payload_len;  /**< Length of the test pattern that was sent. */
-} atc_hdlc_test_result_t;
-
 /** @brief Main context (opaque). */
 typedef struct {
     const atc_hdlc_config_t   *config;    /**< Protocol configuration (user-owned, must outlive ctx). */
     const atc_hdlc_platform_t *platform;  /**< Platform callbacks (user-owned, must outlive ctx). */
     atc_hdlc_tx_window_t      *tx_window; /**< TX retransmit window descriptor (user-owned). */
     atc_hdlc_rx_buffer_t      *rx_buf;    /**< RX buffer descriptor (user-owned). */
-    const atc_hdlc_u8 *test_pattern; /**< Pointer to the outgoing test payload (user-owned). */
-    atc_hdlc_test_result_t test_result;/**< Result of the most recent TEST round-trip. */
     atc_hdlc_u32 rx_index;         /**< Current write index into rx_buf->buffer. */
     atc_hdlc_u16 rx_crc;           /**< Running FCS accumulator for the RX path (fed with 2-byte delay to exclude FCS bytes). */
     volatile atc_hdlc_state_t current_state; /**< Current station state. */
     atc_hdlc_station_role_t role;            /**< Station role (set at init; always COMBINED for ABM). */
     atc_hdlc_u16 tx_crc;            /**< Running FCS accumulator for the streaming TX path. */
-    atc_hdlc_u16 test_pattern_len;  /**< Length of the outgoing test payload in octets. */
     atc_hdlc_u8 my_address;   /**< Local station address (set at init time). */
     atc_hdlc_u8 peer_address; /**< Remote station address (set at connect time). */
     atc_hdlc_u8 vs;           /**< Send state variable V(S). */
@@ -183,7 +172,6 @@ typedef struct {
     atc_hdlc_bool rej_exception; /**< REJ exception: suppresses duplicate REJ transmissions. */
     atc_hdlc_bool remote_busy;   /**< Peer is in RNR state; outgoing I-frames are suspended. */
     atc_hdlc_bool local_busy;    /**< Local RNR has been sent; peer TX is throttled. */
-    atc_hdlc_bool test_pending;  /**< A TEST(P=1) has been sent; awaiting TEST(F=1) response. */
     atc_hdlc_bool t1_active; /**< T1 retransmission timer is currently running. */
     atc_hdlc_bool t2_active; /**< T2 delayed-ACK timer is currently running. */
 } atc_hdlc_context_t;
