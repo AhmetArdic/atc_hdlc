@@ -647,7 +647,9 @@ static bool node_init(physical_node_t *node, uint32_t recv_len, uint8_t window_s
     node->rx.buffer   = node->input_buffer;
     node->rx.capacity = sizeof(node->input_buffer);
 
-    atc_hdlc_init(&node->ctx, &node->cfg, &node->plat, &node->tw, &node->rx);
+    atc_hdlc_params_t p = { .config = &node->cfg, .platform = &node->plat,
+                             .tx_window = &node->tw, .rx_buf = &node->rx };
+    atc_hdlc_init(&node->ctx, p);
     node->ctx.peer_address = 0x02;  /* STM32 is address 0x02 */
 
     node->rx_thread = thread_create(node);

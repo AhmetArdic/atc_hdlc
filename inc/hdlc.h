@@ -20,18 +20,12 @@ extern "C" {
 /**
  * @brief Initialize HDLC station.
  *
- * @param ctx       Context (user allocates).
- * @param config    Protocol settings (must stay valid).
- * @param platform  Callbacks (on_send required, on_data/on_event optional).
- * @param tx_window TX buffer for reliable transmission (NULL = disable).
- * @param rx_buf    RX buffer (required).
+ * @param ctx    Context (user allocates).
+ * @param params Init parameters.
  * @return ATC_HDLC_OK or error code.
  */
-atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t        *ctx,
-                                 const atc_hdlc_config_t   *config,
-                                 const atc_hdlc_platform_t *platform,
-                                 atc_hdlc_tx_window_t      *tx_window,
-                                 atc_hdlc_rx_buffer_t      *rx_buf);
+atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t *ctx,
+                                 atc_hdlc_params_t   params);
 
 /**
  * @brief T1 timer expired (retransmission timeout).
@@ -192,14 +186,6 @@ void atc_hdlc_transmit_end(atc_hdlc_context_t *ctx);
  * @return State value.
  */
 atc_hdlc_state_t atc_hdlc_get_state(const atc_hdlc_context_t *ctx);
-
-/**
- * @brief Get free TX window slots.
- *
- * @param ctx Context.
- * @return Available slots (0 = full).
- */
-atc_hdlc_u8 atc_hdlc_get_window_available(const atc_hdlc_context_t *ctx);
 
 
 #ifdef __cplusplus

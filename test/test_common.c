@@ -131,8 +131,9 @@ static atc_hdlc_u8  s_tw_seq[8];
 void setup_test_context(atc_hdlc_context_t *ctx) {
     reset_test_state();
     if (!ctx) return;
-    atc_hdlc_init(ctx, &s_default_config, &s_default_platform,
-                  &s_tx_window, &s_rx_buf);
+    atc_hdlc_params_t p = { .config = &s_default_config, .platform = &s_default_platform,
+                             .tx_window = &s_tx_window, .rx_buf = &s_rx_buf };
+    atc_hdlc_init(ctx, p);
     ctx->peer_address = 0x02;
 }
 
@@ -151,7 +152,9 @@ void setup_test_context_w(atc_hdlc_context_t *ctx, atc_hdlc_u8 window_size) {
     tw.slot_capacity = 1024;
     tw.slot_count    = window_size;
 
-    atc_hdlc_init(ctx, &cfg, &s_default_platform, &tw, &s_rx_buf);
+    atc_hdlc_params_t p = { .config = &cfg, .platform = &s_default_platform,
+                             .tx_window = &tw, .rx_buf = &s_rx_buf };
+    atc_hdlc_init(ctx, p);
     ctx->peer_address = 0x02;
 }
 
@@ -159,7 +162,9 @@ void setup_test_context_no_tw(atc_hdlc_context_t *ctx) {
     reset_test_state();
     if (!ctx) return;
     /* Pass NULL tx_window — tests ATC_HDLC_ERR_NO_BUFFER path */
-    atc_hdlc_init(ctx, &s_default_config, &s_default_platform, NULL, &s_rx_buf);
+    atc_hdlc_params_t p = { .config = &s_default_config, .platform = &s_default_platform,
+                             .tx_window = NULL, .rx_buf = &s_rx_buf };
+    atc_hdlc_init(ctx, p);
     ctx->peer_address = 0x02;
 }
 

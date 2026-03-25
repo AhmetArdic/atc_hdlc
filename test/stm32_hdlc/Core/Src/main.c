@@ -335,7 +335,9 @@ int main(void)
   hdlc_rx.capacity = sizeof(hdlc_rx_buf);  /* HDLC_RX_BUF_SIZE = payload + 4 bytes overhead */
 
   /* ---- Initialize HDLC station ---- */
-  atc_hdlc_init(&hdlc_ctx, &hdlc_cfg, &hdlc_plat, &hdlc_tw, &hdlc_rx);
+  atc_hdlc_params_t hdlc_params = { .config = &hdlc_cfg, .platform = &hdlc_plat,
+                                     .tx_window = &hdlc_tw, .rx_buf = &hdlc_rx };
+  atc_hdlc_init(&hdlc_ctx, hdlc_params);
 
   /* ---- Initiate connection to peer (PC = address 0x01) ---- */
   atc_hdlc_link_setup(&hdlc_ctx, 0x01);

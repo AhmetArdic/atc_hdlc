@@ -13,12 +13,16 @@
 
 static void fire_event(atc_hdlc_context_t *ctx, atc_hdlc_event_t event);
 
-atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t        *ctx,
-                                  const atc_hdlc_config_t   *config,
-                                  const atc_hdlc_platform_t *platform,
-                                  atc_hdlc_tx_window_t      *tx_window,
-                                  atc_hdlc_rx_buffer_t      *rx_buf) {
-  if (!ctx || !config || !platform || !rx_buf)
+atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t *ctx,
+                                  atc_hdlc_params_t   params) {
+  if (!ctx) return ATC_HDLC_ERR_INVALID_PARAM;
+
+  const atc_hdlc_config_t   *config    = params.config;
+  const atc_hdlc_platform_t *platform  = params.platform;
+  atc_hdlc_tx_window_t      *tx_window = params.tx_window;
+  atc_hdlc_rx_buffer_t      *rx_buf    = params.rx_buf;
+
+  if (!config || !platform || !rx_buf)
     return ATC_HDLC_ERR_INVALID_PARAM;
   if (!platform->on_send)
     return ATC_HDLC_ERR_INVALID_PARAM;
@@ -179,15 +183,6 @@ atc_hdlc_state_t atc_hdlc_get_state(const atc_hdlc_context_t *ctx) {
   if (!ctx) return ATC_HDLC_STATE_DISCONNECTED;
   return ctx->current_state;
 }
-
-atc_hdlc_u8 atc_hdlc_get_window_available(const atc_hdlc_context_t *ctx) {
-  if (!ctx) return 0;
-  atc_hdlc_u8 outstanding = (atc_hdlc_u8)((ctx->vs - ctx->va +
-                             MOD8) % MOD8);
-  if (outstanding >= ctx->window_size) return 0;
-  return (atc_hdlc_u8)(ctx->window_size - outstanding);
-}
-
 
 void atc_hdlc_abort(atc_hdlc_context_t *ctx) {
   if (!ctx) return;

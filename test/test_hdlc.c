@@ -325,7 +325,9 @@ void test_input_buffer_overflow() {
       .on_event = NULL, .user_ctx = NULL,
   };
   atc_hdlc_rx_buffer_t small_rx = { .buffer = small_rx_buf, .capacity = sizeof(small_rx_buf) };
-  atc_hdlc_error_t init_err = atc_hdlc_init(&small_ctx, &small_cfg, &small_plat, NULL, &small_rx);
+  atc_hdlc_params_t small_p = { .config = &small_cfg, .platform = &small_plat,
+                                .tx_window = NULL, .rx_buf = &small_rx };
+  atc_hdlc_error_t init_err = atc_hdlc_init(&small_ctx, small_p);
   if (init_err != ATC_HDLC_OK)
       test_fail("Buffer Overflow", "small_ctx init failed unexpectedly");
   

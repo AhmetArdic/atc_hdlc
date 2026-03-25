@@ -82,7 +82,8 @@ void setup_context(void) {
         .buffer = mock_rx_buffer, .capacity = sizeof(mock_rx_buffer),
     };
 
-    atc_hdlc_init(&ctx, &cfg, &plat, &tw, &rx);
+    atc_hdlc_params_t p = { .config = &cfg, .platform = &plat, .tx_window = &tw, .rx_buf = &rx };
+    atc_hdlc_init(&ctx, p);
     ctx.peer_address = 0x02; /* peer address for tests */
 
     reset_test_state();

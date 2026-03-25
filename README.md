@@ -187,7 +187,13 @@ atc_hdlc_rx_buffer_t rx_buf = {
 };
 
 // Init
-atc_hdlc_init(&ctx, &config, &platform, &tx_window, &rx_buf);
+atc_hdlc_params_t params = {
+    .config    = &config,
+    .platform  = &platform,
+    .tx_window = &tx_window,
+    .rx_buf    = &rx_buf,
+};
+atc_hdlc_init(&ctx, params);
 
 // Connect
 atc_hdlc_link_setup(&ctx, 0x02);  // peer address
@@ -306,7 +312,6 @@ if (atc_hdlc_frame_unpack(buffer, len, &rx_frame, flat, sizeof(flat))) {
 | Function | Description |
 |---|---|
 | `atc_hdlc_set_local_busy()` | Set local RNR (tell peer to pause) |
-| `atc_hdlc_get_window_available()` | Check free TX slots |
 | `atc_hdlc_has_pending_ack()` | Check if T2 is running |
 
 ### Diagnostics

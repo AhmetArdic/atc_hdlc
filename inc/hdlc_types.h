@@ -127,11 +127,11 @@ typedef struct {
     atc_hdlc_send_fn on_send;          /**< TX callback (required) */
     atc_hdlc_on_data_fn on_data;       /**< RX callback (optional) */
     atc_hdlc_on_event_fn on_event;     /**< Event callback (optional) */
-    void *user_ctx;                    /**< User context */
     atc_hdlc_timer_start_fn t1_start;  /**< T1 (retransmission) start */
     atc_hdlc_timer_stop_fn t1_stop;    /**< T1 stop */
     atc_hdlc_timer_start_fn t2_start;  /**< T2 (delayed-ACK) start */
     atc_hdlc_timer_stop_fn t2_stop;    /**< T2 stop */
+    void *user_ctx;                    /**< User context */
 } atc_hdlc_platform_t;
 
 typedef struct {
@@ -146,6 +146,13 @@ typedef struct {
     atc_hdlc_u8  *buffer;   /**< Pointer to the receive buffer. */
     atc_hdlc_u32  capacity; /**< Buffer capacity in octets. */
 } atc_hdlc_rx_buffer_t;
+
+typedef struct {
+    const atc_hdlc_config_t   *config;    /**< Protocol settings (must stay valid). */
+    const atc_hdlc_platform_t *platform;  /**< Callbacks (on_send required). */
+    atc_hdlc_tx_window_t      *tx_window; /**< TX buffer for reliable TX (NULL = disable). */
+    atc_hdlc_rx_buffer_t      *rx_buf;    /**< RX buffer (required). */
+} atc_hdlc_params_t;
 
 /** @brief Main context (opaque). */
 typedef struct {

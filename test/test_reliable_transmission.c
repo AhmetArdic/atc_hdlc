@@ -49,7 +49,9 @@ static void make_ctx(atc_hdlc_context_t *ctx,
     s_make_ctx_rx.buffer   = mock_rx_buffer;
     s_make_ctx_rx.capacity = sizeof(mock_rx_buffer);
 
-    atc_hdlc_init(ctx, &s_make_ctx_cfg, &s_make_ctx_plat, &s_make_ctx_tw, &s_make_ctx_rx);
+    atc_hdlc_params_t p = { .config = &s_make_ctx_cfg, .platform = &s_make_ctx_plat,
+                             .tx_window = &s_make_ctx_tw, .rx_buf = &s_make_ctx_rx };
+    atc_hdlc_init(ctx, p);
     ctx->peer_address  = 0x02;
     ctx->current_state = ATC_HDLC_STATE_CONNECTED;
 }
@@ -797,19 +799,8 @@ void test_public_query_api(void) {
     if (atc_hdlc_get_state(&ctx) != ATC_HDLC_STATE_CONNECTED)
         test_fail("Query API", "get_state returned wrong value");
 
-    /* atc_hdlc_get_window_available — fresh context, window_size=1, vs=va=0 */
-    atc_hdlc_u8 avail = atc_hdlc_get_window_available(&ctx);
-    if (avail != 1)
-        test_fail("Query API", "get_window_available wrong on empty window");
-
-    /* Send one I-frame → window fills */
-    atc_hdlc_u8 payload[] = {0x01};
-    atc_hdlc_transmit_i(&ctx, payload, 1);
-    avail = atc_hdlc_get_window_available(&ctx);
-    if (avail != 0)
-        test_fail("Query API", "get_window_available should be 0 after filling");
-
     /* T2 starts when I-frame is received */
+    atc_hdlc_u8 payload[] = {0x01};
     if (ctx.t2_active)
         test_fail("Query API", "t2_active should be false before receiving I-frame");
 
@@ -825,9 +816,6 @@ void test_public_query_api(void) {
     /* NULL safety */
     if (atc_hdlc_get_state(NULL) != ATC_HDLC_STATE_DISCONNECTED)
         test_fail("Query API", "get_state(NULL) should return DISCONNECTED");
-    if (atc_hdlc_get_window_available(NULL) != 0)
-        test_fail("Query API", "get_window_available(NULL) should return 0");
-
     test_pass("Public Query API");
 }
 

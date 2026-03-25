@@ -211,8 +211,9 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     node1->hdlc_rx.buffer   = node1->input_buffer;
     node1->hdlc_rx.capacity = sizeof(node1->input_buffer);
 
-    atc_hdlc_init(&node1->ctx, &node1->hdlc_cfg, &node1->hdlc_plat,
-                  &node1->hdlc_tw, &node1->hdlc_rx);
+    atc_hdlc_params_t p1 = { .config = &node1->hdlc_cfg, .platform = &node1->hdlc_plat,
+                              .tx_window = &node1->hdlc_tw, .rx_buf = &node1->hdlc_rx };
+    atc_hdlc_init(&node1->ctx, p1);
 
     /* --- Node 2: fill per-node descriptors, then init --- */
     node2->hdlc_cfg.mode = ATC_HDLC_MODE_ABM; node2->hdlc_cfg.address = 0x02;
@@ -240,8 +241,9 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     node2->hdlc_rx.buffer   = node2->input_buffer;
     node2->hdlc_rx.capacity = sizeof(node2->input_buffer);
 
-    atc_hdlc_init(&node2->ctx, &node2->hdlc_cfg, &node2->hdlc_plat,
-                  &node2->hdlc_tw, &node2->hdlc_rx);
+    atc_hdlc_params_t p2 = { .config = &node2->hdlc_cfg, .platform = &node2->hdlc_plat,
+                              .tx_window = &node2->hdlc_tw, .rx_buf = &node2->hdlc_rx };
+    atc_hdlc_init(&node2->ctx, p2);
 
     /* Cross-link peer addresses */
     node1->ctx.peer_address = 0x02;
