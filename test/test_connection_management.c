@@ -92,11 +92,8 @@ void setup_context(void) {
 
 // Helper to inspect the last transmitted frame (assumes it's a valid frame)
 // Use mock_output_buffer
-void decode_last_tx(atc_hdlc_frame_t *decoded_frame, uint8_t *flat_buf, uint32_t flat_len) {
-    bool res = atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len, decoded_frame, flat_buf, flat_len);
-    if (!res) {
-        test_fail("Frame Decode", "Failed to unpack transmitted frame");
-    }
+test_frame_t decode_last_tx(atc_hdlc_u8 *flat_buf, uint32_t flat_len) {
+    return test_unpack_frame(mock_output_buffer, mock_output_len, flat_buf, (int)flat_len);
 }
 
 // -----------------------------------------------------------------------------
@@ -135,9 +132,8 @@ void test_connect_sends_sabm(void) {
         test_fail("Connect Sends SABM", "Last state change not CONNECTING");
         
     // 2. Check Output Frame (SABM to Peer)
-    atc_hdlc_frame_t frame_out;
     uint8_t flat[32];
-    decode_last_tx(&frame_out, flat, sizeof(flat));
+    test_frame_t frame_out = decode_last_tx(flat, sizeof(flat));
 
     if (frame_out.address != 0x02) test_fail("Connect Sends SABM", "Wrong Dest Address");   // To Peer
     if (frame_out.control != 0x3F) test_fail("Connect Sends SABM", "Not SABM(P=1)");  // SABM (P=1) -> 0x3F
@@ -153,15 +149,8 @@ void test_connect_complete_on_ua(void) {
     state_change_call_count = 0; // Clear counters
 
     // Simulate Receiving UA from Peer
-    atc_hdlc_frame_t ua_frame;
-    ua_frame.address = 0x02; // Peer's address (Response)
-    ua_frame.control = 0x73; // UA with F=1
-    ua_frame.information = NULL;
-    ua_frame.information_len = 0;
-
     uint8_t packed[32];
-    uint32_t packed_len = 0;
-    atc_hdlc_frame_pack(&ua_frame, packed, sizeof(packed), &packed_len);
+    int packed_len = test_pack_frame(0x02, 0x73, NULL, 0, packed, sizeof(packed));
 
     // Feed bytes
     atc_hdlc_data_in(&ctx, packed, packed_len);
@@ -195,10 +184,9 @@ void test_disconnect_flow(void) {
          test_fail("Disconnect Flow", "State not DISCONNECTING");
     
     // 2. Check Output Frame (DISC to Peer)
-    atc_hdlc_frame_t frame_out;
     uint8_t flat[32];
-    decode_last_tx(&frame_out, flat, sizeof(flat));
-    
+    test_frame_t frame_out = decode_last_tx(flat, sizeof(flat));
+
     // DISC(P=1) = 0x53
     if (frame_out.address != 0x02) test_fail("Disconnect Flow", "Wrong Address");
     if (frame_out.control != 0x53) test_fail("Disconnect Flow", "Not DISC(P=1)");
@@ -206,16 +194,9 @@ void test_disconnect_flow(void) {
     // 3. Receive UA
     // Clear buffer
     mock_output_len = 0;
-    
-    atc_hdlc_frame_t ua_frame;
-    ua_frame.address = 0x02;
-    ua_frame.control = 0x73; // UA(F=1)
-    ua_frame.information = NULL;
-    ua_frame.information_len = 0;
 
     uint8_t packed[32];
-    uint32_t packed_len = 0;
-    atc_hdlc_frame_pack(&ua_frame, packed, sizeof(packed), &packed_len);
+    int packed_len = test_pack_frame(0x02, 0x73, NULL, 0, packed, sizeof(packed));
     atc_hdlc_data_in(&ctx, packed, packed_len);
 
     // Check State
@@ -232,16 +213,9 @@ void test_passive_open(void) {
     // Simulate Receiving SABM from Peer (Command)
     // Addressed to ME (0x01).
     // SABM(P=1) = 0x3F.
-    atc_hdlc_frame_t sabm_frame;
-    sabm_frame.address = 0x01;
-    sabm_frame.control = 0x3F;
-    sabm_frame.information = NULL;
-    sabm_frame.information_len = 0;
-
     uint8_t packed[32];
-    uint32_t packed_len = 0;
-    atc_hdlc_frame_pack(&sabm_frame, packed, sizeof(packed), &packed_len);
-    
+    int packed_len = test_pack_frame(0x01, 0x3F, NULL, 0, packed, sizeof(packed));
+
     atc_hdlc_data_in(&ctx, packed, packed_len);
 
     // 1. Should be CONNECTED
@@ -249,9 +223,8 @@ void test_passive_open(void) {
          test_fail("Passive Open", "State not CONNECTED after SABM");
 
     // 2. Should have sent UA (Response from Me)
-    atc_hdlc_frame_t frame_out;
     uint8_t flat[32];
-    decode_last_tx(&frame_out, flat, sizeof(flat));
+    test_frame_t frame_out = decode_last_tx(flat, sizeof(flat));
 
     if (frame_out.address != 0x01) test_fail("Passive Open", "UA wrong address");   // My address
     if (frame_out.control != 0x73) test_fail("Passive Open", "Not UA(F=1)");  // UA(F=1)
@@ -275,15 +248,10 @@ void test_frmr_reception(void) {
     
     uint8_t frmr_payload[] = {0x11, 0x1A, 0x90};
 
-    atc_hdlc_frame_t frmr_frame;
-    frmr_frame.address = 0x02; // From Peer
-    frmr_frame.control = HDLC_U_CTRL(HDLC_U_FRMR, 0);
-    frmr_frame.information = frmr_payload;
-    frmr_frame.information_len = sizeof(frmr_payload);
-
     uint8_t packed[32];
-    uint32_t packed_len = 0;
-    atc_hdlc_frame_pack(&frmr_frame, packed, sizeof(packed), &packed_len);
+    int packed_len = test_pack_frame(0x02, HDLC_U_CTRL(HDLC_U_FRMR, 0),
+                                     frmr_payload, sizeof(frmr_payload),
+                                     packed, sizeof(packed));
 
     // Feed bytes
     atc_hdlc_data_in(&ctx, packed, packed_len);
@@ -306,22 +274,16 @@ void test_mode_rejection(void) {
     // M=100 00 -> Hi=4, Lo=0. P=1.
     // Ctrl: 100 1 00 11 -> 1001 0011 -> 0x93
     
-    atc_hdlc_frame_t params_frame;
-    params_frame.address = 0x01; // To Me
-    params_frame.control = HDLC_U_CTRL(HDLC_U_SNRM, 1);
-    params_frame.information = NULL;
-    params_frame.information_len = 0;
-
     uint8_t packed[32];
-    uint32_t packed_len = 0;
-    atc_hdlc_frame_pack(&params_frame, packed, sizeof(packed), &packed_len);
-    
+    int packed_len = test_pack_frame(0x01, HDLC_U_CTRL(HDLC_U_SNRM, 1),
+                                     NULL, 0, packed, sizeof(packed));
+
     // Clear TX capture
     mock_output_len = 0;
 
     // Feed bytes
     atc_hdlc_data_in(&ctx, packed, packed_len);
-    
+
     // Inspect captured bytes dump using helper
     print_hexdump("Captured TX", mock_output_buffer, mock_output_len);
 
@@ -330,9 +292,8 @@ void test_mode_rejection(void) {
          test_fail("Mode Rejection", "State changed on invalid mode!");
 
     // 2. Output should be DM
-    atc_hdlc_frame_t frame_out;
     uint8_t flat[32];
-    decode_last_tx(&frame_out, flat, sizeof(flat));
+    test_frame_t frame_out = decode_last_tx(flat, sizeof(flat));
 
     // DM: 000 F 00 11 (Hi=0, Lo=3). F should match P (1).
     // 000 1 11 11 -> 0x1F.
@@ -356,20 +317,15 @@ void test_extended_mode_rejection(void) {
     };
 
     for (int i = 0; i < 3; i++) {
-        atc_hdlc_frame_t frame_in = {
-            .address = 0x01,
-            .control = cases[i].ctrl,
-            .information = NULL, .information_len = 0
-        };
-        atc_hdlc_u8 packed[32]; atc_hdlc_u32 packed_len = 0;
-        atc_hdlc_frame_pack(&frame_in, packed, sizeof(packed), &packed_len);
+        atc_hdlc_u8 packed[32];
+        int packed_len = test_pack_frame(0x01, cases[i].ctrl,
+                                         NULL, 0, packed, sizeof(packed));
 
         mock_output_len = 0;
         atc_hdlc_data_in(&ctx, packed, packed_len);
 
-        atc_hdlc_frame_t frame_out;
         atc_hdlc_u8 flat[32];
-        decode_last_tx(&frame_out, flat, sizeof(flat));
+        test_frame_t frame_out = decode_last_tx(flat, sizeof(flat));
 
         if (frame_out.control != 0x1F) { /* DM with F=1 */
             char msg[64];
@@ -399,26 +355,18 @@ void test_contention_resolution_winner(void) {
     mock_output_len = 0; // Clear the SABM we just sent from mock tx buffer
     
     // 2. Peer also initiated connection, so we receive their SABM
-    atc_hdlc_frame_t sabm_frame;
-    sabm_frame.address = 0x02; // Addressed to us
-    sabm_frame.control = 0x3F; // SABM (P=1)
-    sabm_frame.information = NULL;
-    sabm_frame.information_len = 0;
-
     uint8_t packed[32];
-    uint32_t packed_len = 0;
-    atc_hdlc_frame_pack(&sabm_frame, packed, sizeof(packed), &packed_len);
-    
+    int packed_len = test_pack_frame(0x02, 0x3F, NULL, 0, packed, sizeof(packed));
+
     atc_hdlc_data_in(&ctx, packed, packed_len);
-    
+
     // We are higher address (2 > 1), so we WIN.
     // Winner behaviour: Immediately reply with UA, and transition to CONNECTED.
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
          test_fail("Contention Winner", "State should transition to CONNECTED after winning");
-         
-    atc_hdlc_frame_t frame_out;
+
     uint8_t flat[32];
-    decode_last_tx(&frame_out, flat, sizeof(flat));
+    test_frame_t frame_out = decode_last_tx(flat, sizeof(flat));
 
     if (frame_out.address != 0x02) test_fail("Contention Winner", "UA wrong address");
     if (frame_out.control != 0x73) test_fail("Contention Winner", "Did not send UA(F=1)"); // UA(F=1)
@@ -441,16 +389,9 @@ void test_contention_resolution_loser(void) {
     mock_output_len = 0;
     
     // 2. Peer also initiated connection, so we receive their SABM
-    atc_hdlc_frame_t sabm_frame;
-    sabm_frame.address = 0x01; // Addressed to us
-    sabm_frame.control = 0x3F; // SABM (P=1)
-    sabm_frame.information = NULL;
-    sabm_frame.information_len = 0;
-
     uint8_t packed[32];
-    uint32_t packed_len = 0;
-    atc_hdlc_frame_pack(&sabm_frame, packed, sizeof(packed), &packed_len);
-    
+    int packed_len = test_pack_frame(0x01, 0x3F, NULL, 0, packed, sizeof(packed));
+
     atc_hdlc_data_in(&ctx, packed, packed_len);
     
     // We are lower address (1 < 2), so we LOSE.
@@ -474,10 +415,9 @@ void test_contention_resolution_loser(void) {
         return;
     }
     
-    atc_hdlc_frame_t retx_frame;
     uint8_t retx_flat[32];
-    decode_last_tx(&retx_frame, retx_flat, sizeof(retx_flat));
-    
+    test_frame_t retx_frame = decode_last_tx(retx_flat, sizeof(retx_flat));
+
     if (retx_frame.control != 0x3F) {
         test_fail("Contention Loser", "Timer expired but output was not SABM");
     }
@@ -540,12 +480,9 @@ void test_peer_disconnect(void) {
     ctx.peer_address  = 0x02;
 
     /* Build DISC(P=1) addressed to me (0x01) */
-    atc_hdlc_u8 disc_ctrl = HDLC_U_CTRL(HDLC_U_DISC, 1);
-    atc_hdlc_frame_t disc_frame = {
-        .address = 0x01, .control = disc_ctrl,
-        .information = NULL, .information_len = 0 };
-    atc_hdlc_u8 disc_raw[32]; atc_hdlc_u32 disc_len = 0;
-    atc_hdlc_frame_pack(&disc_frame, disc_raw, sizeof(disc_raw), &disc_len);
+    atc_hdlc_u8 disc_raw[32];
+    int disc_len = test_pack_frame(0x01, HDLC_U_CTRL(HDLC_U_DISC, 1),
+                                   NULL, 0, disc_raw, sizeof(disc_raw));
 
     reset_test_state();
     atc_hdlc_data_in(&ctx, disc_raw, disc_len);
@@ -563,12 +500,11 @@ void test_peer_disconnect(void) {
         test_fail("Peer Disconnect", "No UA response in output");
 
     /* Verify UA type in response */
-    atc_hdlc_u8 resp_buf[64]; atc_hdlc_u32 resp_len = 0;
-    atc_hdlc_frame_t resp; atc_hdlc_u8 resp_flat[64];
-    memcpy(resp_buf, mock_output_buffer, mock_output_len);
-    if (atc_hdlc_frame_unpack(resp_buf, mock_output_len, &resp, resp_flat, sizeof(resp_flat))) {
-        atc_hdlc_u_frame_sub_type_t sub = atc_hdlc_get_u_frame_sub_type(resp.control);
-        if (sub != ATC_HDLC_U_FRAME_TYPE_UA)
+    atc_hdlc_u8 resp_flat[64];
+    test_frame_t resp = test_unpack_frame(mock_output_buffer, mock_output_len,
+                                          resp_flat, sizeof(resp_flat));
+    if (resp.valid) {
+        if ((resp.control & ~HDLC_PF_BIT) != HDLC_U_UA)
             test_fail("Peer Disconnect", "Response is not UA");
     }
 
@@ -595,11 +531,9 @@ void test_event_callbacks(void) {
         test_fail("Event Callbacks", "on_event called wrong number of times");
 
     /* Feed UA → CONNECT_ACCEPTED */
-    atc_hdlc_u8 ua_ctrl = HDLC_U_CTRL(HDLC_U_UA, 1);
-    atc_hdlc_frame_t ua = { .address = 0x02, .control = ua_ctrl,
-                             .information = NULL, .information_len = 0 };
-    atc_hdlc_u8 ua_raw[32]; atc_hdlc_u32 ua_len = 0;
-    atc_hdlc_frame_pack(&ua, ua_raw, sizeof(ua_raw), &ua_len);
+    atc_hdlc_u8 ua_raw[32];
+    int ua_len = test_pack_frame(0x02, HDLC_U_CTRL(HDLC_U_UA, 1),
+                                 NULL, 0, ua_raw, sizeof(ua_raw));
     reset_test_state();
     atc_hdlc_data_in(&ctx, ua_raw, ua_len);
     if (last_event != ATC_HDLC_EVENT_CONNECT_ACCEPTED)
@@ -613,7 +547,7 @@ void test_event_callbacks(void) {
 
     /* Feed UA → DISCONNECT_COMPLETE */
     reset_test_state();
-    atc_hdlc_data_in(&ctx, ua_raw, ua_len);
+    atc_hdlc_data_in(&ctx, ua_raw, (atc_hdlc_u32)ua_len);
     if (last_event != ATC_HDLC_EVENT_DISCONNECT_COMPLETE)
         test_fail("Event Callbacks", "DISCONNECT_COMPLETE not fired");
 
@@ -648,13 +582,11 @@ void test_t1_timer_callbacks(void) {
         test_fail("T1 Callbacks", "No SABM retransmitted after T1 expiry");
 
     /* Feed UA → t1_stop */
-    atc_hdlc_u8 ua_ctrl = HDLC_U_CTRL(HDLC_U_UA, 1);
-    atc_hdlc_frame_t ua = { .address = 0x02, .control = ua_ctrl,
-                             .information = NULL, .information_len = 0 };
-    atc_hdlc_u8 ua_raw[32]; atc_hdlc_u32 ua_len = 0;
-    atc_hdlc_frame_pack(&ua, ua_raw, sizeof(ua_raw), &ua_len);
+    atc_hdlc_u8 ua_raw[32];
+    int ua_len = test_pack_frame(0x02, HDLC_U_CTRL(HDLC_U_UA, 1),
+                                 NULL, 0, ua_raw, sizeof(ua_raw));
     reset_test_state();
-    atc_hdlc_data_in(&ctx, ua_raw, ua_len);
+    atc_hdlc_data_in(&ctx, ua_raw, (atc_hdlc_u32)ua_len);
     if (mock_t1_stop_count < 1)
         test_fail("T1 Callbacks", "T1 not stopped on UA");
     if (ctx.t1_active)
@@ -676,14 +608,12 @@ void test_frmr_send_invalid_nr(void) {
     ctx.va = 0; ctx.vs = 2; /* outstanding frames 0..1 */
 
     /* Send RR with N(R)=5 — invalid (outside V(A)..V(S) = 0..2) */
-    atc_hdlc_u8 rr_ctrl = HDLC_S_CTRL(HDLC_S_RR, 5, 0);
-    atc_hdlc_frame_t rr = { .address = 0x01, .control = rr_ctrl,
-                              .information = NULL, .information_len = 0 };
-    atc_hdlc_u8 rr_raw[32]; atc_hdlc_u32 rr_len = 0;
-    atc_hdlc_frame_pack(&rr, rr_raw, sizeof(rr_raw), &rr_len);
+    atc_hdlc_u8 rr_raw[32];
+    int rr_len = test_pack_frame(0x01, HDLC_S_CTRL(HDLC_S_RR, 5, 0),
+                                 NULL, 0, rr_raw, sizeof(rr_raw));
 
     reset_test_state();
-    atc_hdlc_data_in(&ctx, rr_raw, rr_len);
+    atc_hdlc_data_in(&ctx, rr_raw, (atc_hdlc_u32)rr_len);
 
     /* State must be FRMR_ERROR */
     if (ctx.current_state != ATC_HDLC_STATE_FRMR_ERROR)
@@ -694,13 +624,14 @@ void test_frmr_send_invalid_nr(void) {
         test_fail("FRMR Invalid NR", "No FRMR in output");
 
     /* Verify FRMR Z bit set — decode the frame */
-    atc_hdlc_frame_t frmr_out; atc_hdlc_u8 flat[32];
-    if (atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len,
-                               &frmr_out, flat, sizeof(flat))) {
-        if (atc_hdlc_get_u_frame_sub_type(frmr_out.control) != ATC_HDLC_U_FRAME_TYPE_FRMR)
+    atc_hdlc_u8 flat[32];
+    test_frame_t frmr_out = test_unpack_frame(mock_output_buffer, mock_output_len,
+                                               flat, sizeof(flat));
+    if (frmr_out.valid) {
+        if ((frmr_out.control & ~HDLC_PF_BIT) != HDLC_U_FRMR)
             test_fail("FRMR Invalid NR", "Output is not a FRMR frame");
-        if (frmr_out.information_len >= 3) {
-            atc_hdlc_u8 reason = frmr_out.information[2];
+        if (frmr_out.info_len >= 3) {
+            atc_hdlc_u8 reason = frmr_out.info[2];
             if (!(reason & HDLC_FRMR_Z_BIT))
                 test_fail("FRMR Invalid NR", "FRMR Z bit not set");
         }
@@ -743,13 +674,11 @@ void test_frmr_error_lockdown(void) {
 
     /* SABM from peer while in FRMR_ERROR: peer re-establishes → CONNECTED */
     ctx.current_state = ATC_HDLC_STATE_FRMR_ERROR;
-    atc_hdlc_u8 sabm_ctrl = HDLC_U_CTRL(HDLC_U_SABM, 1);
-    atc_hdlc_frame_t sabm = { .address = 0x01, .control = sabm_ctrl,
-                                .information = NULL, .information_len = 0 };
-    atc_hdlc_u8 sabm_raw[32]; atc_hdlc_u32 sabm_len = 0;
-    atc_hdlc_frame_pack(&sabm, sabm_raw, sizeof(sabm_raw), &sabm_len);
+    atc_hdlc_u8 sabm_raw[32];
+    int sabm_len = test_pack_frame(0x01, HDLC_U_CTRL(HDLC_U_SABM, 1),
+                                   NULL, 0, sabm_raw, sizeof(sabm_raw));
     reset_test_state();
-    atc_hdlc_data_in(&ctx, sabm_raw, sabm_len);
+    atc_hdlc_data_in(&ctx, sabm_raw, (atc_hdlc_u32)sabm_len);
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
         test_fail("FRMR Lock-down", "SABM from peer should re-establish CONNECTED from FRMR_ERROR");
 
@@ -775,14 +704,12 @@ void test_dm_on_connecting(void) {
         test_fail("DM on Connecting", "Setup failed — not CONNECTING");
 
     /* Peer sends DM(F=1) to our address */
-    atc_hdlc_u8 dm_ctrl = HDLC_U_CTRL(HDLC_U_DM, 1);
-    atc_hdlc_frame_t dm = { .address = 0x01, .control = dm_ctrl,
-                              .information = NULL, .information_len = 0 };
-    atc_hdlc_u8 dm_raw[32]; atc_hdlc_u32 dm_len = 0;
-    atc_hdlc_frame_pack(&dm, dm_raw, sizeof(dm_raw), &dm_len);
+    atc_hdlc_u8 dm_raw[32];
+    int dm_len = test_pack_frame(0x01, HDLC_U_CTRL(HDLC_U_DM, 1),
+                                 NULL, 0, dm_raw, sizeof(dm_raw));
 
     reset_test_state();
-    atc_hdlc_data_in(&ctx, dm_raw, dm_len);
+    atc_hdlc_data_in(&ctx, dm_raw, (atc_hdlc_u32)dm_len);
 
     if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED)
         test_fail("DM on Connecting", "State not DISCONNECTED after DM");
@@ -804,15 +731,13 @@ void test_duplicate_rej_guard(void) {
     ctx.vr = 0;
 
     /* Send I-frame N(S)=1 (out of sequence, expect N(S)=0) → REJ sent */
-    atc_hdlc_u8 i_ctrl = HDLC_I_CTRL(1, 0, 0);
     atc_hdlc_u8 payload[] = {0xBB};
-    atc_hdlc_frame_t iframe = { .address = 0x01, .control = i_ctrl,
-                                  .information = payload, .information_len = 1 };
-    atc_hdlc_u8 i_raw[64]; atc_hdlc_u32 i_len = 0;
-    atc_hdlc_frame_pack(&iframe, i_raw, sizeof(i_raw), &i_len);
+    atc_hdlc_u8 i_raw[64];
+    int i_len = test_pack_frame(0x01, HDLC_I_CTRL(1, 0, 0),
+                                payload, 1, i_raw, sizeof(i_raw));
 
     reset_test_state();
-    atc_hdlc_data_in(&ctx, i_raw, i_len);
+    atc_hdlc_data_in(&ctx, i_raw, (atc_hdlc_u32)i_len);
     if (!ctx.rej_exception)
         test_fail("Duplicate REJ", "rej_exception not set after OOS frame");
     int first_output_len = mock_output_len;
@@ -820,20 +745,19 @@ void test_duplicate_rej_guard(void) {
         test_fail("Duplicate REJ", "No REJ sent on first OOS");
 
     /* Send second OOS I-frame N(S)=2 — REJ must NOT be sent again */
-    atc_hdlc_u8 i_ctrl2 = HDLC_I_CTRL(2, 0, 0);
-    atc_hdlc_frame_t iframe2 = { .address = 0x01, .control = i_ctrl2,
-                                   .information = payload, .information_len = 1 };
-    atc_hdlc_u8 i_raw2[64]; atc_hdlc_u32 i_len2 = 0;
-    atc_hdlc_frame_pack(&iframe2, i_raw2, sizeof(i_raw2), &i_len2);
+    atc_hdlc_u8 i_raw2[64];
+    int i_len2 = test_pack_frame(0x01, HDLC_I_CTRL(2, 0, 0),
+                                 payload, 1, i_raw2, sizeof(i_raw2));
     reset_test_state();
-    atc_hdlc_data_in(&ctx, i_raw2, i_len2);
+    atc_hdlc_data_in(&ctx, i_raw2, (atc_hdlc_u32)i_len2);
     /* No REJ should be in output (rej_exception guards duplicate REJ) */
     if (mock_output_len >= 6) {
         /* Check that the output is NOT a REJ */
-        atc_hdlc_frame_t resp; atc_hdlc_u8 flat[32];
-        if (atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len,
-                                   &resp, flat, sizeof(flat))) {
-            if (atc_hdlc_get_s_frame_sub_type(resp.control) == ATC_HDLC_S_FRAME_TYPE_REJ)
+        atc_hdlc_u8 flat[32];
+        test_frame_t resp = test_unpack_frame(mock_output_buffer, mock_output_len,
+                                              flat, sizeof(flat));
+        if (resp.valid) {
+            if (HDLC_CTRL_S_BITS(resp.control) == HDLC_S_REJ)
                 test_fail("Duplicate REJ", "Duplicate REJ sent — rej_exception guard failed");
         }
     }

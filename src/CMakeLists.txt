@@ -1,5 +1,4 @@
 add_library(hdlc STATIC
-    frame/hdlc_frame.c
     frame/hdlc_crc.c
     station/hdlc_station.c
     station/hdlc_in.c

@@ -538,8 +538,8 @@ static void wait_for_echoes(physical_node_t *node, uint32_t expected, int timeou
 
     if (timeout_ms <= 0 && node->bytes_received < expected) {
         printf("\n[Warning] Timeout waiting for final echoes.\n");
-        printf("  -> Stats: RX Frames parsed=%u, CRC Errors=%u\n",
-               node->ctx.stats.rx_i_frames, node->ctx.stats.fcs_errors);
+        printf("  -> Timeout: bytes_received=%u, expected=%u\n",
+               node->bytes_received, expected);
     }
 }
 

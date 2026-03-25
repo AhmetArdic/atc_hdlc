@@ -1,4 +1,5 @@
 #include "test_common.h"
+#include "../src/frame/hdlc_crc.h"
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +9,7 @@
 atc_hdlc_u8  mock_output_buffer[16384];
 atc_hdlc_u8  mock_rx_buffer[16384];
 int          mock_output_len    = 0;
+int          mock_frame_count   = 0;
 int          on_data_call_count = 0;
 atc_hdlc_u8  last_data_payload[16384];
 atc_hdlc_u16 last_data_len = 0;
@@ -29,9 +31,10 @@ atc_hdlc_u32  mock_t2_last_ms     = 0;
  * ================================================================ */
 
 int mock_send_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_ctx) {
-    (void)user_ctx; (void)flush;
+    (void)user_ctx;
     if (mock_output_len < (int)sizeof(mock_output_buffer))
         mock_output_buffer[mock_output_len++] = byte;
+    if (flush) mock_frame_count++;
     return 0;
 }
 
@@ -166,6 +169,7 @@ void setup_test_context_no_tw(atc_hdlc_context_t *ctx) {
 
 void reset_test_state(void) {
     mock_output_len    = 0;
+    mock_frame_count   = 0;
     on_data_call_count = 0;
     last_data_len      = 0;
     on_event_call_count = 0;
@@ -196,4 +200,65 @@ void test_pass(const char *test_name) {
 void test_fail(const char *test_name, const char *reason) {
     printf("%s[FAIL] %s: %s%s\n", COL_RED, test_name, reason, COL_RESET);
     exit(1);
+}
+
+int test_pack_frame(atc_hdlc_u8 addr, atc_hdlc_u8 ctrl,
+                    const atc_hdlc_u8 *info, atc_hdlc_u16 info_len,
+                    atc_hdlc_u8 *out, int out_cap) {
+    atc_hdlc_u16 crc = ATC_HDLC_FCS_INIT_VALUE;
+    int n = 0;
+#define _RAW(b)  do { if (n >= out_cap) return 0; out[n++] = (atc_hdlc_u8)(b); } while(0)
+#define _ESC(b)  do { atc_hdlc_u8 _b = (atc_hdlc_u8)(b);                       \
+                      if (_b == 0x7E || _b == 0x7D) { _RAW(0x7D); _RAW(_b ^ 0x20); } \
+                      else { _RAW(_b); } } while(0)
+#define _ESCC(b) do { atc_hdlc_u8 _c = (atc_hdlc_u8)(b);                       \
+                      crc = atc_hdlc_crc_ccitt_update(crc, _c); _ESC(_c); } while(0)
+    _RAW(0x7E);
+    _ESCC(addr);
+    _ESCC(ctrl);
+    for (atc_hdlc_u16 i = 0; i < info_len && info; i++) _ESCC(info[i]);
+    _ESC((atc_hdlc_u8)(crc >> 8));
+    _ESC((atc_hdlc_u8)(crc & 0xFF));
+    _RAW(0x7E);
+#undef _RAW
+#undef _ESC
+#undef _ESCC
+    return n;
+}
+
+test_frame_t test_unpack_frame(const atc_hdlc_u8 *buf, int buf_len,
+                                atc_hdlc_u8 *flat, int flat_cap) {
+    test_frame_t r = {0};
+    if (!buf || !flat || buf_len < 4) return r;
+
+    int wi = 0;
+    atc_hdlc_bool inside = false, esc = false;
+
+    for (int i = 0; i < buf_len; i++) {
+        atc_hdlc_u8 b = buf[i];
+        if (b == 0x7E) {
+            if (inside && wi >= 4) { break; }
+            inside = true; wi = 0; continue;
+        }
+        if (!inside) continue;
+        if (b == 0x7D) { esc = true; continue; }
+        if (esc)       { b = (atc_hdlc_u8)(b ^ 0x20); esc = false; }
+        if (wi >= flat_cap) return r;
+        flat[wi++] = b;
+    }
+    if (wi < 4) return r;
+
+    atc_hdlc_u16 calced = ATC_HDLC_FCS_INIT_VALUE;
+    int data_len = wi - 2;
+    for (int i = 0; i < data_len; i++)
+        calced = atc_hdlc_crc_ccitt_update(calced, flat[i]);
+    atc_hdlc_u16 rx_fcs = (atc_hdlc_u16)(((atc_hdlc_u16)flat[data_len] << 8) | flat[data_len + 1]);
+    if (calced != rx_fcs) return r;
+
+    r.address  = flat[0];
+    r.control  = flat[1];
+    r.info_len = (atc_hdlc_u16)(data_len > 2 ? data_len - 2 : 0);
+    r.info     = (r.info_len > 0) ? &flat[2] : NULL;
+    r.valid    = true;
+    return r;
 }

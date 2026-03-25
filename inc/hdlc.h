@@ -194,56 +194,6 @@ void atc_hdlc_transmit_data(atc_hdlc_context_t *ctx,
 void atc_hdlc_transmit_end(atc_hdlc_context_t *ctx);
 
 /**
- * @brief Pack frame to buffer.
- *
- * Standalone (no context needed).
- *
- * @param frame       Frame to encode.
- * @param buffer      Output buffer.
- * @param buffer_len  Buffer size.
- * @param encoded_len Bytes written.
- * @return true on success.
- */
-atc_hdlc_bool atc_hdlc_frame_pack(const atc_hdlc_frame_t *frame,
-                                   atc_hdlc_u8            *buffer,
-                                   atc_hdlc_u32            buffer_len,
-                                   atc_hdlc_u32           *encoded_len);
-
-/**
- * @brief Unpack frame from buffer.
- *
- * Standalone (no context needed).
- *
- * @param buffer          Input data.
- * @param buffer_len      Length.
- * @param frame           Output frame.
- * @param flat_buffer     Work buffer.
- * @param flat_buffer_len Work buffer size.
- * @return true if valid.
- */
-atc_hdlc_bool atc_hdlc_frame_unpack(const atc_hdlc_u8 *buffer,
-                                      atc_hdlc_u32       buffer_len,
-                                      atc_hdlc_frame_t  *frame,
-                                      atc_hdlc_u8       *flat_buffer,
-                                      atc_hdlc_u32       flat_buffer_len);
-
-/**
- * @brief Decode S-frame type.
- *
- * @param control Control byte.
- * @return S-frame type.
- */
-atc_hdlc_s_frame_sub_type_t atc_hdlc_get_s_frame_sub_type(atc_hdlc_u8 control);
-
-/**
- * @brief Decode U-frame type.
- *
- * @param control Control byte.
- * @return U-frame type.
- */
-atc_hdlc_u_frame_sub_type_t atc_hdlc_get_u_frame_sub_type(atc_hdlc_u8 control);
-
-/**
  * @brief Get current state.
  *
  * @param ctx Context.
@@ -266,14 +216,6 @@ atc_hdlc_u8 atc_hdlc_get_window_available(const atc_hdlc_context_t *ctx);
  * @return true if T2 running.
  */
 atc_hdlc_bool atc_hdlc_has_pending_ack(const atc_hdlc_context_t *ctx);
-
-/**
- * @brief Get statistics.
- *
- * @param ctx Context.
- * @param out Output struct.
- */
-void atc_hdlc_get_stats(const atc_hdlc_context_t *ctx, atc_hdlc_stats_t *out);
 
 #ifdef __cplusplus
 }

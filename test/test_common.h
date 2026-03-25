@@ -17,6 +17,7 @@
 extern atc_hdlc_u8    mock_output_buffer[16384];
 extern atc_hdlc_u8    mock_rx_buffer[16384];
 extern int            mock_output_len;
+extern int            mock_frame_count;   /* incremented on each flush=true send */
 extern int            on_data_call_count;
 extern atc_hdlc_u8    last_data_payload[16384];
 extern atc_hdlc_u16   last_data_len;
@@ -64,5 +65,21 @@ void reset_test_state(void);
 void print_hexdump(const char *label, const atc_hdlc_u8 *data, int len);
 void test_pass(const char *test_name);
 void test_fail(const char *test_name, const char *reason);
+
+/* --- Test-only frame helpers (not part of public API) --- */
+typedef struct {
+    atc_hdlc_u8        address;
+    atc_hdlc_u8        control;
+    const atc_hdlc_u8 *info;       /* points into caller flat_buf */
+    atc_hdlc_u16       info_len;
+    atc_hdlc_bool      valid;
+} test_frame_t;
+
+int test_pack_frame(atc_hdlc_u8 addr, atc_hdlc_u8 ctrl,
+                    const atc_hdlc_u8 *info, atc_hdlc_u16 info_len,
+                    atc_hdlc_u8 *out, int out_cap);
+
+test_frame_t test_unpack_frame(const atc_hdlc_u8 *buf, int buf_len,
+                                atc_hdlc_u8 *flat, int flat_cap);
 
 #endif /* TEST_COMMON_H */

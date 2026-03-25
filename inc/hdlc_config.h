@@ -39,11 +39,6 @@ extern "C" {
 #define ATC_HDLC_DEFAULT_WINDOW_SIZE 1
 #endif
 
-/** @brief Enable statistics collection. */
-#ifndef ATC_HDLC_ENABLE_STATS
-#define ATC_HDLC_ENABLE_STATS 1
-#endif
-
 /** @brief Enable debug logging. */
 #ifndef ATC_HDLC_ENABLE_DEBUG_LOGS
 #define ATC_HDLC_ENABLE_DEBUG_LOGS 0

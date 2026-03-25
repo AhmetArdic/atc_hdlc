@@ -26,43 +26,6 @@ typedef uint_least32_t atc_hdlc_u32;
 typedef bool atc_hdlc_bool;
 
 typedef enum {
-    ATC_HDLC_FRAME_I,      /**< Information Frame (Data transfer) */
-    ATC_HDLC_FRAME_S,      /**< Supervisory Frame (Flow/Error control) */
-    ATC_HDLC_FRAME_U,      /**< Unnumbered Frame (Link management) */
-    ATC_HDLC_FRAME_INVALID /**< Invalid or Unknown Frame format */
-} atc_hdlc_frame_type_t;
-
-typedef enum {
-    ATC_HDLC_S_FRAME_TYPE_RR,      /**< Receive Ready */
-    ATC_HDLC_S_FRAME_TYPE_RNR,     /**< Receive Not Ready */
-    ATC_HDLC_S_FRAME_TYPE_REJ,     /**< Reject */
-    ATC_HDLC_S_FRAME_TYPE_UNKNOWN  /**< Unknown or Invalid S-Frame */
-} atc_hdlc_s_frame_sub_type_t;
-
-typedef enum {
-    ATC_HDLC_U_FRAME_TYPE_SABM,    /**< Set Asynchronous Balanced Mode */
-    ATC_HDLC_U_FRAME_TYPE_SNRM,    /**< Set Normal Response Mode */
-    ATC_HDLC_U_FRAME_TYPE_SARM,    /**< Set Asynchronous Response Mode */
-    ATC_HDLC_U_FRAME_TYPE_SABME,   /**< Set Asynchronous Balanced Mode Extended */
-    ATC_HDLC_U_FRAME_TYPE_SNRME,   /**< Set Normal Response Mode Extended */
-    ATC_HDLC_U_FRAME_TYPE_SARME,   /**< Set Asynchronous Response Mode Extended */
-    ATC_HDLC_U_FRAME_TYPE_DISC,    /**< Disconnect */
-    ATC_HDLC_U_FRAME_TYPE_UA,      /**< Unnumbered Acknowledgment */
-    ATC_HDLC_U_FRAME_TYPE_DM,      /**< Disconnect Mode */
-    ATC_HDLC_U_FRAME_TYPE_FRMR,    /**< Frame Reject */
-    ATC_HDLC_U_FRAME_TYPE_UI,      /**< Unnumbered Information */
-    ATC_HDLC_U_FRAME_TYPE_TEST,    /**< Test */
-    ATC_HDLC_U_FRAME_TYPE_UNKNOWN  /**< Unknown or Invalid U-Frame */
-} atc_hdlc_u_frame_sub_type_t;
-
-typedef struct {
-    const atc_hdlc_u8 *information; /**< Pointer to Information Field (Payload). */
-    atc_hdlc_u16 information_len;   /**< Length of valid data in information. */
-    atc_hdlc_u8 address;            /**< Address Field. */
-    atc_hdlc_u8 control;            /**< Control Field. */
-} atc_hdlc_frame_t;
-
-typedef enum {
     ATC_HDLC_STATE_DISCONNECTED,   /**< No logical connection; only SABM/UI/TEST are processed. */
     ATC_HDLC_STATE_CONNECTING,     /**< SABM sent, awaiting UA; T1 running. */
     ATC_HDLC_STATE_CONNECTED,      /**< Active session; all I/S/U frames processed normally. */
@@ -187,24 +150,6 @@ typedef struct {
 } atc_hdlc_rx_buffer_t;
 
 typedef struct {
-    atc_hdlc_u32 tx_i_frames;            /**< I-frames successfully transmitted. */
-    atc_hdlc_u32 tx_bytes;               /**< Information bytes transmitted. */
-    atc_hdlc_u32 rx_i_frames;            /**< In-sequence I-frames accepted. */
-    atc_hdlc_u32 rx_bytes;               /**< Information bytes received. */
-    atc_hdlc_u32 fcs_errors;             /**< Frames discarded due to FCS mismatch. */
-    atc_hdlc_u32 frmr_count;             /**< FRMR frames received from peer. */
-    atc_hdlc_u32 timeout_count;          /**< T1 timeout occurrences (retransmission triggers). */
-    atc_hdlc_u32 rej_sent;               /**< REJ frames sent. */
-    atc_hdlc_u32 rej_received;           /**< REJ frames received. */
-    atc_hdlc_u32 rnr_sent;               /**< RNR frames sent (local busy asserted). */
-    atc_hdlc_u32 rnr_received;           /**< RNR frames received (remote busy detected). */
-    atc_hdlc_u32 local_busy_transitions; /**< Number of times local busy was asserted. */
-    atc_hdlc_u32 test_sent;              /**< TEST frames sent. */
-    atc_hdlc_u32 test_success;           /**< TEST frames with a matching response received. */
-    atc_hdlc_u32 test_failed;            /**< TEST frames that timed out or had payload mismatch. */
-} atc_hdlc_stats_t;
-
-typedef struct {
     atc_hdlc_bool success;      /**< True if the peer echoed the correct payload. */
     atc_hdlc_bool timed_out;    /**< True if T1 expired before a response arrived. */
     atc_hdlc_u16  payload_len;  /**< Length of the test pattern that was sent. */
@@ -217,8 +162,6 @@ typedef struct {
     atc_hdlc_tx_window_t      *tx_window; /**< TX retransmit window descriptor (user-owned). */
     atc_hdlc_rx_buffer_t      *rx_buf;    /**< RX buffer descriptor (user-owned). */
     const atc_hdlc_u8 *test_pattern; /**< Pointer to the outgoing test payload (user-owned). */
-    atc_hdlc_frame_t       rx_frame;   /**< Temporary parsed-frame descriptor (RX path). */
-    atc_hdlc_stats_t       stats;      /**< Runtime statistics counters. */
     atc_hdlc_test_result_t test_result;/**< Result of the most recent TEST round-trip. */
     atc_hdlc_u32 rx_index;         /**< Current write index into rx_buf->buffer. */
     volatile atc_hdlc_state_t current_state; /**< Current station state. */

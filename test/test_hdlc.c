@@ -27,10 +27,9 @@ void test_basic_frame() {
 
   atc_hdlc_u8 payload[] = "TEST";
   /* Address = my_address (0x01) so I-frame is accepted in CONNECTED state */
-  atc_hdlc_frame_t frame_out = {
-      .address = 0x01, .control = 0x00, .information = payload, .information_len = 4};
-
-  hdlc_transmit_frame(&ctx, &frame_out);
+  hdlc_transmit_start(&ctx, 0x01, 0x00);
+  atc_hdlc_transmit_data(&ctx, payload, 4);
+  atc_hdlc_transmit_end(&ctx);
   print_hexdump("Output Buffer", mock_output_buffer, mock_output_len);
 
   // Validate Output Size
@@ -68,11 +67,9 @@ void test_empty_information() {
   setup_test_context(&ctx);
   ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
-  atc_hdlc_frame_t frame_out = {
-      .address = 0x01, .control = 0x00, .information = NULL, .information_len = 0};
+  hdlc_transmit_start(&ctx, 0x01, 0x00);
+  atc_hdlc_transmit_end(&ctx);
 
-  hdlc_transmit_frame(&ctx, &frame_out);
-  
   int loop_len = mock_output_len;
   atc_hdlc_data_in(&ctx, mock_output_buffer, loop_len);
 
@@ -101,10 +98,10 @@ void test_byte_stuffing_heavy() {
   /* Use UI frames (0x03) — I-frame dispatcher would reject duplicate N(S)=0. */
   // Payload with special characters
   atc_hdlc_u8 special[] = {0x7E, 0x7D, 0x7E, 0x7D, 0x00, 0xFF, 0x7E};
-  atc_hdlc_frame_t frame_out = {
-      .address = 0xFF, .control = 0x03, .information = special, .information_len = sizeof(special)};
 
-  hdlc_transmit_frame(&ctx, &frame_out);
+  hdlc_transmit_start(&ctx, 0xFF, 0x03);
+  atc_hdlc_transmit_data(&ctx, special, sizeof(special));
+  atc_hdlc_transmit_end(&ctx);
   // Verify escaping happened (size should be > raw size)
   // Raw: 7 (Flag) + 1 (Addr) + 1 (Ctrl) + 7 (Data) + 2 (FCS) + 1 (Flag) = 19
   // Escaped: 0x7E -> 7D 5E (2 bytes)
@@ -147,12 +144,11 @@ void test_garbage_noise() {
   ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   // Generate valid frame first
-  atc_hdlc_frame_t valid_frame = {
-      .address = 0xFF, .control = 0x03, .information = (atc_hdlc_u8*)"DATA", .information_len = 4};
-  
   mock_output_len = 0;
-  hdlc_transmit_frame(&ctx, &valid_frame);
-  
+  hdlc_transmit_start(&ctx, 0xFF, 0x03);
+  atc_hdlc_transmit_data(&ctx, (atc_hdlc_u8*)"DATA", 4);
+  atc_hdlc_transmit_end(&ctx);
+
   // Store valid frame bytes
   int valid_len = mock_output_len;
   atc_hdlc_u8 valid_bytes[256];
@@ -188,8 +184,8 @@ void test_consecutive_flags() {
   ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   mock_output_len = 0;
-  atc_hdlc_frame_t f = {.address=0xFF, .control=0x03, .information=NULL, .information_len=0};
-  hdlc_transmit_frame(&ctx, &f);
+  hdlc_transmit_start(&ctx, 0xFF, 0x03);
+  atc_hdlc_transmit_end(&ctx);
   
   int frame_len = mock_output_len;
   atc_hdlc_u8 frame_bytes[256];
@@ -277,8 +273,9 @@ void test_crc_error_injection() {
   ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   // Generate valid frame
-  atc_hdlc_frame_t f = {.address=0xFF, .control=0x00, .information=(atc_hdlc_u8*)"123", .information_len=3};
-  hdlc_transmit_frame(&ctx, &f);
+  hdlc_transmit_start(&ctx, 0xFF, 0x00);
+  atc_hdlc_transmit_data(&ctx, (atc_hdlc_u8*)"123", 3);
+  atc_hdlc_transmit_end(&ctx);
   
   // Corrupt it: Flip bit in data
   // 7E Addr Ctrl [Data] FCS FCS 7E
@@ -418,15 +415,14 @@ void test_control_field_i(void) {
    */
 
   // Construct I-Frame: N(S)=3, N(R)=5, P=1.
-  atc_hdlc_frame_t f = {.address=0xFF, .control=HDLC_I_CTRL(3, 5, 1), .information=NULL, .information_len=0};
-  
   mock_output_len = 0;
-  hdlc_transmit_frame(&ctx, &f);
-  
-  atc_hdlc_frame_t parsed_frame;
+  hdlc_transmit_start(&ctx, 0xFF, HDLC_I_CTRL(3, 5, 1));
+  atc_hdlc_transmit_end(&ctx);
+
   atc_hdlc_u8 info_buf[256];
-  if (atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len, &parsed_frame, info_buf, sizeof(info_buf))) {
-      if (hdlc_resolve_frame_type(parsed_frame.control) == ATC_HDLC_FRAME_I &&
+  test_frame_t parsed_frame = test_unpack_frame(mock_output_buffer, mock_output_len, info_buf, sizeof(info_buf));
+  if (parsed_frame.valid) {
+      if (hdlc_is_i_frame(parsed_frame.control) &&
           HDLC_CTRL_I_NS(parsed_frame.control) == 3 &&
           HDLC_CTRL_PF(parsed_frame.control) == 1 &&
           HDLC_CTRL_NR(parsed_frame.control) == 5) {
@@ -448,18 +444,17 @@ void test_control_field_s(void) {
   ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   // Construct S-Frame: REJ (S=10 -> 2), N(R)=7, P/F=0
-  atc_hdlc_frame_t f = {.address=0xFF, .control=HDLC_S_CTRL(0x02, 7, 0), .information=NULL, .information_len=0};
-  
-  hdlc_transmit_frame(&ctx, &f);
-  
-  atc_hdlc_frame_t parsed_frame;
+  hdlc_transmit_start(&ctx, 0xFF, HDLC_S_CTRL(0x02, 7, 0));
+  atc_hdlc_transmit_end(&ctx);
+
   atc_hdlc_u8 info_buf[256];
-  if (atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len, &parsed_frame, info_buf, sizeof(info_buf))) {
-    if (hdlc_resolve_frame_type(parsed_frame.control) == ATC_HDLC_FRAME_S &&
+  test_frame_t parsed_frame = test_unpack_frame(mock_output_buffer, mock_output_len, info_buf, sizeof(info_buf));
+  if (parsed_frame.valid) {
+    if (hdlc_is_s_frame(parsed_frame.control) &&
         HDLC_CTRL_S_BITS(parsed_frame.control) == 0x02 && // REJ
         HDLC_CTRL_NR(parsed_frame.control) == 7 &&
         HDLC_CTRL_PF(parsed_frame.control) == 0 &&
-        atc_hdlc_get_s_frame_sub_type(parsed_frame.control) == ATC_HDLC_S_FRAME_TYPE_REJ) {
+        HDLC_CTRL_S_BITS(parsed_frame.control) == HDLC_S_REJ) {
       test_pass("Control Field S");
     } else {
       test_fail("Control Field S", "Parsed S-frame mismatch");
@@ -540,31 +535,23 @@ void test_test_frame(void) {
 
     reset_test_state();
     /* Feed a TEST command addressed to me — expect echo response */
-    // Create TEST command addressed to ME
-    atc_hdlc_frame_t test_cmd = {
-        .address = 0x01,
-        .control = HDLC_U_CTRL(HDLC_U_TEST, 1),
-        .information = (atc_hdlc_u8*)"PING",
-        .information_len = 4
-    };
-    
     // We need to pack it first
     atc_hdlc_u8 packed[256];
-    atc_hdlc_u32 packed_len = 0;
-    atc_hdlc_frame_pack(&test_cmd, packed, sizeof(packed), &packed_len);
-    
+    int packed_len = test_pack_frame(0x01, HDLC_U_CTRL(HDLC_U_TEST, 1),
+                                     (atc_hdlc_u8*)"PING", 4, packed, sizeof(packed));
+
     // Feed to input
     atc_hdlc_data_in(&ctx, packed, packed_len);
-    
+
     if (mock_output_len == 0) {
         test_fail("TEST Echo", "No echo response generated");
     }
-    
+
     // Verify Echo content
-    atc_hdlc_frame_t echo;
     atc_hdlc_u8 buf[256];
-    if (atc_hdlc_frame_unpack(mock_output_buffer, mock_output_len, &echo, buf, sizeof(buf))) {
-        if (echo.address == 0x01 && echo.information_len == 4 && memcmp(echo.information, "PING", 4) == 0) {
+    test_frame_t echo = test_unpack_frame(mock_output_buffer, mock_output_len, buf, sizeof(buf));
+    if (echo.valid) {
+        if (echo.address == 0x01 && echo.info_len == 4 && memcmp(echo.info, "PING", 4) == 0) {
              test_pass("TEST Frame (Link Loopback)");
         } else {
              test_fail("TEST Echo", "Echo content mismatch");
@@ -572,39 +559,6 @@ void test_test_frame(void) {
     } else {
         test_fail("TEST Echo", "Failed to unpack echo");
     }
-}
-
-/**
- * @brief Test: atc_hdlc_get_u_frame_sub_type() — all U-frame modifier combinations.
- */
-void test_u_frame_sub_type(void) {
-    printf("TEST: U-Frame Sub-Type Decoder\n");
-
-    struct { atc_hdlc_u8 ctrl; atc_hdlc_u_frame_sub_type_t expected; const char *name; } cases[] = {
-        { HDLC_U_SABM,  ATC_HDLC_U_FRAME_TYPE_SABM,  "SABM"  },
-        { HDLC_U_SNRM,  ATC_HDLC_U_FRAME_TYPE_SNRM,  "SNRM"  },
-        { HDLC_U_SABME, ATC_HDLC_U_FRAME_TYPE_SABME, "SABME" },
-        { HDLC_U_SNRME, ATC_HDLC_U_FRAME_TYPE_SNRME, "SNRME" },
-        { HDLC_U_SARME, ATC_HDLC_U_FRAME_TYPE_SARME, "SARME" },
-        { HDLC_U_DISC,  ATC_HDLC_U_FRAME_TYPE_DISC,  "DISC"  },
-        { HDLC_U_UA,    ATC_HDLC_U_FRAME_TYPE_UA,    "UA"    },
-        { HDLC_U_DM,    ATC_HDLC_U_FRAME_TYPE_DM,    "DM"    },
-        { HDLC_U_FRMR,  ATC_HDLC_U_FRAME_TYPE_FRMR,  "FRMR"  },
-        { HDLC_U_UI,    ATC_HDLC_U_FRAME_TYPE_UI,    "UI"    },
-        { HDLC_U_TEST,  ATC_HDLC_U_FRAME_TYPE_TEST,  "TEST"  },
-    };
-    int n = (int)(sizeof(cases) / sizeof(cases[0]));
-    for (int i = 0; i < n; i++) {
-        atc_hdlc_u_frame_sub_type_t got = atc_hdlc_get_u_frame_sub_type(cases[i].ctrl);
-        if (got != cases[i].expected) {
-            char msg[64];
-            sprintf(msg, "%s: expected %d got %d", cases[i].name, cases[i].expected, (int)got);
-            test_fail("U-Frame Sub-Type", msg);
-        }
-        printf("   %s -> ctrl=0x%02X sub_type=%d %sOK%s\n",
-               cases[i].name, cases[i].ctrl, (int)got, COL_GREEN, COL_RESET);
-    }
-    test_pass("U-Frame Sub-Type Decoder");
 }
 
 int main(void) {
@@ -626,7 +580,6 @@ int main(void) {
   test_ui_frame_transmission();
   test_ui_frame_reception();
   test_test_frame();
-  test_u_frame_sub_type();
 
   printf("\n%sALL HDLC CORE TESTS PASSED!%s\n", COL_GREEN, COL_RESET);
   return 0;
