@@ -107,7 +107,7 @@ void test_init_state(void) {
     if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED) 
         test_fail("Init State", "Initial state is not DISCONNECTED");
     
-    if (atc_hdlc_is_connected(&ctx))
+    if (atc_hdlc_get_state(&ctx) == ATC_HDLC_STATE_CONNECTED)
         test_fail("Init State", "Reported connected initially");
         
     test_pass("Init State");
@@ -162,8 +162,8 @@ void test_connect_complete_on_ua(void) {
     if (state_change_call_count != 1)
          test_fail("Connect Complete UA", "Callback count mismatch");
          
-    if (!atc_hdlc_is_connected(&ctx))
-         test_fail("Connect Complete UA", "Helper returned not connected");
+    if (atc_hdlc_get_state(&ctx) != ATC_HDLC_STATE_CONNECTED)
+         test_fail("Connect Complete UA", "State not CONNECTED after UA");
 
     test_pass("Connect Complete on UA");
 }

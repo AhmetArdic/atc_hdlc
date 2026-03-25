@@ -100,9 +100,6 @@ atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_context_t *ctx) {
   return ATC_HDLC_OK;
 }
 
-atc_hdlc_bool atc_hdlc_is_connected(const atc_hdlc_context_t *ctx) {
-  return ctx && ctx->current_state == ATC_HDLC_STATE_CONNECTED;
-}
 
 atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_context_t *ctx, atc_hdlc_bool busy) {
   if (!ctx) return ATC_HDLC_ERR_INVALID_PARAM;
@@ -191,10 +188,6 @@ atc_hdlc_u8 atc_hdlc_get_window_available(const atc_hdlc_context_t *ctx) {
   return (atc_hdlc_u8)(ctx->window_size - outstanding);
 }
 
-atc_hdlc_bool atc_hdlc_has_pending_ack(const atc_hdlc_context_t *ctx) {
-  if (!ctx) return false;
-  return ctx->t2_active;
-}
 
 void atc_hdlc_abort(atc_hdlc_context_t *ctx) {
   if (!ctx) return;

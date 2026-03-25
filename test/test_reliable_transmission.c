@@ -809,9 +809,9 @@ void test_public_query_api(void) {
     if (avail != 0)
         test_fail("Query API", "get_window_available should be 0 after filling");
 
-    /* atc_hdlc_has_pending_ack — T2 starts when I-frame is received */
-    if (atc_hdlc_has_pending_ack(&ctx))
-        test_fail("Query API", "has_pending_ack should be false before receiving I-frame");
+    /* T2 starts when I-frame is received */
+    if (ctx.t2_active)
+        test_fail("Query API", "t2_active should be false before receiving I-frame");
 
     /* Simulate receiving an I-frame → T2 starts */
     atc_hdlc_u8 i_raw[64];
@@ -819,16 +819,14 @@ void test_public_query_api(void) {
                                                          payload, 1, i_raw, sizeof(i_raw));
     reset_test_state();
     atc_hdlc_data_in(&ctx, i_raw, i_len);
-    if (!atc_hdlc_has_pending_ack(&ctx))
-        test_fail("Query API", "has_pending_ack should be true after I-frame");
+    if (!ctx.t2_active)
+        test_fail("Query API", "t2_active should be true after I-frame");
 
     /* NULL safety */
     if (atc_hdlc_get_state(NULL) != ATC_HDLC_STATE_DISCONNECTED)
         test_fail("Query API", "get_state(NULL) should return DISCONNECTED");
     if (atc_hdlc_get_window_available(NULL) != 0)
         test_fail("Query API", "get_window_available(NULL) should return 0");
-    if (atc_hdlc_has_pending_ack(NULL))
-        test_fail("Query API", "has_pending_ack(NULL) should return false");
 
     test_pass("Public Query API");
 }

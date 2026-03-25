@@ -92,14 +92,6 @@ atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_context_t *ctx);
 void atc_hdlc_abort(atc_hdlc_context_t *ctx);
 
 /**
- * @brief Check if connected.
- *
- * @param ctx Context.
- * @return true if CONNECTED.
- */
-atc_hdlc_bool atc_hdlc_is_connected(const atc_hdlc_context_t *ctx);
-
-/**
  * @brief Set local busy condition.
  *
  * @param ctx  Context.
@@ -209,13 +201,6 @@ atc_hdlc_state_t atc_hdlc_get_state(const atc_hdlc_context_t *ctx);
  */
 atc_hdlc_u8 atc_hdlc_get_window_available(const atc_hdlc_context_t *ctx);
 
-/**
- * @brief Check if ACK pending.
- *
- * @param ctx Context.
- * @return true if T2 running.
- */
-atc_hdlc_bool atc_hdlc_has_pending_ack(const atc_hdlc_context_t *ctx);
 
 #ifdef __cplusplus
 }
