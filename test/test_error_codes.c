@@ -153,7 +153,7 @@ void test_err_frame_too_large(void) {
 
     /* ACK so window is free again */
     ctx.va = ctx.vs;
-    hdlc_t1_stop(&ctx);
+    t1_stop(&ctx);
 
     /* One byte over limit */
     static atc_hdlc_u8 oversized[1025];

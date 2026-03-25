@@ -27,7 +27,7 @@ void test_basic_frame() {
 
   atc_hdlc_u8 payload[] = "TEST";
   /* Address = my_address (0x01) so I-frame is accepted in CONNECTED state */
-  hdlc_transmit_start(&ctx, 0x01, 0x00);
+  frame_begin(&ctx, 0x01, 0x00);
   atc_hdlc_transmit_data(&ctx, payload, 4);
   atc_hdlc_transmit_end(&ctx);
   print_hexdump("Output Buffer", mock_output_buffer, mock_output_len);
@@ -67,7 +67,7 @@ void test_empty_information() {
   setup_test_context(&ctx);
   ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
-  hdlc_transmit_start(&ctx, 0x01, 0x00);
+  frame_begin(&ctx, 0x01, 0x00);
   atc_hdlc_transmit_end(&ctx);
 
   int loop_len = mock_output_len;
@@ -99,7 +99,7 @@ void test_byte_stuffing_heavy() {
   // Payload with special characters
   atc_hdlc_u8 special[] = {0x7E, 0x7D, 0x7E, 0x7D, 0x00, 0xFF, 0x7E};
 
-  hdlc_transmit_start(&ctx, 0xFF, 0x03);
+  frame_begin(&ctx, 0xFF, 0x03);
   atc_hdlc_transmit_data(&ctx, special, sizeof(special));
   atc_hdlc_transmit_end(&ctx);
   // Verify escaping happened (size should be > raw size)
@@ -145,7 +145,7 @@ void test_garbage_noise() {
 
   // Generate valid frame first
   mock_output_len = 0;
-  hdlc_transmit_start(&ctx, 0xFF, 0x03);
+  frame_begin(&ctx, 0xFF, 0x03);
   atc_hdlc_transmit_data(&ctx, (atc_hdlc_u8*)"DATA", 4);
   atc_hdlc_transmit_end(&ctx);
 
@@ -184,7 +184,7 @@ void test_consecutive_flags() {
   ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   mock_output_len = 0;
-  hdlc_transmit_start(&ctx, 0xFF, 0x03);
+  frame_begin(&ctx, 0xFF, 0x03);
   atc_hdlc_transmit_end(&ctx);
   
   int frame_len = mock_output_len;
@@ -273,7 +273,7 @@ void test_crc_error_injection() {
   ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   // Generate valid frame
-  hdlc_transmit_start(&ctx, 0xFF, 0x00);
+  frame_begin(&ctx, 0xFF, 0x00);
   atc_hdlc_transmit_data(&ctx, (atc_hdlc_u8*)"123", 3);
   atc_hdlc_transmit_end(&ctx);
   
@@ -416,13 +416,13 @@ void test_control_field_i(void) {
 
   // Construct I-Frame: N(S)=3, N(R)=5, P=1.
   mock_output_len = 0;
-  hdlc_transmit_start(&ctx, 0xFF, HDLC_I_CTRL(3, 5, 1));
+  frame_begin(&ctx, 0xFF, HDLC_I_CTRL(3, 5, 1));
   atc_hdlc_transmit_end(&ctx);
 
   atc_hdlc_u8 info_buf[256];
   test_frame_t parsed_frame = test_unpack_frame(mock_output_buffer, mock_output_len, info_buf, sizeof(info_buf));
   if (parsed_frame.valid) {
-      if (hdlc_is_i_frame(parsed_frame.control) &&
+      if (is_iframe(parsed_frame.control) &&
           HDLC_CTRL_I_NS(parsed_frame.control) == 3 &&
           HDLC_CTRL_PF(parsed_frame.control) == 1 &&
           HDLC_CTRL_NR(parsed_frame.control) == 5) {
@@ -444,13 +444,13 @@ void test_control_field_s(void) {
   ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   // Construct S-Frame: REJ (S=10 -> 2), N(R)=7, P/F=0
-  hdlc_transmit_start(&ctx, 0xFF, HDLC_S_CTRL(0x02, 7, 0));
+  frame_begin(&ctx, 0xFF, HDLC_S_CTRL(0x02, 7, 0));
   atc_hdlc_transmit_end(&ctx);
 
   atc_hdlc_u8 info_buf[256];
   test_frame_t parsed_frame = test_unpack_frame(mock_output_buffer, mock_output_len, info_buf, sizeof(info_buf));
   if (parsed_frame.valid) {
-    if (hdlc_is_s_frame(parsed_frame.control) &&
+    if (is_sframe(parsed_frame.control) &&
         HDLC_CTRL_S_BITS(parsed_frame.control) == 0x02 && // REJ
         HDLC_CTRL_NR(parsed_frame.control) == 7 &&
         HDLC_CTRL_PF(parsed_frame.control) == 0 &&

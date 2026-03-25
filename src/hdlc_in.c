@@ -12,7 +12,7 @@
 #include "hdlc_private.h"
 #include <string.h>
 
-void hdlc_reset_connection_state(atc_hdlc_context_t *ctx) {
+void reset_state(atc_hdlc_context_t *ctx) {
   ctx->vs = 0;
   ctx->vr = 0;
   ctx->va = 0;
@@ -24,18 +24,18 @@ void hdlc_reset_connection_state(atc_hdlc_context_t *ctx) {
   ctx->remote_busy   = false;
   ctx->local_busy    = false;
   ctx->retry_count   = 0;
-  hdlc_t1_stop(ctx);
-  hdlc_t2_stop(ctx);
+  t1_stop(ctx);
+  t2_stop(ctx);
 }
 
-static void hdlc_process_nr(atc_hdlc_context_t *ctx, atc_hdlc_u8 nr, atc_hdlc_u8 ctrl) {
+static void process_nr(atc_hdlc_context_t *ctx, atc_hdlc_u8 nr, atc_hdlc_u8 ctrl) {
   atc_hdlc_u8 diff_nr = (atc_hdlc_u8)((nr - ctx->va) & (HDLC_SEQUENCE_MODULUS - 1));
   atc_hdlc_u8 diff_vs = (atc_hdlc_u8)((ctx->vs - ctx->va) & (HDLC_SEQUENCE_MODULUS - 1));
 
   if (diff_nr > diff_vs) {
     ATC_HDLC_LOG_WARN("rx: Invalid N(R)=%u (V(A)=%u, V(S)=%u) -> FRMR Z",
                       nr, ctx->va, ctx->vs);
-    hdlc_send_frmr(ctx, ctrl, false, false, false, true);
+    send_frmr(ctx, ctrl, false, false, false, true);
     return;
   }
 
@@ -56,12 +56,12 @@ static void hdlc_process_nr(atc_hdlc_context_t *ctx, atc_hdlc_u8 nr, atc_hdlc_u8
   }
 
   if (ctx->va == ctx->vs)
-    hdlc_t1_stop(ctx);
+    t1_stop(ctx);
   else
-    hdlc_t1_start(ctx);
+    t1_start(ctx);
 }
 
-static void hdlc_retransmit_go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_seq) {
+static void go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_seq) {
   if (!ctx->tx_window || ctx->vs == from_seq) return;
 
   atc_hdlc_u8 old_vs = ctx->vs;
@@ -77,37 +77,36 @@ static void hdlc_retransmit_go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_
                                    (slot * ctx->tx_window->slot_capacity);
     atc_hdlc_u32 slot_len = ctx->tx_window->slot_lens[slot];
 
-    hdlc_transmit_start(ctx, ctx->peer_address, HDLC_I_CTRL(ctx->vs, ctx->vr, 0));
+    frame_begin(ctx, ctx->peer_address, HDLC_I_CTRL(ctx->vs, ctx->vr, 0));
     for (atc_hdlc_u32 i = 0; i < slot_len; i++)
-      hdlc_put_escaped_crc(ctx, slot_data[i]);
-    hdlc_finish_frame(ctx);
+      emit(ctx, slot_data[i]);
+    frame_end(ctx);
 
     ctx->vs = (atc_hdlc_u8)((ctx->vs + 1) % HDLC_SEQUENCE_MODULUS);
 
     if (ctx->tx_window->slots)
       ctx->next_tx_slot = (atc_hdlc_u8)((ctx->next_tx_slot + 1) % ctx->window_size);
   }
-  hdlc_t1_start(ctx);
+  t1_start(ctx);
 }
 
-static void hdlc_state_disconnected(atc_hdlc_context_t *ctx,
-                                     atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                                     const atc_hdlc_u8 *info, atc_hdlc_u16 info_len) {
+static void state_disconnected(atc_hdlc_context_t *ctx,
+                                atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
+                                const atc_hdlc_u8 *info, atc_hdlc_u16 info_len) {
   (void)address;
-  if (!hdlc_is_u_frame(ctrl)) return;
+  if (!is_uframe(ctrl)) return;
 
   switch (ctrl & ~HDLC_PF_BIT) {
     case HDLC_U_SABM:
       ATC_HDLC_LOG_DEBUG("S0 RX SABM -> S3 TX UA");
-      hdlc_reset_connection_state(ctx);
-      hdlc_send_ua(ctx, HDLC_CTRL_PF(ctrl));
-      hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTED,
-                               ATC_HDLC_EVENT_INCOMING_CONNECT);
+      reset_state(ctx);
+      send_ua(ctx, HDLC_CTRL_PF(ctrl));
+      set_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_INCOMING_CONNECT);
       break;
 
     case HDLC_U_DISC:
       ATC_HDLC_LOG_DEBUG("S0 RX DISC -> TX UA");
-      hdlc_send_ua(ctx, HDLC_CTRL_PF(ctrl));
+      send_ua(ctx, HDLC_CTRL_PF(ctrl));
       break;
 
     case HDLC_U_UI:
@@ -120,7 +119,7 @@ static void hdlc_state_disconnected(atc_hdlc_context_t *ctx,
     case HDLC_U_SNRME:
     case HDLC_U_SARME:
       ATC_HDLC_LOG_DEBUG("S0 RX unsupported mode -> TX DM");
-      hdlc_send_dm(ctx, HDLC_CTRL_PF(ctrl));
+      send_dm(ctx, HDLC_CTRL_PF(ctrl));
       break;
 
     default:
@@ -128,11 +127,11 @@ static void hdlc_state_disconnected(atc_hdlc_context_t *ctx,
   }
 }
 
-static void hdlc_state_connecting(atc_hdlc_context_t *ctx,
-                                   atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                                   const atc_hdlc_u8 *info, atc_hdlc_u16 info_len) {
+static void state_connecting(atc_hdlc_context_t *ctx,
+                              atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
+                              const atc_hdlc_u8 *info, atc_hdlc_u16 info_len) {
   (void)address; (void)info; (void)info_len;
-  if (!hdlc_is_u_frame(ctrl)) return;
+  if (!is_uframe(ctrl)) return;
 
   switch (ctrl & ~HDLC_PF_BIT) {
     case HDLC_U_SABM:
@@ -141,34 +140,31 @@ static void hdlc_state_connecting(atc_hdlc_context_t *ctx,
         return;
       }
       ATC_HDLC_LOG_WARN("S1 SABM collision: I won, sending UA");
-      hdlc_reset_connection_state(ctx);
-      hdlc_send_ua(ctx, HDLC_CTRL_PF(ctrl));
-      hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTED,
-                               ATC_HDLC_EVENT_INCOMING_CONNECT);
+      reset_state(ctx);
+      send_ua(ctx, HDLC_CTRL_PF(ctrl));
+      set_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_INCOMING_CONNECT);
       break;
 
     case HDLC_U_UA:
       if (HDLC_CTRL_PF(ctrl)) {
         ATC_HDLC_LOG_DEBUG("S1 RX UA(F=1) -> S3 CONNECTED");
-        hdlc_t1_stop(ctx);
-        hdlc_reset_connection_state(ctx);
-        hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTED,
-                                 ATC_HDLC_EVENT_CONNECT_ACCEPTED);
+        t1_stop(ctx);
+        reset_state(ctx);
+        set_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_CONNECT_ACCEPTED);
       }
       break;
 
     case HDLC_U_DM:
       if (HDLC_CTRL_PF(ctrl)) {
         ATC_HDLC_LOG_DEBUG("S1 RX DM(F=1) -> S0 DISCONNECTED");
-        hdlc_t1_stop(ctx);
-        hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED,
-                                 ATC_HDLC_EVENT_PEER_REJECT);
+        t1_stop(ctx);
+        set_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_PEER_REJECT);
       }
       break;
 
     case HDLC_U_DISC:
       ATC_HDLC_LOG_DEBUG("S1 RX DISC -> TX DM");
-      hdlc_send_dm(ctx, HDLC_CTRL_PF(ctrl));
+      send_dm(ctx, HDLC_CTRL_PF(ctrl));
       break;
 
     default:
@@ -176,18 +172,18 @@ static void hdlc_state_connecting(atc_hdlc_context_t *ctx,
   }
 }
 
-static void hdlc_state_connected(atc_hdlc_context_t *ctx,
-                                  atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                                  const atc_hdlc_u8 *info, atc_hdlc_u16 info_len) {
+static void state_connected(atc_hdlc_context_t *ctx,
+                             atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
+                             const atc_hdlc_u8 *info, atc_hdlc_u16 info_len) {
   atc_hdlc_u8 msg_pf = HDLC_CTRL_PF(ctrl);
 
-  if (hdlc_is_i_frame(ctrl)) {
+  if (is_iframe(ctrl)) {
     atc_hdlc_u8 msg_ns = HDLC_CTRL_I_NS(ctrl);
     atc_hdlc_u8 msg_nr = HDLC_CTRL_NR(ctrl);
 
     ATC_HDLC_LOG_DEBUG("S3 RX I N(S)=%u N(R)=%u P=%u", msg_ns, msg_nr, msg_pf);
 
-    hdlc_process_nr(ctx, msg_nr, ctrl);
+    process_nr(ctx, msg_nr, ctrl);
     if (ctx->current_state == ATC_HDLC_STATE_FRMR_ERROR) return;
 
     if (msg_ns == ctx->vr) {
@@ -199,34 +195,34 @@ static void hdlc_state_connected(atc_hdlc_context_t *ctx,
 
       if (msg_pf) {
         if (ctx->local_busy)
-          hdlc_send_rnr(ctx, 1);
+          send_rnr(ctx, 1);
         else
-          hdlc_send_response_rr(ctx, 1);
-        hdlc_t2_stop(ctx);
+          send_rr_resp(ctx, 1);
+        t2_stop(ctx);
       } else {
         if (!ctx->t2_active) {
           if (ctx->local_busy)
-            hdlc_send_rnr(ctx, 0);
+            send_rnr(ctx, 0);
           else
-            hdlc_t2_start(ctx);
+            t2_start(ctx);
         }
       }
     } else {
       if (ctx->rej_exception) {
         if (msg_pf)
-          hdlc_send_response_rr(ctx, 1);
+          send_rr_resp(ctx, 1);
       } else {
         ATC_HDLC_LOG_WARN("S3 OOS I N(S)=%u exp=%u -> REJ", msg_ns, ctx->vr);
         ctx->rej_exception = true;
-        hdlc_send_rej(ctx, msg_pf);
-        hdlc_t2_stop(ctx);
+        send_rej(ctx, msg_pf);
+        t2_stop(ctx);
       }
     }
 
-  } else if (hdlc_is_s_frame(ctrl)) {
+  } else if (is_sframe(ctrl)) {
     atc_hdlc_u8 s_bits = HDLC_CTRL_S_BITS(ctrl);
     atc_hdlc_u8 msg_nr = HDLC_CTRL_NR(ctrl);
-    int is_cmd = hdlc_is_cmd(ctx, address);
+    int cmd = is_cmd(ctx, address);
 
     ATC_HDLC_LOG_DEBUG("S3 RX S s=%u N(R)=%u P/F=%u", s_bits, msg_nr, msg_pf);
 
@@ -238,7 +234,7 @@ static void hdlc_state_connected(atc_hdlc_context_t *ctx,
         if (ctx->platform && ctx->platform->on_event)
           ctx->platform->on_event(ATC_HDLC_EVENT_REMOTE_BUSY_OFF, ctx->platform->user_ctx);
       }
-      hdlc_process_nr(ctx, msg_nr, ctrl);
+      process_nr(ctx, msg_nr, ctrl);
       if (ctx->current_state == ATC_HDLC_STATE_FRMR_ERROR) return;
 
     } else if (s_bits == HDLC_S_RNR) {
@@ -248,56 +244,53 @@ static void hdlc_state_connected(atc_hdlc_context_t *ctx,
         if (ctx->platform && ctx->platform->on_event)
           ctx->platform->on_event(ATC_HDLC_EVENT_REMOTE_BUSY_ON, ctx->platform->user_ctx);
       }
-      hdlc_process_nr(ctx, msg_nr, ctrl);
+      process_nr(ctx, msg_nr, ctrl);
       if (ctx->current_state == ATC_HDLC_STATE_FRMR_ERROR) return;
 
     } else if (s_bits == HDLC_S_REJ) {
       ctx->remote_busy = false;
-      hdlc_process_nr(ctx, msg_nr, ctrl);
+      process_nr(ctx, msg_nr, ctrl);
       if (ctx->current_state == ATC_HDLC_STATE_FRMR_ERROR) return;
 
       if (!ctx->rej_exception && ctx->va != ctx->vs) {
         ctx->rej_exception = true;
-        hdlc_retransmit_go_back_n(ctx, msg_nr);
+        go_back_n(ctx, msg_nr);
       }
     }
 
-    if (is_cmd && msg_pf) {
-      hdlc_send_response_rr(ctx, 1);
-    } else if (!is_cmd && msg_pf) {
+    if (cmd && msg_pf) {
+      send_rr_resp(ctx, 1);
+    } else if (!cmd && msg_pf) {
       ATC_HDLC_LOG_DEBUG("S3 F=1 response — check retransmit");
       if (ctx->va != ctx->vs)
-        hdlc_retransmit_go_back_n(ctx, ctx->va);
+        go_back_n(ctx, ctx->va);
     }
 
-  } else if (hdlc_is_u_frame(ctrl)) {
+  } else if (is_uframe(ctrl)) {
     switch (ctrl & ~HDLC_PF_BIT) {
       case HDLC_U_SABM:
         ATC_HDLC_LOG_DEBUG("S3 RX SABM -> reset + UA");
-        hdlc_reset_connection_state(ctx);
-        hdlc_send_ua(ctx, msg_pf);
+        reset_state(ctx);
+        send_ua(ctx, msg_pf);
         break;
 
       case HDLC_U_DISC:
         ATC_HDLC_LOG_DEBUG("S3 RX DISC -> S0");
-        hdlc_reset_connection_state(ctx);
-        hdlc_send_ua(ctx, msg_pf);
-        hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED,
-                                 ATC_HDLC_EVENT_PEER_DISCONNECT);
+        reset_state(ctx);
+        send_ua(ctx, msg_pf);
+        set_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_PEER_DISCONNECT);
         break;
 
       case HDLC_U_DM:
         ATC_HDLC_LOG_DEBUG("S3 RX DM -> S0");
-        hdlc_reset_connection_state(ctx);
-        hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED,
-                                 ATC_HDLC_EVENT_PEER_REJECT);
+        reset_state(ctx);
+        set_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_PEER_REJECT);
         break;
 
       case HDLC_U_FRMR:
         ATC_HDLC_LOG_ERROR("S3 RX FRMR -> S4 + re-establish");
-        hdlc_reset_connection_state(ctx);
-        hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_FRMR_ERROR,
-                                 ATC_HDLC_EVENT_PROTOCOL_ERROR);
+        reset_state(ctx);
+        set_state(ctx, ATC_HDLC_STATE_FRMR_ERROR, ATC_HDLC_EVENT_PROTOCOL_ERROR);
         break;
 
       case HDLC_U_UI:
@@ -306,12 +299,12 @@ static void hdlc_state_connected(atc_hdlc_context_t *ctx,
         break;
 
       case HDLC_U_TEST:
-        if (hdlc_is_cmd(ctx, address)) {
+        if (is_cmd(ctx, address)) {
           /* Echo back to sender */
-          hdlc_transmit_start(ctx, ctx->my_address, HDLC_U_CTRL(HDLC_U_TEST, msg_pf));
+          frame_begin(ctx, ctx->my_address, HDLC_U_CTRL(HDLC_U_TEST, msg_pf));
           for (atc_hdlc_u16 i = 0; i < info_len; i++)
-            hdlc_put_escaped_crc(ctx, info[i]);
-          hdlc_finish_frame(ctx);
+            emit(ctx, info[i]);
+          frame_end(ctx);
         } else {
           if (ctx->platform && ctx->platform->on_data && info)
             ctx->platform->on_data(info, info_len, ctx->platform->user_ctx);
@@ -322,25 +315,25 @@ static void hdlc_state_connected(atc_hdlc_context_t *ctx,
       case HDLC_U_SABME:
       case HDLC_U_SNRME:
       case HDLC_U_SARME:
-        hdlc_send_dm(ctx, msg_pf);
+        send_dm(ctx, msg_pf);
         break;
 
       default:
         ATC_HDLC_LOG_WARN("S3 RX unknown U-frame -> FRMR W");
-        hdlc_send_frmr(ctx, ctrl, true, false, false, false);
+        send_frmr(ctx, ctrl, true, false, false, false);
         break;
     }
   }
 }
 
-static void hdlc_state_disconnecting(atc_hdlc_context_t *ctx,
-                                      atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                                      const atc_hdlc_u8 *info, atc_hdlc_u16 info_len) {
+static void state_disconnecting(atc_hdlc_context_t *ctx,
+                                 atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
+                                 const atc_hdlc_u8 *info, atc_hdlc_u16 info_len) {
   (void)address; (void)info; (void)info_len;
 
-  if (!hdlc_is_u_frame(ctrl)) {
+  if (!is_uframe(ctrl)) {
     if (HDLC_CTRL_PF(ctrl))
-      hdlc_send_dm(ctx, 1);
+      send_dm(ctx, 1);
     return;
   }
 
@@ -348,29 +341,27 @@ static void hdlc_state_disconnecting(atc_hdlc_context_t *ctx,
     case HDLC_U_SABM:
     case HDLC_U_SABME:
       ATC_HDLC_LOG_DEBUG("S2 RX SABM/SABME -> TX DM");
-      hdlc_send_dm(ctx, HDLC_CTRL_PF(ctrl));
+      send_dm(ctx, HDLC_CTRL_PF(ctrl));
       break;
 
     case HDLC_U_DISC:
       ATC_HDLC_LOG_DEBUG("S2 RX DISC -> TX UA");
-      hdlc_send_ua(ctx, HDLC_CTRL_PF(ctrl));
+      send_ua(ctx, HDLC_CTRL_PF(ctrl));
       break;
 
     case HDLC_U_UA:
       if (HDLC_CTRL_PF(ctrl)) {
         ATC_HDLC_LOG_DEBUG("S2 RX UA(F=1) -> S0 DISCONNECTED");
-        hdlc_t1_stop(ctx);
-        hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED,
-                                 ATC_HDLC_EVENT_DISCONNECT_COMPLETE);
+        t1_stop(ctx);
+        set_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_DISCONNECT_COMPLETE);
       }
       break;
 
     case HDLC_U_DM:
       if (HDLC_CTRL_PF(ctrl)) {
         ATC_HDLC_LOG_DEBUG("S2 RX DM(F=1) -> S0 DISCONNECTED");
-        hdlc_t1_stop(ctx);
-        hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_DISCONNECTED,
-                                 ATC_HDLC_EVENT_PEER_REJECT);
+        t1_stop(ctx);
+        set_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_PEER_REJECT);
       }
       break;
 
@@ -379,46 +370,45 @@ static void hdlc_state_disconnecting(atc_hdlc_context_t *ctx,
   }
 }
 
-static void hdlc_state_frmr_error(atc_hdlc_context_t *ctx,
-                                   atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                                   const atc_hdlc_u8 *info, atc_hdlc_u16 info_len) {
+static void state_frmr_error(atc_hdlc_context_t *ctx,
+                              atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
+                              const atc_hdlc_u8 *info, atc_hdlc_u16 info_len) {
   (void)address; (void)info; (void)info_len;
-  if (!hdlc_is_u_frame(ctrl)) return;
+  if (!is_uframe(ctrl)) return;
 
   if ((ctrl & ~HDLC_PF_BIT) == HDLC_U_SABM) {
     ATC_HDLC_LOG_DEBUG("S4 RX SABM -> S3 TX UA");
-    hdlc_reset_connection_state(ctx);
-    hdlc_send_ua(ctx, HDLC_CTRL_PF(ctrl));
-    hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_CONNECTED,
-                             ATC_HDLC_EVENT_INCOMING_CONNECT);
+    reset_state(ctx);
+    send_ua(ctx, HDLC_CTRL_PF(ctrl));
+    set_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_INCOMING_CONNECT);
   }
 }
 
-void hdlc_process_complete_frame(atc_hdlc_context_t *ctx,
-                                  atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                                  const atc_hdlc_u8 *info, atc_hdlc_u16 info_len) {
+void dispatch_frame(atc_hdlc_context_t *ctx,
+                    atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
+                    const atc_hdlc_u8 *info, atc_hdlc_u16 info_len) {
   switch (ctx->current_state) {
     case ATC_HDLC_STATE_DISCONNECTED:
-      hdlc_state_disconnected(ctx, address, ctrl, info, info_len);
+      state_disconnected(ctx, address, ctrl, info, info_len);
       break;
     case ATC_HDLC_STATE_CONNECTING:
-      hdlc_state_connecting(ctx, address, ctrl, info, info_len);
+      state_connecting(ctx, address, ctrl, info, info_len);
       break;
     case ATC_HDLC_STATE_CONNECTED:
-      hdlc_state_connected(ctx, address, ctrl, info, info_len);
+      state_connected(ctx, address, ctrl, info, info_len);
       break;
     case ATC_HDLC_STATE_DISCONNECTING:
-      hdlc_state_disconnecting(ctx, address, ctrl, info, info_len);
+      state_disconnecting(ctx, address, ctrl, info, info_len);
       break;
     case ATC_HDLC_STATE_FRMR_ERROR:
-      hdlc_state_frmr_error(ctx, address, ctrl, info, info_len);
+      state_frmr_error(ctx, address, ctrl, info, info_len);
       break;
     default:
       break;
   }
 }
 
-static void hdlc_data_in(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
+static void rx_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
   if (byte == HDLC_FLAG) {
     if (ctx->rx_state != HDLC_RX_STATE_HUNT) {
       if (ctx->rx_index >= HDLC_MIN_FRAME_LEN) {
@@ -445,7 +435,7 @@ static void hdlc_data_in(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
             info_len = (atc_hdlc_u16)(data_len - (HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN));
           }
 
-          hdlc_process_complete_frame(ctx, address, ctrl, info, info_len);
+          dispatch_frame(ctx, address, ctrl, info, info_len);
         } else {
           ATC_HDLC_LOG_WARN("rx: CRC Error! Calc: 0x%04X, RX: 0x%04X",
                             calced_crc, rx_fcs);
@@ -495,5 +485,5 @@ static void hdlc_data_in(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
 void atc_hdlc_data_in(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc_u32 len) {
   if (!ctx || !data) return;
   for (atc_hdlc_u32 i = 0; i < len; i++)
-    hdlc_data_in(ctx, data[i]);
+    rx_byte(ctx, data[i]);
 }

@@ -87,130 +87,130 @@ typedef enum {
 } hdlc_rx_state_t;
 
 /* --- Frame type predicates --- */
-static inline int hdlc_is_i_frame(atc_hdlc_u8 ctrl) { return (ctrl & 0x01) == 0; }
-static inline int hdlc_is_s_frame(atc_hdlc_u8 ctrl) { return (ctrl & 0x03) == 0x01; }
-static inline int hdlc_is_u_frame(atc_hdlc_u8 ctrl) { return (ctrl & 0x03) == 0x03; }
+static inline int is_iframe(atc_hdlc_u8 ctrl) { return (ctrl & 0x01) == 0; }
+static inline int is_sframe(atc_hdlc_u8 ctrl) { return (ctrl & 0x03) == 0x01; }
+static inline int is_uframe(atc_hdlc_u8 ctrl) { return (ctrl & 0x03) == 0x03; }
 
-static inline int hdlc_is_cmd(const atc_hdlc_context_t *ctx, atc_hdlc_u8 address) {
+static inline int is_cmd(const atc_hdlc_context_t *ctx, atc_hdlc_u8 address) {
   return address == ctx->my_address;
 }
 
 /* --- Internal function declarations --- */
-void hdlc_set_protocol_state(atc_hdlc_context_t *ctx,
-                             atc_hdlc_state_t new_state,
-                             atc_hdlc_event_t event);
+void set_state(atc_hdlc_context_t *ctx,
+               atc_hdlc_state_t new_state,
+               atc_hdlc_event_t event);
 
-void hdlc_reset_connection_state(atc_hdlc_context_t *ctx);
+void reset_state(atc_hdlc_context_t *ctx);
 
-void hdlc_process_complete_frame(atc_hdlc_context_t *ctx,
-                                 atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                                 const atc_hdlc_u8 *info, atc_hdlc_u16 info_len);
+void dispatch_frame(atc_hdlc_context_t *ctx,
+                    atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
+                    const atc_hdlc_u8 *info, atc_hdlc_u16 info_len);
 
 /* --- Timer helpers --- */
-static inline void hdlc_t1_start(atc_hdlc_context_t *ctx) {
+static inline void t1_start(atc_hdlc_context_t *ctx) {
   if (ctx->platform && ctx->platform->t1_start && ctx->config)
     ctx->platform->t1_start(ctx->config->t1_ms, ctx->platform->user_ctx);
   ctx->t1_active = true;
 }
 
-static inline void hdlc_t1_stop(atc_hdlc_context_t *ctx) {
+static inline void t1_stop(atc_hdlc_context_t *ctx) {
   if (ctx->t1_active && ctx->platform && ctx->platform->t1_stop)
     ctx->platform->t1_stop(ctx->platform->user_ctx);
   ctx->t1_active = false;
 }
 
-static inline void hdlc_t2_start(atc_hdlc_context_t *ctx) {
+static inline void t2_start(atc_hdlc_context_t *ctx) {
   if (ctx->platform && ctx->platform->t2_start && ctx->config)
     ctx->platform->t2_start(ctx->config->t2_ms, ctx->platform->user_ctx);
   ctx->t2_active = true;
 }
 
-static inline void hdlc_t2_stop(atc_hdlc_context_t *ctx) {
+static inline void t2_stop(atc_hdlc_context_t *ctx) {
   if (ctx->t2_active && ctx->platform && ctx->platform->t2_stop)
     ctx->platform->t2_stop(ctx->platform->user_ctx);
   ctx->t2_active = false;
 }
 
 /* --- TX byte-level primitives --- */
-static inline void hdlc_put_raw(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush) {
+static inline void put_raw(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte, atc_hdlc_bool flush) {
   if (ctx->platform && ctx->platform->on_send)
     ctx->platform->on_send(byte, flush, ctx->platform->user_ctx);
 }
 
-static inline void hdlc_put_escaped(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
+static inline void put_escaped(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
   if (byte == HDLC_FLAG || byte == HDLC_ESCAPE) {
-    hdlc_put_raw(ctx, HDLC_ESCAPE, false);
-    hdlc_put_raw(ctx, (atc_hdlc_u8)(byte ^ HDLC_XOR_MASK), false);
+    put_raw(ctx, HDLC_ESCAPE, false);
+    put_raw(ctx, (atc_hdlc_u8)(byte ^ HDLC_XOR_MASK), false);
   } else {
-    hdlc_put_raw(ctx, byte, false);
+    put_raw(ctx, byte, false);
   }
 }
 
 /* Updates ctx->tx_crc, then escapes and sends byte. */
-static inline void hdlc_put_escaped_crc(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
+static inline void emit(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
   ctx->tx_crc = atc_hdlc_crc_ccitt_update(ctx->tx_crc, byte);
-  hdlc_put_escaped(ctx, byte);
+  put_escaped(ctx, byte);
 }
 
 /* Begin a frame: FLAG + address + control (with CRC tracking). */
-static inline void hdlc_transmit_start(atc_hdlc_context_t *ctx,
-                                       atc_hdlc_u8 address, atc_hdlc_u8 control) {
+static inline void frame_begin(atc_hdlc_context_t *ctx,
+                                atc_hdlc_u8 address, atc_hdlc_u8 control) {
   if (!ctx) return;
   ctx->tx_crc = ATC_HDLC_FCS_INIT_VALUE;
-  hdlc_put_raw(ctx, HDLC_FLAG, false);
-  hdlc_put_escaped_crc(ctx, address);
-  hdlc_put_escaped_crc(ctx, control);
+  put_raw(ctx, HDLC_FLAG, false);
+  emit(ctx, address);
+  emit(ctx, control);
   ATC_HDLC_LOG_DEBUG("tx: Frame start (Addr: 0x%02X, Ctrl: 0x%02X)", address, control);
 }
 
 /* End a frame: FCS bytes + closing FLAG. */
-static inline void hdlc_finish_frame(atc_hdlc_context_t *ctx) {
-  hdlc_put_escaped(ctx, (atc_hdlc_u8)(ctx->tx_crc >> 8));
-  hdlc_put_escaped(ctx, (atc_hdlc_u8)(ctx->tx_crc & 0xFF));
-  hdlc_put_raw(ctx, HDLC_FLAG, true);
+static inline void frame_end(atc_hdlc_context_t *ctx) {
+  put_escaped(ctx, (atc_hdlc_u8)(ctx->tx_crc >> 8));
+  put_escaped(ctx, (atc_hdlc_u8)(ctx->tx_crc & 0xFF));
+  put_raw(ctx, HDLC_FLAG, true);
 }
 
 /* --- Frame-level send helpers --- */
-static inline void hdlc_send_u_frame(atc_hdlc_context_t *ctx,
-                                     atc_hdlc_u8 address, atc_hdlc_u8 ctrl) {
-  hdlc_transmit_start(ctx, address, ctrl);
-  hdlc_finish_frame(ctx);
+static inline void send_u(atc_hdlc_context_t *ctx,
+                           atc_hdlc_u8 address, atc_hdlc_u8 ctrl) {
+  frame_begin(ctx, address, ctrl);
+  frame_end(ctx);
 }
 
-static inline void hdlc_send_ua(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
-  hdlc_send_u_frame(ctx, ctx->my_address, HDLC_U_CTRL(HDLC_U_UA, pf));
+static inline void send_ua(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
+  send_u(ctx, ctx->my_address, HDLC_U_CTRL(HDLC_U_UA, pf));
 }
 
-static inline void hdlc_send_dm(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
-  hdlc_send_u_frame(ctx, ctx->my_address, HDLC_U_CTRL(HDLC_U_DM, pf));
+static inline void send_dm(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
+  send_u(ctx, ctx->my_address, HDLC_U_CTRL(HDLC_U_DM, pf));
 }
 
-static inline void hdlc_send_s_frame(atc_hdlc_context_t *ctx,
-                                     atc_hdlc_u8 address, atc_hdlc_u8 s_bits,
-                                     atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
-  hdlc_transmit_start(ctx, address, HDLC_S_CTRL(s_bits, nr, pf));
-  hdlc_finish_frame(ctx);
+static inline void send_s(atc_hdlc_context_t *ctx,
+                           atc_hdlc_u8 address, atc_hdlc_u8 s_bits,
+                           atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
+  frame_begin(ctx, address, HDLC_S_CTRL(s_bits, nr, pf));
+  frame_end(ctx);
 }
 
-static inline void hdlc_send_rr(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
-  hdlc_send_s_frame(ctx, ctx->peer_address, HDLC_S_RR, ctx->vr, pf);
+static inline void send_rr(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
+  send_s(ctx, ctx->peer_address, HDLC_S_RR, ctx->vr, pf);
 }
 
-static inline void hdlc_send_response_rr(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
-  hdlc_send_s_frame(ctx, ctx->my_address, HDLC_S_RR, ctx->vr, pf);
+static inline void send_rr_resp(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
+  send_s(ctx, ctx->my_address, HDLC_S_RR, ctx->vr, pf);
 }
 
-static inline void hdlc_send_rnr(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
-  hdlc_send_s_frame(ctx, ctx->my_address, HDLC_S_RNR, ctx->vr, pf);
+static inline void send_rnr(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
+  send_s(ctx, ctx->my_address, HDLC_S_RNR, ctx->vr, pf);
 }
 
-static inline void hdlc_send_rej(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
-  hdlc_send_s_frame(ctx, ctx->peer_address, HDLC_S_REJ, ctx->vr, pf);
+static inline void send_rej(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
+  send_s(ctx, ctx->peer_address, HDLC_S_REJ, ctx->vr, pf);
 }
 
-static inline void hdlc_send_frmr(atc_hdlc_context_t *ctx,
-                                  atc_hdlc_u8 rejected_ctrl, atc_hdlc_bool w,
-                                  atc_hdlc_bool x, atc_hdlc_bool y, atc_hdlc_bool z) {
+static inline void send_frmr(atc_hdlc_context_t *ctx,
+                              atc_hdlc_u8 rejected_ctrl, atc_hdlc_bool w,
+                              atc_hdlc_bool x, atc_hdlc_bool y, atc_hdlc_bool z) {
   atc_hdlc_u8 info[3];
   info[0] = rejected_ctrl;
   info[1] = (atc_hdlc_u8)(((ctx->vr & 0x07) << 5) | ((ctx->vs & 0x07) << 1));
@@ -220,15 +220,15 @@ static inline void hdlc_send_frmr(atc_hdlc_context_t *ctx,
   ATC_HDLC_LOG_ERROR("tx: FRMR ctrl=0x%02X W=%u X=%u Y=%u Z=%u", rejected_ctrl,
                      (unsigned)w, (unsigned)x, (unsigned)y, (unsigned)z);
 
-  hdlc_transmit_start(ctx, ctx->my_address, HDLC_U_CTRL(HDLC_U_FRMR, 0));
-  hdlc_put_escaped_crc(ctx, info[0]);
-  hdlc_put_escaped_crc(ctx, info[1]);
-  hdlc_put_escaped_crc(ctx, info[2]);
-  hdlc_finish_frame(ctx);
+  frame_begin(ctx, ctx->my_address, HDLC_U_CTRL(HDLC_U_FRMR, 0));
+  emit(ctx, info[0]);
+  emit(ctx, info[1]);
+  emit(ctx, info[2]);
+  frame_end(ctx);
 
-  hdlc_t1_stop(ctx);
-  hdlc_t2_stop(ctx);
-  hdlc_set_protocol_state(ctx, ATC_HDLC_STATE_FRMR_ERROR, ATC_HDLC_EVENT_PROTOCOL_ERROR);
+  t1_stop(ctx);
+  t2_stop(ctx);
+  set_state(ctx, ATC_HDLC_STATE_FRMR_ERROR, ATC_HDLC_EVENT_PROTOCOL_ERROR);
 }
 
 #endif /* ATC_HDLC_PRIVATE_H */

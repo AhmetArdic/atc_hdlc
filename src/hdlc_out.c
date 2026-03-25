@@ -19,10 +19,10 @@ atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_context_t *ctx,
   if (ctx->config && len > ctx->config->max_frame_size)
     return ATC_HDLC_ERR_FRAME_TOO_LARGE;
 
-  hdlc_transmit_start(ctx, address, HDLC_U_CTRL(HDLC_U_UI, 0));
+  frame_begin(ctx, address, HDLC_U_CTRL(HDLC_U_UI, 0));
   for (atc_hdlc_u32 i = 0; i < len; i++)
-    hdlc_put_escaped_crc(ctx, data[i]);
-  hdlc_finish_frame(ctx);
+    emit(ctx, data[i]);
+  frame_end(ctx);
 
   return ATC_HDLC_OK;
 }
@@ -40,12 +40,12 @@ atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_context_t *ctx,
   ctx->test_pattern_len = (atc_hdlc_u16)len;
   ctx->test_pending     = true;
 
-  hdlc_transmit_start(ctx, address, HDLC_U_CTRL(HDLC_U_TEST, 1));
+  frame_begin(ctx, address, HDLC_U_CTRL(HDLC_U_TEST, 1));
   for (atc_hdlc_u32 i = 0; i < len; i++)
-    hdlc_put_escaped_crc(ctx, data[i]);
-  hdlc_finish_frame(ctx);
+    emit(ctx, data[i]);
+  frame_end(ctx);
 
-  hdlc_t1_start(ctx);
+  t1_start(ctx);
   return ATC_HDLC_OK;
 }
 
@@ -78,23 +78,23 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t *ctx,
 
   ATC_HDLC_LOG_DEBUG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
 
-  hdlc_transmit_start(ctx, ctx->peer_address, HDLC_I_CTRL(ctx->vs, ctx->vr, 0));
+  frame_begin(ctx, ctx->peer_address, HDLC_I_CTRL(ctx->vs, ctx->vr, 0));
   for (atc_hdlc_u32 i = 0; i < len; i++)
-    hdlc_put_escaped_crc(ctx, data[i]);
-  hdlc_finish_frame(ctx);
+    emit(ctx, data[i]);
+  frame_end(ctx);
 
   ctx->vs = (atc_hdlc_u8)((ctx->vs + 1) % HDLC_SEQUENCE_MODULUS);
-  hdlc_t2_stop(ctx);
+  t2_stop(ctx);
 
   if (outstanding == 0)
-    hdlc_t1_start(ctx);
+    t1_start(ctx);
 
   return ATC_HDLC_OK;
 }
 
 void atc_hdlc_transmit_start_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address) {
   if (!ctx) return;
-  hdlc_transmit_start(ctx, address, HDLC_U_CTRL(HDLC_U_UI, 0));
+  frame_begin(ctx, address, HDLC_U_CTRL(HDLC_U_UI, 0));
 }
 
 void atc_hdlc_transmit_data(atc_hdlc_context_t *ctx,
@@ -102,10 +102,10 @@ void atc_hdlc_transmit_data(atc_hdlc_context_t *ctx,
                              atc_hdlc_u32        len) {
   if (!ctx || (!data && len > 0)) return;
   for (atc_hdlc_u32 i = 0; i < len; i++)
-    hdlc_put_escaped_crc(ctx, data[i]);
+    emit(ctx, data[i]);
 }
 
 void atc_hdlc_transmit_end(atc_hdlc_context_t *ctx) {
   if (!ctx) return;
-  hdlc_finish_frame(ctx);
+  frame_end(ctx);
 }
