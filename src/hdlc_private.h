@@ -208,26 +208,28 @@ static inline void send_rej(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
   send_s(ctx, ctx->peer_address, HDLC_S_REJ, ctx->vr, pf);
 }
 
+static inline void retransmit_frmr(atc_hdlc_context_t *ctx) {
+  atc_hdlc_u8 info1 = (atc_hdlc_u8)(((ctx->vr & 0x07) << 5) | ((ctx->vs & 0x07) << 1));
+  frame_begin(ctx, ctx->my_address, HDLC_U_CTRL(HDLC_U_FRMR, 0));
+  emit(ctx, ctx->frmr_ctrl);
+  emit(ctx, info1);
+  emit(ctx, ctx->frmr_flags);
+  frame_end(ctx);
+}
+
 static inline void send_frmr(atc_hdlc_context_t *ctx,
                               atc_hdlc_u8 rejected_ctrl, atc_hdlc_bool w,
                               atc_hdlc_bool x, atc_hdlc_bool y, atc_hdlc_bool z) {
-  atc_hdlc_u8 info[3];
-  info[0] = rejected_ctrl;
-  info[1] = (atc_hdlc_u8)(((ctx->vr & 0x07) << 5) | ((ctx->vs & 0x07) << 1));
-  info[2] = (atc_hdlc_u8)((w ? HDLC_FRMR_W_BIT : 0) | (x ? HDLC_FRMR_X_BIT : 0) |
-                           (y ? HDLC_FRMR_Y_BIT : 0) | (z ? HDLC_FRMR_Z_BIT : 0));
+  ctx->frmr_ctrl  = rejected_ctrl;
+  ctx->frmr_flags = (atc_hdlc_u8)((w ? HDLC_FRMR_W_BIT : 0) | (x ? HDLC_FRMR_X_BIT : 0) |
+                                   (y ? HDLC_FRMR_Y_BIT : 0) | (z ? HDLC_FRMR_Z_BIT : 0));
 
   ATC_HDLC_LOG_ERROR("tx: FRMR ctrl=0x%02X W=%u X=%u Y=%u Z=%u", rejected_ctrl,
                      (unsigned)w, (unsigned)x, (unsigned)y, (unsigned)z);
 
-  frame_begin(ctx, ctx->my_address, HDLC_U_CTRL(HDLC_U_FRMR, 0));
-  emit(ctx, info[0]);
-  emit(ctx, info[1]);
-  emit(ctx, info[2]);
-  frame_end(ctx);
-
-  t1_stop(ctx);
   t2_stop(ctx);
+  retransmit_frmr(ctx);
+  t1_start(ctx);
 }
 
 #endif /* ATC_HDLC_PRIVATE_H */

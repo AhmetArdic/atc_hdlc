@@ -340,10 +340,12 @@ void test_extended_mode_rejection(void) {
 void test_contention_resolution_winner(void) {
     printf("TEST: Contention Resolution (Winner)\n");
     setup_context();
-    
-    // We are 0x01, peer is 0x02. Wait, the rule is higher address wins. 
-    // Let's reconfigure so we are higher.
-    /* Reconfigure: we are 0x02 (higher), peer is 0x01 */
+
+    /* LAPB-style collision: when both sides send SABM simultaneously, each
+     * responds with UA and stays in CONNECTING. Both then receive the other's
+     * UA(F=1) and transition to CONNECTED with CONNECT_ACCEPTED. No address
+     * comparison needed — the protocol resolves it symmetrically. */
+
     ctx.my_address   = 0x02;
     ctx.peer_address = 0x01;
 
@@ -351,77 +353,84 @@ void test_contention_resolution_winner(void) {
     atc_hdlc_link_setup(&ctx, 0x01);
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTING)
          test_fail("Contention Winner", "State not CONNECTING");
-         
-    mock_output_len = 0; // Clear the SABM we just sent from mock tx buffer
-    
+
+    mock_output_len = 0;
+
     // 2. Peer also initiated connection, so we receive their SABM
     uint8_t packed[32];
     int packed_len = test_pack_frame(0x02, 0x3F, NULL, 0, packed, sizeof(packed));
 
     atc_hdlc_data_in(&ctx, packed, packed_len);
 
-    // We are higher address (2 > 1), so we WIN.
-    // Winner behaviour: Immediately reply with UA, and transition to CONNECTED.
-    if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
-         test_fail("Contention Winner", "State should transition to CONNECTED after winning");
+    // LAPB behaviour: send UA, remain in CONNECTING (wait for peer's UA)
+    if (ctx.current_state != ATC_HDLC_STATE_CONNECTING)
+         test_fail("Contention Winner", "State should remain CONNECTING after collision");
 
     uint8_t flat[32];
     test_frame_t frame_out = decode_last_tx(flat, sizeof(flat));
 
     if (frame_out.address != 0x02) test_fail("Contention Winner", "UA wrong address");
-    if (frame_out.control != 0x73) test_fail("Contention Winner", "Did not send UA(F=1)"); // UA(F=1)
-    
-    /* Winner: T1 should NOT be active (UA was sent, connection established) */
-    /* State is CONNECTED after receiving peer SABM and responding with UA */
-    
+    if (frame_out.control != 0x73) test_fail("Contention Winner", "Did not send UA(F=1)");
+
+    // 3. Now peer's UA(F=1) arrives in response to our SABM → CONNECTED
+    mock_output_len = 0;
+    int ua_len = test_pack_frame(0x02, 0x73, NULL, 0, packed, sizeof(packed));
+    atc_hdlc_data_in(&ctx, packed, ua_len);
+
+    if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
+         test_fail("Contention Winner", "State should be CONNECTED after receiving UA(F=1)");
+
     test_pass("Contention Resolution (Winner)");
 }
 
 void test_contention_resolution_loser(void) {
     printf("TEST: Contention Resolution (Loser)\n");
     setup_context();
-    
-    // We are 0x01, peer is 0x02. Lower address loses.
-    ctx.peer_address = 0x02; // Me=0x01, Peer=0x02
-    
-    // 1. We initiate connection (SABM sent)
+
+    /* Same LAPB symmetric collision: address does not matter. Both sides
+     * send UA and stay in CONNECTING. The "loser" side is identical to
+     * the "winner" side — the protocol treats them the same. */
+    ctx.peer_address = 0x02;
+
+    // 1. We initiate connection
     atc_hdlc_link_setup(&ctx, 0x02);
     mock_output_len = 0;
-    
-    // 2. Peer also initiated connection, so we receive their SABM
+
+    // 2. Peer also initiated — we receive their SABM
     uint8_t packed[32];
     int packed_len = test_pack_frame(0x01, 0x3F, NULL, 0, packed, sizeof(packed));
 
     atc_hdlc_data_in(&ctx, packed, packed_len);
-    
-    // We are lower address (1 < 2), so we LOSE.
-    // Loser behaviour: Do NOT send UA. Set contention timer. State remains CONNECTING.
+
+    // LAPB behaviour: send UA, remain in CONNECTING
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTING)
          test_fail("Contention Loser", "State changed from CONNECTING");
-         
-    if (mock_output_len != 0)
-         test_fail("Contention Loser", "Sent a frame instead of backing off");
-         
-    /* Loser: T1 is running (from link_setup), waiting to retry SABM */
-    if (!ctx.t1_active)
-         test_fail("Contention Loser", "T1 should be running while waiting to retry");
 
-    // 3. Simulate T1 expiry — this is the backoff; library retransmits SABM
+    // UA must have been sent
+    uint8_t flat[32];
+    test_frame_t frame_out = decode_last_tx(flat, sizeof(flat));
+    if (frame_out.control != 0x73)
+         test_fail("Contention Loser", "Did not send UA(F=1) in response to collision SABM");
+
+    /* T1 is still running — we are waiting for peer's UA */
+    if (!ctx.t1_active)
+         test_fail("Contention Loser", "T1 should be running while waiting for UA");
+
+    // 3. T1 expires before UA arrives — retransmit SABM
     mock_output_len = 0;
     atc_hdlc_t1_expired(&ctx);
-    
+
     if (mock_output_len == 0) {
         test_fail("Contention Loser", "Timer expired but SABM was not retransmitted");
         return;
     }
-    
+
     uint8_t retx_flat[32];
     test_frame_t retx_frame = decode_last_tx(retx_flat, sizeof(retx_flat));
 
-    if (retx_frame.control != 0x3F) {
+    if (retx_frame.control != 0x3F)
         test_fail("Contention Loser", "Timer expired but output was not SABM");
-    }
-         
+
     test_pass("Contention Resolution (Loser + Timer)");
 }
 

@@ -60,8 +60,10 @@ static void check_iframes_acked(atc_hdlc_context_t *ctx, atc_hdlc_u8 nr) {
 }
 
 static void check_need_response(atc_hdlc_context_t *ctx, int cmd, atc_hdlc_u8 pf) {
-  if (cmd && pf)
+  if (cmd && pf) {
     send_rr_resp(ctx, 1);
+    t2_stop(ctx);
+  }
 }
 
 static void go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_seq) {
@@ -138,14 +140,8 @@ static void state_connecting(atc_hdlc_context_t *ctx,
 
   switch (ctrl & ~HDLC_PF_BIT) {
     case HDLC_U_SABM:
-      if (ctx->peer_address > ctx->my_address) {
-        ATC_HDLC_LOG_WARN("S1 SABM collision: I lost, backing off");
-        return;
-      }
-      ATC_HDLC_LOG_WARN("S1 SABM collision: I won, sending UA");
-      reset_state(ctx);
+      ATC_HDLC_LOG_WARN("S1 SABM collision: TX UA, stay in S1");
       send_ua(ctx, HDLC_CTRL_PF(ctrl));
-      set_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_INCOMING_CONNECT);
       break;
 
     case HDLC_U_UA:
@@ -282,10 +278,9 @@ static void state_connected(atc_hdlc_context_t *ctx,
       }
       frames_acked(ctx, msg_nr);
       t1_stop(ctx);
-      if (!ctx->rej_exception && ctx->va != ctx->vs) {
-        ctx->rej_exception = true;
+      ctx->retry_count = 0;
+      if (ctx->va != ctx->vs)
         go_back_n(ctx, msg_nr);
-      }
     }
 
     if (!cmd && msg_pf) {

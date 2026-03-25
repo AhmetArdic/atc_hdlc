@@ -160,6 +160,13 @@ void atc_hdlc_t1_expired(atc_hdlc_context_t *ctx) {
       }
       break;
 
+    case ATC_HDLC_STATE_FRMR_ERROR:
+      ATC_HDLC_LOG_WARN("tx: T1 expired in FRMR_ERROR, retransmit FRMR (%u/%u)",
+                        ctx->retry_count, max_retries);
+      retransmit_frmr(ctx);
+      t1_start(ctx);
+      break;
+
     default:
       break;
   }

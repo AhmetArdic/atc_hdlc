@@ -177,6 +177,8 @@ typedef struct {
     atc_hdlc_u8 next_tx_slot; /**< Index of the next slot to allocate in tx_window. */
     atc_hdlc_u8 retry_count;  /**< Current retransmission attempt count. */
     atc_hdlc_u8 rx_state;     /**< RX byte-parser state (hdlc_rx_state_t). */
+    atc_hdlc_u8 frmr_ctrl;  /**< Control byte of the rejected frame (for FRMR retransmission). */
+    atc_hdlc_u8 frmr_flags; /**< FRMR reason bits W/X/Y/Z (for FRMR retransmission). */
     atc_hdlc_bool rej_exception; /**< REJ exception: suppresses duplicate REJ transmissions. */
     atc_hdlc_bool remote_busy;   /**< Peer is in RNR state; outgoing I-frames are suspended. */
     atc_hdlc_bool local_busy;    /**< Local RNR has been sent; peer TX is throttled. */
