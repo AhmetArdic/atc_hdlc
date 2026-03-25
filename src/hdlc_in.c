@@ -170,6 +170,14 @@ static void state_connecting(atc_hdlc_context_t *ctx,
   }
 }
 
+static bool nr_valid(atc_hdlc_context_t *ctx, atc_hdlc_u8 ctrl, atc_hdlc_u8 nr) {
+  if (validate_nr(ctx, nr)) return true;
+  LOG_WRN("rx: Invalid N(R)=%u (V(A)=%u, V(S)=%u) -> FRMR Z", nr, ctx->va, ctx->vs);
+  send_frmr(ctx, ctrl, false, false, false, true);
+  set_state(ctx, ATC_HDLC_STATE_FRMR_ERROR, ATC_HDLC_EVENT_PROTOCOL_ERROR);
+  return false;
+}
+
 static void state_connected(atc_hdlc_context_t *ctx,
                              atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
                              const atc_hdlc_u8 *info, atc_hdlc_u16 info_len) {
@@ -181,13 +189,7 @@ static void state_connected(atc_hdlc_context_t *ctx,
 
     LOG_DBG("S3 RX I N(S)=%u N(R)=%u P=%u", ns, nr, pf);
 
-    if (!validate_nr(ctx, nr)) {
-      LOG_WRN("rx: Invalid N(R)=%u (V(A)=%u, V(S)=%u) -> FRMR Z",
-                        nr, ctx->va, ctx->vs);
-      send_frmr(ctx, ctrl, false, false, false, true);
-      set_state(ctx, ATC_HDLC_STATE_FRMR_ERROR, ATC_HDLC_EVENT_PROTOCOL_ERROR);
-      return;
-    }
+    if (!nr_valid(ctx, ctrl, nr)) return;
     check_ack(ctx, nr);
 
     if (ns == ctx->vr) {
@@ -238,16 +240,6 @@ static void state_connected(atc_hdlc_context_t *ctx,
         if (ctx->platform && ctx->platform->on_event)
           ctx->platform->on_event(ATC_HDLC_EVENT_REMOTE_BUSY_OFF, ctx->platform->user_ctx);
       }
-      maybe_respond(ctx, cmd, pf);
-      if (!validate_nr(ctx, nr)) {
-        LOG_WRN("rx: Invalid N(R)=%u (V(A)=%u, V(S)=%u) -> FRMR Z",
-                          nr, ctx->va, ctx->vs);
-        send_frmr(ctx, ctrl, false, false, false, true);
-        set_state(ctx, ATC_HDLC_STATE_FRMR_ERROR, ATC_HDLC_EVENT_PROTOCOL_ERROR);
-        return;
-      }
-      check_ack(ctx, nr);
-
     } else if (s == S_RNR) {
       if (!ctx->remote_busy) {
         ctx->remote_busy = true;
@@ -255,31 +247,21 @@ static void state_connected(atc_hdlc_context_t *ctx,
         if (ctx->platform && ctx->platform->on_event)
           ctx->platform->on_event(ATC_HDLC_EVENT_REMOTE_BUSY_ON, ctx->platform->user_ctx);
       }
-      maybe_respond(ctx, cmd, pf);
-      if (!validate_nr(ctx, nr)) {
-        LOG_WRN("rx: Invalid N(R)=%u (V(A)=%u, V(S)=%u) -> FRMR Z",
-                          nr, ctx->va, ctx->vs);
-        send_frmr(ctx, ctrl, false, false, false, true);
-        set_state(ctx, ATC_HDLC_STATE_FRMR_ERROR, ATC_HDLC_EVENT_PROTOCOL_ERROR);
-        return;
-      }
-      check_ack(ctx, nr);
-
     } else if (s == S_REJ) {
       ctx->remote_busy = false;
-      maybe_respond(ctx, cmd, pf);
-      if (!validate_nr(ctx, nr)) {
-        LOG_WRN("rx: Invalid N(R)=%u (V(A)=%u, V(S)=%u) -> FRMR Z",
-                          nr, ctx->va, ctx->vs);
-        send_frmr(ctx, ctrl, false, false, false, true);
-        set_state(ctx, ATC_HDLC_STATE_FRMR_ERROR, ATC_HDLC_EVENT_PROTOCOL_ERROR);
-        return;
-      }
+    }
+
+    maybe_respond(ctx, cmd, pf);
+    if (!nr_valid(ctx, ctrl, nr)) return;
+
+    if (s == S_REJ) {
       frames_acked(ctx, nr);
       t1_stop(ctx);
       ctx->retry_count = 0;
       if (ctx->va != ctx->vs)
         go_back_n(ctx, nr);
+    } else {
+      check_ack(ctx, nr);
     }
 
     if (!cmd && pf) {
@@ -429,61 +411,48 @@ void dispatch_frame(atc_hdlc_context_t *ctx,
   }
 }
 
-static void rx_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
-  if (byte == FLAG) {
-    if (ctx->rx_state != RX_HUNT) {
-      if (ctx->rx_index >= MIN_FRAME_LEN) {
-        atc_hdlc_u16 crc  = ATC_HDLC_FCS_INIT_VALUE;
-        atc_hdlc_u32 dlen = ctx->rx_index - FCS_LEN;
+static void handle_flag(atc_hdlc_context_t *ctx) {
+  if (ctx->rx_state != RX_HUNT && ctx->rx_index >= MIN_FRAME_LEN) {
+    atc_hdlc_u32 dlen   = ctx->rx_index - FCS_LEN;
+    atc_hdlc_u16 crc    = ATC_HDLC_FCS_INIT_VALUE;
 
-        for (atc_hdlc_u32 i = 0; i < dlen; i++)
-          crc = atc_hdlc_crc_ccitt_update(crc, ctx->rx_buf->buffer[i]);
+    for (atc_hdlc_u32 i = 0; i < dlen; i++)
+      crc = atc_hdlc_crc_ccitt_update(crc, ctx->rx_buf->buffer[i]);
 
-        atc_hdlc_u16 rx_fcs = (atc_hdlc_u16)(((atc_hdlc_u16)ctx->rx_buf->buffer[dlen] << 8) |
-                                               ctx->rx_buf->buffer[dlen + 1]);
+    atc_hdlc_u16 rx_fcs = (atc_hdlc_u16)(((atc_hdlc_u16)ctx->rx_buf->buffer[dlen] << 8) |
+                                           ctx->rx_buf->buffer[dlen + 1]);
 
-        if (crc == rx_fcs) {
-          atc_hdlc_u8 address      = ctx->rx_buf->buffer[0];
-          atc_hdlc_u8 ctrl         = ctx->rx_buf->buffer[1];
-          const atc_hdlc_u8 *info  = NULL;
-          atc_hdlc_u16 info_len    = 0;
+    if (crc == rx_fcs) {
+      atc_hdlc_u8 address     = ctx->rx_buf->buffer[0];
+      atc_hdlc_u8 ctrl        = ctx->rx_buf->buffer[1];
+      const atc_hdlc_u8 *info = NULL;
+      atc_hdlc_u16 info_len   = 0;
 
-          LOG_DBG("rx: Valid frame (Addr: 0x%02X, Ctrl: 0x%02X, Len: %lu)",
-                             address, ctrl, dlen);
+      LOG_DBG("rx: Valid frame (Addr: 0x%02X, Ctrl: 0x%02X, Len: %lu)",
+              address, ctrl, dlen);
 
-          if (dlen > ADDR_LEN + CTRL_LEN) {
-            info     = &ctx->rx_buf->buffer[ADDR_LEN + CTRL_LEN];
-            info_len = (atc_hdlc_u16)(dlen - (ADDR_LEN + CTRL_LEN));
-          }
-
-          dispatch_frame(ctx, address, ctrl, info, info_len);
-        } else {
-          LOG_WRN("rx: CRC Error! Calc: 0x%04X, RX: 0x%04X", crc, rx_fcs);
-        }
+      if (dlen > ADDR_LEN + CTRL_LEN) {
+        info     = &ctx->rx_buf->buffer[ADDR_LEN + CTRL_LEN];
+        info_len = (atc_hdlc_u16)(dlen - (ADDR_LEN + CTRL_LEN));
       }
+      dispatch_frame(ctx, address, ctrl, info, info_len);
+    } else {
+      LOG_WRN("rx: CRC Error! Calc: 0x%04X, RX: 0x%04X", crc, rx_fcs);
     }
-
-    ctx->rx_state = RX_ADDR;
-    ctx->rx_index = 0;
-    return;
   }
+  ctx->rx_state = RX_ADDR;
+  ctx->rx_index = 0;
+}
 
-  if (ctx->rx_state == RX_HUNT)
-    return;
-
-  if (byte == ESC) {
-    ctx->rx_state = RX_ESC;
-    return;
-  }
-
-  if (ctx->rx_state == RX_ESC) {
-    byte = (atc_hdlc_u8)(byte ^ XOR_MASK);
-    ctx->rx_state = RX_DATA;
-  }
+static void rx_byte(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
+  if (byte == FLAG)             { handle_flag(ctx); return; }
+  if (ctx->rx_state == RX_HUNT) return;
+  if (byte == ESC)              { ctx->rx_state = RX_ESC; return; }
+  if (ctx->rx_state == RX_ESC) { byte = (atc_hdlc_u8)(byte ^ XOR_MASK); ctx->rx_state = RX_DATA; }
 
   if (ctx->rx_index >= ctx->rx_buf->capacity) {
     LOG_WRN("rx: Buffer overflow! Max %lu bytes. Discarding.",
-                      (unsigned long)ctx->rx_buf->capacity);
+            (unsigned long)ctx->rx_buf->capacity);
     ctx->rx_state = RX_HUNT;
     return;
   }
