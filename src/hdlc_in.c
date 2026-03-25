@@ -28,37 +28,40 @@ void reset_state(atc_hdlc_context_t *ctx) {
   t2_stop(ctx);
 }
 
-static void process_nr(atc_hdlc_context_t *ctx, atc_hdlc_u8 nr, atc_hdlc_u8 ctrl) {
-  atc_hdlc_u8 diff_nr = (atc_hdlc_u8)((nr - ctx->va) & (HDLC_SEQUENCE_MODULUS - 1));
-  atc_hdlc_u8 diff_vs = (atc_hdlc_u8)((ctx->vs - ctx->va) & (HDLC_SEQUENCE_MODULUS - 1));
+static bool validate_nr(atc_hdlc_context_t *ctx, atc_hdlc_u8 nr) {
+  atc_hdlc_u8 diff_nr = (atc_hdlc_u8)((nr       - ctx->va) & (HDLC_SEQUENCE_MODULUS - 1));
+  atc_hdlc_u8 diff_vs = (atc_hdlc_u8)((ctx->vs  - ctx->va) & (HDLC_SEQUENCE_MODULUS - 1));
+  return diff_nr <= diff_vs;
+}
 
-  if (diff_nr > diff_vs) {
-    ATC_HDLC_LOG_WARN("rx: Invalid N(R)=%u (V(A)=%u, V(S)=%u) -> FRMR Z",
-                      nr, ctx->va, ctx->vs);
-    send_frmr(ctx, ctrl, false, false, false, true);
-    return;
-  }
+static void frames_acked(atc_hdlc_context_t *ctx, atc_hdlc_u8 nr) {
+  if (nr == ctx->va) return;
 
-  if (nr != ctx->va) {
-    atc_hdlc_u8 old_va = ctx->va;
-    ctx->va = nr;
-    ctx->retry_count = 0;
-    ctx->rej_exception = false;
+  atc_hdlc_u8 was_outstanding = (atc_hdlc_u8)((ctx->vs - ctx->va) &
+                                  (HDLC_SEQUENCE_MODULUS - 1));
+  ctx->va          = nr;
+  ctx->retry_count = 0;
 
-    atc_hdlc_u8 was_outstanding = (atc_hdlc_u8)((ctx->vs - old_va) &
-                                   (HDLC_SEQUENCE_MODULUS - 1));
-    if (was_outstanding >= ctx->window_size) {
-      if (ctx->platform && ctx->platform->on_event)
-        ctx->platform->on_event(ATC_HDLC_EVENT_WINDOW_OPEN, ctx->platform->user_ctx);
-    }
+  if (was_outstanding >= ctx->window_size)
+    if (ctx->platform && ctx->platform->on_event)
+      ctx->platform->on_event(ATC_HDLC_EVENT_WINDOW_OPEN, ctx->platform->user_ctx);
 
-    ATC_HDLC_LOG_DEBUG("rx: N(R)=%u acknowledged, V(A) -> %u", nr, ctx->va);
-  }
+  ATC_HDLC_LOG_DEBUG("rx: N(R)=%u acknowledged, V(A) -> %u", nr, ctx->va);
+}
 
-  if (ctx->va == ctx->vs)
+static void check_iframes_acked(atc_hdlc_context_t *ctx, atc_hdlc_u8 nr) {
+  if (ctx->vs == nr) {
+    frames_acked(ctx, nr);
     t1_stop(ctx);
-  else
+  } else if (ctx->va != nr) {
+    frames_acked(ctx, nr);
     t1_start(ctx);
+  }
+}
+
+static void check_need_response(atc_hdlc_context_t *ctx, int cmd, atc_hdlc_u8 pf) {
+  if (cmd && pf)
+    send_rr_resp(ctx, 1);
 }
 
 static void go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_seq) {
@@ -183,8 +186,14 @@ static void state_connected(atc_hdlc_context_t *ctx,
 
     ATC_HDLC_LOG_DEBUG("S3 RX I N(S)=%u N(R)=%u P=%u", msg_ns, msg_nr, msg_pf);
 
-    process_nr(ctx, msg_nr, ctrl);
-    if (ctx->current_state == ATC_HDLC_STATE_FRMR_ERROR) return;
+    if (!validate_nr(ctx, msg_nr)) {
+      ATC_HDLC_LOG_WARN("rx: Invalid N(R)=%u (V(A)=%u, V(S)=%u) -> FRMR Z",
+                        msg_nr, ctx->va, ctx->vs);
+      send_frmr(ctx, ctrl, false, false, false, true);
+      set_state(ctx, ATC_HDLC_STATE_FRMR_ERROR, ATC_HDLC_EVENT_PROTOCOL_ERROR);
+      return;
+    }
+    check_iframes_acked(ctx, msg_nr);
 
     if (msg_ns == ctx->vr) {
       ctx->vr = (atc_hdlc_u8)((ctx->vr + 1) % HDLC_SEQUENCE_MODULUS);
@@ -234,8 +243,15 @@ static void state_connected(atc_hdlc_context_t *ctx,
         if (ctx->platform && ctx->platform->on_event)
           ctx->platform->on_event(ATC_HDLC_EVENT_REMOTE_BUSY_OFF, ctx->platform->user_ctx);
       }
-      process_nr(ctx, msg_nr, ctrl);
-      if (ctx->current_state == ATC_HDLC_STATE_FRMR_ERROR) return;
+      check_need_response(ctx, cmd, msg_pf);
+      if (!validate_nr(ctx, msg_nr)) {
+        ATC_HDLC_LOG_WARN("rx: Invalid N(R)=%u (V(A)=%u, V(S)=%u) -> FRMR Z",
+                          msg_nr, ctx->va, ctx->vs);
+        send_frmr(ctx, ctrl, false, false, false, true);
+        set_state(ctx, ATC_HDLC_STATE_FRMR_ERROR, ATC_HDLC_EVENT_PROTOCOL_ERROR);
+        return;
+      }
+      check_iframes_acked(ctx, msg_nr);
 
     } else if (s_bits == HDLC_S_RNR) {
       if (!ctx->remote_busy) {
@@ -244,23 +260,35 @@ static void state_connected(atc_hdlc_context_t *ctx,
         if (ctx->platform && ctx->platform->on_event)
           ctx->platform->on_event(ATC_HDLC_EVENT_REMOTE_BUSY_ON, ctx->platform->user_ctx);
       }
-      process_nr(ctx, msg_nr, ctrl);
-      if (ctx->current_state == ATC_HDLC_STATE_FRMR_ERROR) return;
+      check_need_response(ctx, cmd, msg_pf);
+      if (!validate_nr(ctx, msg_nr)) {
+        ATC_HDLC_LOG_WARN("rx: Invalid N(R)=%u (V(A)=%u, V(S)=%u) -> FRMR Z",
+                          msg_nr, ctx->va, ctx->vs);
+        send_frmr(ctx, ctrl, false, false, false, true);
+        set_state(ctx, ATC_HDLC_STATE_FRMR_ERROR, ATC_HDLC_EVENT_PROTOCOL_ERROR);
+        return;
+      }
+      check_iframes_acked(ctx, msg_nr);
 
     } else if (s_bits == HDLC_S_REJ) {
       ctx->remote_busy = false;
-      process_nr(ctx, msg_nr, ctrl);
-      if (ctx->current_state == ATC_HDLC_STATE_FRMR_ERROR) return;
-
+      check_need_response(ctx, cmd, msg_pf);
+      if (!validate_nr(ctx, msg_nr)) {
+        ATC_HDLC_LOG_WARN("rx: Invalid N(R)=%u (V(A)=%u, V(S)=%u) -> FRMR Z",
+                          msg_nr, ctx->va, ctx->vs);
+        send_frmr(ctx, ctrl, false, false, false, true);
+        set_state(ctx, ATC_HDLC_STATE_FRMR_ERROR, ATC_HDLC_EVENT_PROTOCOL_ERROR);
+        return;
+      }
+      frames_acked(ctx, msg_nr);
+      t1_stop(ctx);
       if (!ctx->rej_exception && ctx->va != ctx->vs) {
         ctx->rej_exception = true;
         go_back_n(ctx, msg_nr);
       }
     }
 
-    if (cmd && msg_pf) {
-      send_rr_resp(ctx, 1);
-    } else if (!cmd && msg_pf) {
+    if (!cmd && msg_pf) {
       ATC_HDLC_LOG_DEBUG("S3 F=1 response — check retransmit");
       if (ctx->va != ctx->vs)
         go_back_n(ctx, ctx->va);

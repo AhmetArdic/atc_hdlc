@@ -228,7 +228,6 @@ static inline void send_frmr(atc_hdlc_context_t *ctx,
 
   t1_stop(ctx);
   t2_stop(ctx);
-  set_state(ctx, ATC_HDLC_STATE_FRMR_ERROR, ATC_HDLC_EVENT_PROTOCOL_ERROR);
 }
 
 #endif /* ATC_HDLC_PRIVATE_H */
