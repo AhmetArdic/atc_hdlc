@@ -1,6 +1,7 @@
 # Reference implementation (never commit)
 reference/
 .claude/
+CLAUDE.md
 
 # Build directories
 build/
