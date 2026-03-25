@@ -39,9 +39,26 @@ extern "C" {
 #define ATC_HDLC_DEFAULT_WINDOW_SIZE 1
 #endif
 
-/** @brief Enable debug logging. */
+/** @brief Enable debug logging (0 = all logs compiled out). */
 #ifndef ATC_HDLC_ENABLE_DEBUG_LOGS
 #define ATC_HDLC_ENABLE_DEBUG_LOGS 0
+#endif
+
+/**
+ * @brief Log verbosity levels (used with ATC_HDLC_LOG_LEVEL).
+ *   ERR  — connection-breaking errors (FRMR, link failure, CRC)
+ *   WRN  — protocol warnings (bad N(R), out-of-sequence, retransmit)
+ *   INFO — state transitions and connection events
+ *   DBG  — per-frame detail and flow-control tracking
+ */
+#define ATC_HDLC_LOG_LEVEL_ERR   0
+#define ATC_HDLC_LOG_LEVEL_WRN   1
+#define ATC_HDLC_LOG_LEVEL_INFO  2
+#define ATC_HDLC_LOG_LEVEL_DBG   3
+
+/** @brief Verbosity ceiling when ATC_HDLC_ENABLE_DEBUG_LOGS is set. */
+#ifndef ATC_HDLC_LOG_LEVEL
+#define ATC_HDLC_LOG_LEVEL ATC_HDLC_LOG_LEVEL_WRN
 #endif
 
 /** @brief Log sink. Override before including this header to redirect logs
@@ -49,7 +66,7 @@ extern "C" {
 #ifndef ATC_HDLC_LOG_IMPL
 #include <stdio.h>
 #define ATC_HDLC_LOG_IMPL(level, fmt, ...)                                     \
-  printf("[HDLC %s] " fmt "\n", level, ##__VA_ARGS__)
+  printf("[HDLC %-4s] " fmt "\n", level, ##__VA_ARGS__)
 #endif
 
 #ifdef __cplusplus

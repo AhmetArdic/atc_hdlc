@@ -259,7 +259,7 @@ void test_init_success_sets_state(void) {
     if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED)
         test_fail("Init Success", "State should be DISCONNECTED after init");
 
-    if (ctx.rx_state != HDLC_RX_STATE_HUNT)
+    if (ctx.rx_state != RX_HUNT)
         test_fail("Init Success", "RX state should be HUNT after init");
 
     if (ctx.vs != 0 || ctx.vr != 0 || ctx.va != 0)

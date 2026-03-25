@@ -14,77 +14,87 @@
 #include "hdlc_crc.h"
 
 #if ATC_HDLC_ENABLE_DEBUG_LOGS
-#define ATC_HDLC_LOG_DEBUG(fmt, ...)                                           \
-  ATC_HDLC_LOG_IMPL("DEBUG", fmt, ##__VA_ARGS__)
-#define ATC_HDLC_LOG_WARN(fmt, ...)                                            \
-  ATC_HDLC_LOG_IMPL("WARN", fmt, ##__VA_ARGS__)
-#define ATC_HDLC_LOG_ERROR(fmt, ...)                                           \
-  ATC_HDLC_LOG_IMPL("ERROR", fmt, ##__VA_ARGS__)
+#  define LOG_ERR(fmt, ...)   ATC_HDLC_LOG_IMPL("ERR",  fmt, ##__VA_ARGS__)
+#  if ATC_HDLC_LOG_LEVEL >= ATC_HDLC_LOG_LEVEL_WRN
+#    define LOG_WRN(fmt, ...)   ATC_HDLC_LOG_IMPL("WRN",  fmt, ##__VA_ARGS__)
+#  else
+#    define LOG_WRN(fmt, ...)
+#  endif
+#  if ATC_HDLC_LOG_LEVEL >= ATC_HDLC_LOG_LEVEL_INFO
+#    define LOG_INFO(fmt, ...)  ATC_HDLC_LOG_IMPL("INFO", fmt, ##__VA_ARGS__)
+#  else
+#    define LOG_INFO(fmt, ...)
+#  endif
+#  if ATC_HDLC_LOG_LEVEL >= ATC_HDLC_LOG_LEVEL_DBG
+#    define LOG_DBG(fmt, ...)   ATC_HDLC_LOG_IMPL("DBG",  fmt, ##__VA_ARGS__)
+#  else
+#    define LOG_DBG(fmt, ...)
+#  endif
 #else
-#define ATC_HDLC_LOG_DEBUG(fmt, ...)
-#define ATC_HDLC_LOG_WARN(fmt, ...)
-#define ATC_HDLC_LOG_ERROR(fmt, ...)
+#  define LOG_ERR(fmt, ...)
+#  define LOG_WRN(fmt, ...)
+#  define LOG_INFO(fmt, ...)
+#  define LOG_DBG(fmt, ...)
 #endif
 
 /* --- Framing constants --- */
-#define HDLC_FLAG     0x7E
-#define HDLC_ESCAPE   0x7D
-#define HDLC_XOR_MASK 0x20
+#define FLAG      0x7E
+#define ESC       0x7D
+#define XOR_MASK  0x20
 
-#define HDLC_FLAG_LEN    (1)
-#define HDLC_ADDRESS_LEN (1)
-#define HDLC_CONTROL_LEN (1)
-#define HDLC_FCS_LEN     (2)
+#define ADDR_LEN  (1)
+#define CTRL_LEN  (1)
+#define FCS_LEN   (2)
 
-#define HDLC_MIN_FRAME_LEN (HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN + HDLC_FCS_LEN)
+#define MIN_FRAME_LEN (ADDR_LEN + CTRL_LEN + FCS_LEN)
 
 /* --- Control byte field accessors --- */
-#define HDLC_CTRL_PF(ctrl)     (((ctrl) >> 4) & 0x01)
-#define HDLC_CTRL_NR(ctrl)     (((ctrl) >> 5) & 0x07)
-#define HDLC_CTRL_I_NS(ctrl)   (((ctrl) >> 1) & 0x07)
-#define HDLC_CTRL_S_BITS(ctrl) (((ctrl) >> 2) & 0x03)
+#define CTRL_PF(ctrl)  (((ctrl) >> 4) & 0x01)
+#define CTRL_NR(ctrl)  (((ctrl) >> 5) & 0x07)
+#define CTRL_NS(ctrl)  (((ctrl) >> 1) & 0x07)
+#define CTRL_S(ctrl)   (((ctrl) >> 2) & 0x03)
 
 /* --- Control byte constructors --- */
-#define HDLC_I_CTRL(ns, nr, pf) \
+#define I_CTRL(ns, nr, pf) \
   ((atc_hdlc_u8)(((ns) & 0x07) << 1 | ((pf) & 0x01) << 4 | ((nr) & 0x07) << 5))
-#define HDLC_S_CTRL(s, nr, pf) \
+#define S_CTRL(s, nr, pf) \
   ((atc_hdlc_u8)(0x01 | ((s) & 0x03) << 2 | ((pf) & 0x01) << 4 | ((nr) & 0x07) << 5))
-#define HDLC_U_CTRL(cmd, pf) ((atc_hdlc_u8)((cmd) | ((pf) ? HDLC_PF_BIT : 0)))
+#define U_CTRL(cmd, pf) ((atc_hdlc_u8)((cmd) | ((pf) ? PF_BIT : 0)))
 
-#define HDLC_SEQUENCE_MODULUS 8
+#define MOD8  8  /* modulo-8 sequence numbering */
 
 /* --- S-frame supervisory bits --- */
-#define HDLC_S_RR  0
-#define HDLC_S_RNR 1
-#define HDLC_S_REJ 2
+#define S_RR   0
+#define S_RNR  1
+#define S_REJ  2
 
-/* --- U-frame command/response codes (ctrl & ~HDLC_PF_BIT strips the P/F bit) --- */
-#define HDLC_U_SABM  0x2F
-#define HDLC_U_DISC  0x43
-#define HDLC_U_UA    0x63
-#define HDLC_U_DM    0x0F
-#define HDLC_U_FRMR  0x87
-#define HDLC_U_UI    0x03
-#define HDLC_U_TEST  0xE3
-#define HDLC_U_SNRM  0x83
-#define HDLC_U_SABME 0x6F
-#define HDLC_U_SNRME 0xCF
-#define HDLC_U_SARME 0x4F
-#define HDLC_PF_BIT  0x10
+/* --- U-frame command/response codes (use ctrl & ~PF_BIT to strip the P/F bit) --- */
+#define U_SABM   0x2F
+#define U_DISC   0x43
+#define U_UA     0x63
+#define U_DM     0x0F
+#define U_FRMR   0x87
+#define U_UI     0x03
+#define U_TEST   0xE3
+#define U_SNRM   0x83
+#define U_SABME  0x6F
+#define U_SNRME  0xCF
+#define U_SARME  0x4F
+#define PF_BIT   0x10
 
 /* --- FRMR reason bits --- */
-#define HDLC_FRMR_W_BIT 0x01
-#define HDLC_FRMR_X_BIT 0x02
-#define HDLC_FRMR_Y_BIT 0x04
-#define HDLC_FRMR_Z_BIT 0x08
-#define HDLC_FRMR_V_BIT 0x10
+#define FRMR_W  0x01
+#define FRMR_X  0x02
+#define FRMR_Y  0x04
+#define FRMR_Z  0x08
+#define FRMR_V  0x10
 
 typedef enum {
-  HDLC_RX_STATE_HUNT = 0,
-  HDLC_RX_STATE_ADDRESS,
-  HDLC_RX_STATE_DATA,
-  HDLC_RX_STATE_ESCAPE
-} hdlc_rx_state_t;
+  RX_HUNT = 0,
+  RX_ADDR,
+  RX_DATA,
+  RX_ESC
+} rx_state_t;
 
 /* --- Frame type predicates --- */
 static inline int is_iframe(atc_hdlc_u8 ctrl) { return (ctrl & 0x01) == 0; }
@@ -138,9 +148,9 @@ static inline void put_raw(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte, atc_hdlc_b
 }
 
 static inline void put_escaped(atc_hdlc_context_t *ctx, atc_hdlc_u8 byte) {
-  if (byte == HDLC_FLAG || byte == HDLC_ESCAPE) {
-    put_raw(ctx, HDLC_ESCAPE, false);
-    put_raw(ctx, (atc_hdlc_u8)(byte ^ HDLC_XOR_MASK), false);
+  if (byte == FLAG || byte == ESC) {
+    put_raw(ctx, ESC, false);
+    put_raw(ctx, (atc_hdlc_u8)(byte ^ XOR_MASK), false);
   } else {
     put_raw(ctx, byte, false);
   }
@@ -157,17 +167,17 @@ static inline void frame_begin(atc_hdlc_context_t *ctx,
                                 atc_hdlc_u8 address, atc_hdlc_u8 control) {
   if (!ctx) return;
   ctx->tx_crc = ATC_HDLC_FCS_INIT_VALUE;
-  put_raw(ctx, HDLC_FLAG, false);
+  put_raw(ctx, FLAG, false);
   emit(ctx, address);
   emit(ctx, control);
-  ATC_HDLC_LOG_DEBUG("tx: Frame start (Addr: 0x%02X, Ctrl: 0x%02X)", address, control);
+  LOG_DBG("tx: Frame start (Addr: 0x%02X, Ctrl: 0x%02X)", address, control);
 }
 
 /* End a frame: FCS bytes + closing FLAG. */
 static inline void frame_end(atc_hdlc_context_t *ctx) {
   put_escaped(ctx, (atc_hdlc_u8)(ctx->tx_crc >> 8));
   put_escaped(ctx, (atc_hdlc_u8)(ctx->tx_crc & 0xFF));
-  put_raw(ctx, HDLC_FLAG, true);
+  put_raw(ctx, FLAG, true);
 }
 
 /* --- Frame-level send helpers --- */
@@ -178,41 +188,41 @@ static inline void send_u(atc_hdlc_context_t *ctx,
 }
 
 static inline void send_ua(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
-  send_u(ctx, ctx->my_address, HDLC_U_CTRL(HDLC_U_UA, pf));
+  send_u(ctx, ctx->my_address, U_CTRL(U_UA, pf));
 }
 
 static inline void send_dm(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
-  send_u(ctx, ctx->my_address, HDLC_U_CTRL(HDLC_U_DM, pf));
+  send_u(ctx, ctx->my_address, U_CTRL(U_DM, pf));
 }
 
 static inline void send_s(atc_hdlc_context_t *ctx,
-                           atc_hdlc_u8 address, atc_hdlc_u8 s_bits,
+                           atc_hdlc_u8 address, atc_hdlc_u8 s,
                            atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
-  frame_begin(ctx, address, HDLC_S_CTRL(s_bits, nr, pf));
+  frame_begin(ctx, address, S_CTRL(s, nr, pf));
   frame_end(ctx);
 }
 
 static inline void send_rr(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
-  send_s(ctx, ctx->peer_address, HDLC_S_RR, ctx->vr, pf);
+  send_s(ctx, ctx->peer_address, S_RR, ctx->vr, pf);
 }
 
 static inline void send_rr_resp(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
-  send_s(ctx, ctx->my_address, HDLC_S_RR, ctx->vr, pf);
+  send_s(ctx, ctx->my_address, S_RR, ctx->vr, pf);
 }
 
 static inline void send_rnr(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
-  send_s(ctx, ctx->my_address, HDLC_S_RNR, ctx->vr, pf);
+  send_s(ctx, ctx->my_address, S_RNR, ctx->vr, pf);
 }
 
 static inline void send_rej(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf) {
-  send_s(ctx, ctx->peer_address, HDLC_S_REJ, ctx->vr, pf);
+  send_s(ctx, ctx->peer_address, S_REJ, ctx->vr, pf);
 }
 
 static inline void retransmit_frmr(atc_hdlc_context_t *ctx) {
-  atc_hdlc_u8 info1 = (atc_hdlc_u8)(((ctx->vr & 0x07) << 5) | ((ctx->vs & 0x07) << 1));
-  frame_begin(ctx, ctx->my_address, HDLC_U_CTRL(HDLC_U_FRMR, 0));
+  atc_hdlc_u8 status = (atc_hdlc_u8)(((ctx->vr & 0x07) << 5) | ((ctx->vs & 0x07) << 1));
+  frame_begin(ctx, ctx->my_address, U_CTRL(U_FRMR, 0));
   emit(ctx, ctx->frmr_ctrl);
-  emit(ctx, info1);
+  emit(ctx, status);
   emit(ctx, ctx->frmr_flags);
   frame_end(ctx);
 }
@@ -221,10 +231,10 @@ static inline void send_frmr(atc_hdlc_context_t *ctx,
                               atc_hdlc_u8 rejected_ctrl, atc_hdlc_bool w,
                               atc_hdlc_bool x, atc_hdlc_bool y, atc_hdlc_bool z) {
   ctx->frmr_ctrl  = rejected_ctrl;
-  ctx->frmr_flags = (atc_hdlc_u8)((w ? HDLC_FRMR_W_BIT : 0) | (x ? HDLC_FRMR_X_BIT : 0) |
-                                   (y ? HDLC_FRMR_Y_BIT : 0) | (z ? HDLC_FRMR_Z_BIT : 0));
+  ctx->frmr_flags = (atc_hdlc_u8)((w ? FRMR_W : 0) | (x ? FRMR_X : 0) |
+                                   (y ? FRMR_Y : 0) | (z ? FRMR_Z : 0));
 
-  ATC_HDLC_LOG_ERROR("tx: FRMR ctrl=0x%02X W=%u X=%u Y=%u Z=%u", rejected_ctrl,
+  LOG_ERR("tx: FRMR ctrl=0x%02X W=%u X=%u Y=%u Z=%u", rejected_ctrl,
                      (unsigned)w, (unsigned)x, (unsigned)y, (unsigned)z);
 
   t2_stop(ctx);

@@ -80,7 +80,7 @@ void test_reliable_transmission(void) {
 
     /* ACK: peer sends I-frame N(S)=0, N(R)=1 */
     reset_test_state();
-    atc_hdlc_u32 encoded_len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_I_CTRL(0, 1, 0),
+    atc_hdlc_u32 encoded_len = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 1, 0),
                                                                NULL, 0,
                                                                temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, encoded_len);
@@ -182,7 +182,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
         }
         
         // 2. Acknowledge it (Peer sends RR with NR = expected_vs)
-        atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_S_CTRL(0, expected_vs, 0),
+        atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0, expected_vs, 0),
                                                            NULL, 0,
                                                            temp_input_buffer, sizeof(temp_input_buffer));
         atc_hdlc_data_in(&ctx, temp_input_buffer, len);
@@ -206,7 +206,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8*)"A", 1);
     
     // Receive ACK (RR NR=1)
-    atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_S_CTRL(0, 1, 0),
+    atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0, 1, 0),
                                                        NULL, 0,
                                                        temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
@@ -234,7 +234,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     mock_output_len = 0; // Clear output
     
     // Receive REJ [NR=0] (Peer asking for frame 0 again)
-    atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_S_CTRL(2, 0, 0),
+    atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(2, 0, 0),
                                                        NULL, 0,
                                                        temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
@@ -259,7 +259,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     printf("\n--- Phase 1: Outgoing Piggyback ---\n");
     
     // Build peer's I-frame: Addr=0x01 (to me), Ctrl: I-frame N(S)=0, N(R)=0, P=0
-    atc_hdlc_u32 encoded_len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_I_CTRL(0, 0, 0),
+    atc_hdlc_u32 encoded_len = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0),
                                                                (atc_hdlc_u8 *)"HI", 2,
                                                                temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, encoded_len);
@@ -285,7 +285,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
         test_fail("Piggyback", "Expected va != vs before peer ACK");
 
     /* Phase 2: peer's I-frame N(S)=1, N(R)=1 ACKs our frame 0 */
-    encoded_len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_I_CTRL(1, 1, 0),
+    encoded_len = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(1, 1, 0),
                                                   (atc_hdlc_u8 *)"RE", 2,
                                                   temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, encoded_len);
@@ -325,7 +325,7 @@ void test_window_size_2_basic(void) {
         { test_fail("Window2", "Window overflow allowed"); return; }
 
     /* Cumulative ACK N(R)=2 */
-    atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_S_CTRL(0, 2, 0),
+    atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0, 2, 0),
                                                        NULL, 0,
                                                        temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
@@ -372,7 +372,7 @@ void test_gobackn_retransmit(void) {
     }
 
     // Now peer replies with RR and F=1 (Response uses peer's own address = 0x02)
-    atc_hdlc_u32 rr_len = (atc_hdlc_u32)test_pack_frame(0x02, HDLC_S_CTRL(0x00, 0, 1),
+    atc_hdlc_u32 rr_len = (atc_hdlc_u32)test_pack_frame(0x02, S_CTRL(0x00, 0, 1),
                                                           NULL, 0,
                                                           temp_input_buffer, sizeof(temp_input_buffer));
 
@@ -432,7 +432,7 @@ void test_window7_mid_rej(void) {
     mock_output_len = 0;
     int frames_before = mock_frame_count;
 
-    atc_hdlc_u32 rej_len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_S_CTRL(0x02, 3, 0),
+    atc_hdlc_u32 rej_len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x02, 3, 0),
                                                            NULL, 0,
                                                            temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, rej_len);
@@ -451,7 +451,7 @@ void test_window7_mid_rej(void) {
         { test_fail("Window7 REJ", "VS changed during retransmission"); return; }
 
     /* Phase 4: ACK all with RR N(R)=7, window reopens */
-    atc_hdlc_u32 rr_len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_S_CTRL(0x00, 7, 0),
+    atc_hdlc_u32 rr_len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, 7, 0),
                                                           NULL, 0,
                                                           temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, rr_len);
@@ -516,7 +516,7 @@ static bench_result_t run_throughput_bench(int window_size) {
         // Simulate one round-trip: peer ACKs all outstanding frames
         result.round_trips++;
 
-        atc_hdlc_u32 rr_len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_S_CTRL(0x00, ctx.vs, 0),
+        atc_hdlc_u32 rr_len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, ctx.vs, 0),
                                                               NULL, 0,
                                                               temp_input_buffer, sizeof(temp_input_buffer));
         atc_hdlc_data_in(&ctx, temp_input_buffer, rr_len);
@@ -616,7 +616,7 @@ void test_nr_modulo_validation(void) {
         atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8 *)payload, 4);
     }
     // 2. Peer ACKs them: N(R)=6
-    atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_S_CTRL(0x00, 6, 0),
+    atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, 6, 0),
                                                        NULL, 0,
                                                        temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
@@ -636,7 +636,7 @@ void test_nr_modulo_validation(void) {
 
     // 4. Peer sends RR N(R)=6. This is perfectly valid (peer acknowledging up to 5, waiting for 6)
     // If hdlc_nr_valid has the bug, it will reject N(R)=6 because it thinks 6 is outside [6, 0].
-    len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_S_CTRL(0x00, 6, 0),
+    len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, 6, 0),
                                          NULL, 0,
                                          temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
@@ -697,7 +697,7 @@ void test_nr_edge_cases(void) {
         ctx.vs = cases[i].vs;
         ctx.t1_active = false; /* reset to observe change */
 
-        atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_S_CTRL(0x00, cases[i].nr, 0),
+        atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, cases[i].nr, 0),
                                                            NULL, 0,
                                                            temp_input_buffer, sizeof(temp_input_buffer));
         atc_hdlc_data_in(&ctx, temp_input_buffer, len);
@@ -747,13 +747,13 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
     atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8 *)"TEST", 4);
     
     // Simulate peer sending an I-frame so V(R) increments to 1
-    atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_I_CTRL(0, 0, 0),
+    atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0),
                                                        (atc_hdlc_u8 *)"PEER", 4,
                                                        temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
     // Simulate peer sending RR N(R)=1 so V(A) increments to 1
-    len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_S_CTRL(0x00, 1, 0),
+    len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, 1, 0),
                                          NULL, 0,
                                          temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
@@ -765,7 +765,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // 2. Peer sends SABM to reset connection
     printf("   Peer sends SABM to trigger reset.\n");
-    len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_U_CTRL(HDLC_U_SABM, 1),
+    len = (atc_hdlc_u32)test_pack_frame(0x01, U_CTRL(U_SABM, 1),
                                          NULL, 0,
                                          temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
@@ -815,7 +815,7 @@ void test_public_query_api(void) {
 
     /* Simulate receiving an I-frame → T2 starts */
     atc_hdlc_u8 i_raw[64];
-    atc_hdlc_u32 i_len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_I_CTRL(0, 0, 0),
+    atc_hdlc_u32 i_len = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0),
                                                          payload, 1, i_raw, sizeof(i_raw));
     reset_test_state();
     atc_hdlc_data_in(&ctx, i_raw, i_len);
@@ -874,7 +874,7 @@ void test_set_local_busy(void) {
     atc_hdlc_u8 flat[32];
     test_frame_t resp = test_unpack_frame(mock_output_buffer, mock_output_len, flat, sizeof(flat));
     if (resp.valid) {
-        if (HDLC_CTRL_S_BITS(resp.control) != HDLC_S_RR)
+        if (CTRL_S(resp.control) != S_RR)
             test_fail("Local Busy", "Cleared-busy frame is not RR");
     }
 
@@ -904,7 +904,7 @@ void test_local_busy_rnr_response(void) {
     /* Peer sends I-frame N(S)=0, N(R)=0 */
     atc_hdlc_u8 payload[] = {0xAB};
     atc_hdlc_u8 i_raw[64];
-    atc_hdlc_u32 i_len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_I_CTRL(0, 0, 0),
+    atc_hdlc_u32 i_len = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0),
                                                          payload, 1, i_raw, sizeof(i_raw));
 
     reset_test_state();
@@ -919,7 +919,7 @@ void test_local_busy_rnr_response(void) {
     test_frame_t resp = test_unpack_frame(mock_output_buffer, mock_output_len, flat, sizeof(flat));
     if (!resp.valid)
         test_fail("Local Busy RNR", "Failed to unpack response");
-    if (HDLC_CTRL_S_BITS(resp.control) != HDLC_S_RNR)
+    if (CTRL_S(resp.control) != S_RNR)
         test_fail("Local Busy RNR", "Response is not RNR while locally busy");
 
     test_pass("Local Busy — RNR response to incoming I-frame");
@@ -939,7 +939,7 @@ void test_rnr_reception(void) {
 
     /* Build RNR(P=0, N(R)=0) from peer (address = my_address = 0x01) */
     atc_hdlc_u8 rnr_raw[32];
-    atc_hdlc_u32 rnr_len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_S_CTRL(HDLC_S_RNR, 0, 0),
+    atc_hdlc_u32 rnr_len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(S_RNR, 0, 0),
                                                            NULL, 0, rnr_raw, sizeof(rnr_raw));
 
     reset_test_state();
@@ -956,7 +956,7 @@ void test_rnr_reception(void) {
 
     /* Build RR(P=0, N(R)=0) from peer to clear busy */
     atc_hdlc_u8 rr_raw[32];
-    atc_hdlc_u32 rr_len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_S_CTRL(HDLC_S_RR, 0, 0),
+    atc_hdlc_u32 rr_len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(S_RR, 0, 0),
                                                           NULL, 0, rr_raw, sizeof(rr_raw));
     atc_hdlc_data_in(&ctx, rr_raw, rr_len);
 
@@ -987,7 +987,7 @@ void test_t2_timer_callbacks(void) {
     /* Receive I-frame → T2 must start */
     atc_hdlc_u8 payload[] = {0x01, 0x02};
     atc_hdlc_u8 i_raw[64];
-    atc_hdlc_u32 i_len = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_I_CTRL(0, 0, 0),
+    atc_hdlc_u32 i_len = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0),
                                                          payload, 2, i_raw, sizeof(i_raw));
 
     reset_test_state();
@@ -1009,7 +1009,7 @@ void test_t2_timer_callbacks(void) {
     atc_hdlc_u8 flat[32];
     test_frame_t resp = test_unpack_frame(mock_output_buffer, mock_output_len, flat, sizeof(flat));
     if (resp.valid) {
-        if (HDLC_CTRL_S_BITS(resp.control) != HDLC_S_RR)
+        if (CTRL_S(resp.control) != S_RR)
             test_fail("T2 Callbacks", "T2 expired frame is not RR");
     }
 
@@ -1019,7 +1019,7 @@ void test_t2_timer_callbacks(void) {
     ctx.vs = 0; ctx.vr = 0; ctx.va = 0;
     /* Receive I-frame N(S)=0, N(R)=0 → vr becomes 1, T2 starts */
     atc_hdlc_u8 i_raw2[64];
-    atc_hdlc_u32 i_len2 = (atc_hdlc_u32)test_pack_frame(0x01, HDLC_I_CTRL(0, 0, 0),
+    atc_hdlc_u32 i_len2 = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0),
                                                           payload, 2, i_raw2, sizeof(i_raw2));
     atc_hdlc_data_in(&ctx, i_raw2, i_len2);
     if (!ctx.t2_active)

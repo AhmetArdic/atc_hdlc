@@ -33,9 +33,8 @@ atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t        *ctx,
   if (config->window_size < 1 || config->window_size > 7)
     return ATC_HDLC_ERR_INVALID_PARAM;
 
-  atc_hdlc_u32 min_rx_cap = config->max_frame_size +
-                             HDLC_ADDRESS_LEN + HDLC_CONTROL_LEN + HDLC_FCS_LEN;
-  if (rx_buf->capacity < min_rx_cap || rx_buf->capacity < HDLC_MIN_FRAME_LEN)
+  atc_hdlc_u32 min_cap = config->max_frame_size + ADDR_LEN + CTRL_LEN + FCS_LEN;
+  if (rx_buf->capacity < min_cap || rx_buf->capacity < MIN_FRAME_LEN)
     return ATC_HDLC_ERR_INCONSISTENT_BUFFER;
 
   if (tx_window) {
@@ -57,7 +56,7 @@ atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t        *ctx,
   ctx->my_address  = config->address;
   ctx->window_size = config->window_size;
   ctx->role        = ATC_HDLC_ROLE_COMBINED;
-  ctx->rx_state    = HDLC_RX_STATE_HUNT;
+  ctx->rx_state    = RX_HUNT;
 
   return ATC_HDLC_OK;
 }
@@ -69,8 +68,8 @@ atc_hdlc_error_t atc_hdlc_link_setup(atc_hdlc_context_t *ctx, atc_hdlc_u8 peer_a
 
   ctx->peer_address = peer_addr;
 
-  ATC_HDLC_LOG_DEBUG("tx: Sending SABM to peer 0x%02X", ctx->peer_address);
-  send_u(ctx, ctx->peer_address, HDLC_U_CTRL(HDLC_U_SABM, 1));
+  LOG_INFO("tx: Sending SABM to peer 0x%02X", ctx->peer_address);
+  send_u(ctx, ctx->peer_address, U_CTRL(U_SABM, 1));
   t1_start(ctx);
   set_state(ctx, ATC_HDLC_STATE_CONNECTING, ATC_HDLC_EVENT_LINK_SETUP_REQUEST);
   return ATC_HDLC_OK;
@@ -82,8 +81,8 @@ atc_hdlc_error_t atc_hdlc_disconnect(atc_hdlc_context_t *ctx) {
       ctx->current_state != ATC_HDLC_STATE_FRMR_ERROR)
     return ATC_HDLC_ERR_INVALID_STATE;
 
-  ATC_HDLC_LOG_DEBUG("tx: Sending DISC to peer 0x%02X", ctx->peer_address);
-  send_u(ctx, ctx->peer_address, HDLC_U_CTRL(HDLC_U_DISC, 1));
+  LOG_INFO("tx: Sending DISC to peer 0x%02X", ctx->peer_address);
+  send_u(ctx, ctx->peer_address, U_CTRL(U_DISC, 1));
   t1_start(ctx);
   set_state(ctx, ATC_HDLC_STATE_DISCONNECTING, ATC_HDLC_EVENT_DISCONNECT_REQUEST);
   return ATC_HDLC_OK;
@@ -92,9 +91,9 @@ atc_hdlc_error_t atc_hdlc_disconnect(atc_hdlc_context_t *ctx) {
 atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_context_t *ctx) {
   if (!ctx) return ATC_HDLC_ERR_INVALID_PARAM;
 
-  ATC_HDLC_LOG_DEBUG("state: Link reset initiated");
+  LOG_INFO("state: Link reset initiated");
   reset_state(ctx);
-  send_u(ctx, ctx->peer_address, HDLC_U_CTRL(HDLC_U_SABM, 1));
+  send_u(ctx, ctx->peer_address, U_CTRL(U_SABM, 1));
   t1_start(ctx);
   set_state(ctx, ATC_HDLC_STATE_CONNECTING, ATC_HDLC_EVENT_RESET);
   return ATC_HDLC_OK;
@@ -111,11 +110,11 @@ atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_context_t *ctx, atc_hdlc_bool 
 
   if (busy && !ctx->local_busy) {
     ctx->local_busy = true;
-    ATC_HDLC_LOG_DEBUG("flow: Local busy asserted");
+    LOG_INFO("flow: Local busy asserted");
   } else if (!busy && ctx->local_busy) {
     ctx->local_busy = false;
     send_rr(ctx, 0);
-    ATC_HDLC_LOG_DEBUG("flow: Local busy cleared, RR sent");
+    LOG_INFO("flow: Local busy cleared, RR sent");
   }
 
   return ATC_HDLC_OK;
@@ -130,7 +129,7 @@ void atc_hdlc_t1_expired(atc_hdlc_context_t *ctx) {
   ctx->retry_count++;
 
   if (max_retries > 0 && ctx->retry_count > max_retries) {
-    ATC_HDLC_LOG_ERROR("tx: Link failure — N2 exceeded (state %d)", ctx->current_state);
+    LOG_ERR("tx: Link failure — N2 exceeded (state %d)", ctx->current_state);
     set_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_LINK_FAILURE);
     reset_state(ctx);
     return;
@@ -138,22 +137,22 @@ void atc_hdlc_t1_expired(atc_hdlc_context_t *ctx) {
 
   switch (ctx->current_state) {
     case ATC_HDLC_STATE_CONNECTING:
-      ATC_HDLC_LOG_WARN("tx: T1 expired in CONNECTING, retry SABM (%u/%u)",
+      LOG_WRN("tx: T1 expired in CONNECTING, retry SABM (%u/%u)",
                         ctx->retry_count, max_retries);
-      send_u(ctx, ctx->peer_address, HDLC_U_CTRL(HDLC_U_SABM, 1));
+      send_u(ctx, ctx->peer_address, U_CTRL(U_SABM, 1));
       t1_start(ctx);
       break;
 
     case ATC_HDLC_STATE_DISCONNECTING:
-      ATC_HDLC_LOG_WARN("tx: T1 expired in DISCONNECTING, retry DISC (%u/%u)",
+      LOG_WRN("tx: T1 expired in DISCONNECTING, retry DISC (%u/%u)",
                         ctx->retry_count, max_retries);
-      send_u(ctx, ctx->peer_address, HDLC_U_CTRL(HDLC_U_DISC, 1));
+      send_u(ctx, ctx->peer_address, U_CTRL(U_DISC, 1));
       t1_start(ctx);
       break;
 
     case ATC_HDLC_STATE_CONNECTED:
       if (ctx->va != ctx->vs) {
-        ATC_HDLC_LOG_WARN("tx: T1 expired, enquiry RR(P=1) (%u/%u)",
+        LOG_WRN("tx: T1 expired, enquiry RR(P=1) (%u/%u)",
                           ctx->retry_count, max_retries);
         send_rr(ctx, 1);
         t1_start(ctx);
@@ -161,7 +160,7 @@ void atc_hdlc_t1_expired(atc_hdlc_context_t *ctx) {
       break;
 
     case ATC_HDLC_STATE_FRMR_ERROR:
-      ATC_HDLC_LOG_WARN("tx: T1 expired in FRMR_ERROR, retransmit FRMR (%u/%u)",
+      LOG_WRN("tx: T1 expired in FRMR_ERROR, retransmit FRMR (%u/%u)",
                         ctx->retry_count, max_retries);
       retransmit_frmr(ctx);
       t1_start(ctx);
@@ -186,7 +185,7 @@ atc_hdlc_state_t atc_hdlc_get_state(const atc_hdlc_context_t *ctx) {
 atc_hdlc_u8 atc_hdlc_get_window_available(const atc_hdlc_context_t *ctx) {
   if (!ctx) return 0;
   atc_hdlc_u8 outstanding = (atc_hdlc_u8)((ctx->vs - ctx->va +
-                             HDLC_SEQUENCE_MODULUS) % HDLC_SEQUENCE_MODULUS);
+                             MOD8) % MOD8);
   if (outstanding >= ctx->window_size) return 0;
   return (atc_hdlc_u8)(ctx->window_size - outstanding);
 }
@@ -200,12 +199,12 @@ void atc_hdlc_abort(atc_hdlc_context_t *ctx) {
   if (!ctx) return;
 
   if (ctx->platform && ctx->platform->on_send) {
-    ctx->platform->on_send(HDLC_FLAG, false, ctx->platform->user_ctx);
-    ctx->platform->on_send(HDLC_FLAG, true,  ctx->platform->user_ctx);
+    ctx->platform->on_send(FLAG, false, ctx->platform->user_ctx);
+    ctx->platform->on_send(FLAG, true,  ctx->platform->user_ctx);
   }
 
   reset_state(ctx);
-  ctx->rx_state      = HDLC_RX_STATE_HUNT;
+  ctx->rx_state      = RX_HUNT;
   ctx->current_state = ATC_HDLC_STATE_DISCONNECTED;
 }
 
@@ -220,7 +219,7 @@ void set_state(atc_hdlc_context_t *ctx,
   atc_hdlc_bool state_changed = (ctx->current_state != new_state);
 
   if (state_changed || event == ATC_HDLC_EVENT_INCOMING_CONNECT) {
-    ATC_HDLC_LOG_DEBUG("state: %d -> %d (event: %d)",
+    LOG_INFO("state: %d -> %d (event: %d)",
                        ctx->current_state, new_state, event);
     ctx->current_state = new_state;
     fire_event(ctx, event);

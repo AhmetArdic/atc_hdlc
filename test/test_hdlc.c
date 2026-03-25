@@ -416,16 +416,16 @@ void test_control_field_i(void) {
 
   // Construct I-Frame: N(S)=3, N(R)=5, P=1.
   mock_output_len = 0;
-  frame_begin(&ctx, 0xFF, HDLC_I_CTRL(3, 5, 1));
+  frame_begin(&ctx, 0xFF, I_CTRL(3, 5, 1));
   atc_hdlc_transmit_end(&ctx);
 
   atc_hdlc_u8 info_buf[256];
   test_frame_t parsed_frame = test_unpack_frame(mock_output_buffer, mock_output_len, info_buf, sizeof(info_buf));
   if (parsed_frame.valid) {
       if (is_iframe(parsed_frame.control) &&
-          HDLC_CTRL_I_NS(parsed_frame.control) == 3 &&
-          HDLC_CTRL_PF(parsed_frame.control) == 1 &&
-          HDLC_CTRL_NR(parsed_frame.control) == 5) {
+          CTRL_NS(parsed_frame.control) == 3 &&
+          CTRL_PF(parsed_frame.control) == 1 &&
+          CTRL_NR(parsed_frame.control) == 5) {
           test_pass("Control Field I");
       } else {
           test_fail("Control Field I", "Parsed fields mismatch");
@@ -444,17 +444,17 @@ void test_control_field_s(void) {
   ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
   // Construct S-Frame: REJ (S=10 -> 2), N(R)=7, P/F=0
-  frame_begin(&ctx, 0xFF, HDLC_S_CTRL(0x02, 7, 0));
+  frame_begin(&ctx, 0xFF, S_CTRL(0x02, 7, 0));
   atc_hdlc_transmit_end(&ctx);
 
   atc_hdlc_u8 info_buf[256];
   test_frame_t parsed_frame = test_unpack_frame(mock_output_buffer, mock_output_len, info_buf, sizeof(info_buf));
   if (parsed_frame.valid) {
     if (is_sframe(parsed_frame.control) &&
-        HDLC_CTRL_S_BITS(parsed_frame.control) == 0x02 && // REJ
-        HDLC_CTRL_NR(parsed_frame.control) == 7 &&
-        HDLC_CTRL_PF(parsed_frame.control) == 0 &&
-        HDLC_CTRL_S_BITS(parsed_frame.control) == HDLC_S_REJ) {
+        CTRL_S(parsed_frame.control) == 0x02 && // REJ
+        CTRL_NR(parsed_frame.control) == 7 &&
+        CTRL_PF(parsed_frame.control) == 0 &&
+        CTRL_S(parsed_frame.control) == S_REJ) {
       test_pass("Control Field S");
     } else {
       test_fail("Control Field S", "Parsed S-frame mismatch");
@@ -537,7 +537,7 @@ void test_test_frame(void) {
     /* Feed a TEST command addressed to me — expect echo response */
     // We need to pack it first
     atc_hdlc_u8 packed[256];
-    int packed_len = test_pack_frame(0x01, HDLC_U_CTRL(HDLC_U_TEST, 1),
+    int packed_len = test_pack_frame(0x01, U_CTRL(U_TEST, 1),
                                      (atc_hdlc_u8*)"PING", 4, packed, sizeof(packed));
 
     // Feed to input

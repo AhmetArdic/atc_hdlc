@@ -19,7 +19,7 @@ atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_context_t *ctx,
   if (ctx->config && len > ctx->config->max_frame_size)
     return ATC_HDLC_ERR_FRAME_TOO_LARGE;
 
-  frame_begin(ctx, address, HDLC_U_CTRL(HDLC_U_UI, 0));
+  frame_begin(ctx, address, U_CTRL(U_UI, 0));
   for (atc_hdlc_u32 i = 0; i < len; i++)
     emit(ctx, data[i]);
   frame_end(ctx);
@@ -40,7 +40,7 @@ atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_context_t *ctx,
   ctx->test_pattern_len = (atc_hdlc_u16)len;
   ctx->test_pending     = true;
 
-  frame_begin(ctx, address, HDLC_U_CTRL(HDLC_U_TEST, 1));
+  frame_begin(ctx, address, U_CTRL(U_TEST, 1));
   for (atc_hdlc_u32 i = 0; i < len; i++)
     emit(ctx, data[i]);
   frame_end(ctx);
@@ -61,7 +61,7 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t *ctx,
     return ATC_HDLC_ERR_FRAME_TOO_LARGE;
 
   atc_hdlc_u8 outstanding = (atc_hdlc_u8)((ctx->vs - ctx->va +
-                             HDLC_SEQUENCE_MODULUS) % HDLC_SEQUENCE_MODULUS);
+                             MOD8) % MOD8);
   if (outstanding >= ctx->window_size)
     return ATC_HDLC_ERR_WINDOW_FULL;
 
@@ -76,14 +76,14 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t *ctx,
   }
   ctx->tx_window->slot_lens[slot] = len;
 
-  ATC_HDLC_LOG_DEBUG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
+  LOG_DBG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
 
-  frame_begin(ctx, ctx->peer_address, HDLC_I_CTRL(ctx->vs, ctx->vr, 0));
+  frame_begin(ctx, ctx->peer_address, I_CTRL(ctx->vs, ctx->vr, 0));
   for (atc_hdlc_u32 i = 0; i < len; i++)
     emit(ctx, data[i]);
   frame_end(ctx);
 
-  ctx->vs = (atc_hdlc_u8)((ctx->vs + 1) % HDLC_SEQUENCE_MODULUS);
+  ctx->vs = (atc_hdlc_u8)((ctx->vs + 1) % MOD8);
   t2_stop(ctx);
 
   if (outstanding == 0)
@@ -94,7 +94,7 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t *ctx,
 
 void atc_hdlc_transmit_start_ui(atc_hdlc_context_t *ctx, atc_hdlc_u8 address) {
   if (!ctx) return;
-  frame_begin(ctx, address, HDLC_U_CTRL(HDLC_U_UI, 0));
+  frame_begin(ctx, address, U_CTRL(U_UI, 0));
 }
 
 void atc_hdlc_transmit_data(atc_hdlc_context_t *ctx,
