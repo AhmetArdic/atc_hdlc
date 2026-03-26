@@ -22,10 +22,7 @@ static void retransmit_outstanding(atc_hdlc_context_t* ctx) {
     while (ctx->vs != end_vs) {
         const atc_hdlc_u8* sd = ctx->tx_window->slots + (slot_idx * ctx->tx_window->slot_capacity);
         atc_hdlc_u32 slen = ctx->tx_window->slot_lens[slot_idx];
-        frame_begin(ctx, ctx->peer_address, I_CTRL(ctx->vs, ctx->vr, 0));
-        for (atc_hdlc_u32 i = 0; i < slen; i++)
-            emit(ctx, sd[i]);
-        frame_end(ctx);
+        frame_send(ctx, ctx->peer_address, I_CTRL(ctx->vs, ctx->vr, 0), sd, slen);
         ctx->vs = (atc_hdlc_u8)((ctx->vs + 1) % MOD8);
         slot_idx = (atc_hdlc_u8)((slot_idx + 1u) % w);
     }

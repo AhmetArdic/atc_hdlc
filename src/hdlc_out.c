@@ -20,10 +20,7 @@ atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_context_t* ctx, atc_hdlc_u8 addre
     if (ctx->config && len > ctx->config->max_info_size)
         return ATC_HDLC_ERR_FRAME_TOO_LARGE;
 
-    frame_begin(ctx, address, U_CTRL(U_UI, 0));
-    for (atc_hdlc_u32 i = 0; i < len; i++)
-        emit(ctx, data[i]);
-    frame_end(ctx);
+    frame_send(ctx, address, U_CTRL(U_UI, 0), data, len);
 
     return ATC_HDLC_OK;
 }
@@ -37,10 +34,7 @@ atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_context_t* ctx, atc_hdlc_u8 add
     if (ctx->config && len > ctx->config->max_info_size)
         return ATC_HDLC_ERR_FRAME_TOO_LARGE;
 
-    frame_begin(ctx, address, U_CTRL(U_TEST, 1));
-    for (atc_hdlc_u32 i = 0; i < len; i++)
-        emit(ctx, data[i]);
-    frame_end(ctx);
+    frame_send(ctx, address, U_CTRL(U_TEST, 1), data, len);
 
     return ATC_HDLC_OK;
 }
@@ -74,10 +68,7 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t* ctx, const atc_hdlc_u8*
 
     LOG_DBG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
 
-    frame_begin(ctx, ctx->peer_address, I_CTRL(ctx->vs, ctx->vr, 0));
-    for (atc_hdlc_u32 i = 0; i < len; i++)
-        emit(ctx, data[i]);
-    frame_end(ctx);
+    frame_send(ctx, ctx->peer_address, I_CTRL(ctx->vs, ctx->vr, 0), data, len);
 
     ctx->vs = (atc_hdlc_u8)((ctx->vs + 1) % MOD8);
     t2_stop(ctx);

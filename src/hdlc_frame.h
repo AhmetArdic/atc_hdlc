@@ -113,6 +113,14 @@ static inline void frame_end(atc_hdlc_context_t* ctx) {
     put_raw(ctx, FLAG, true);
 }
 
+static inline void frame_send(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
+                              const atc_hdlc_u8* data, atc_hdlc_u32 len) {
+    frame_begin(ctx, address, ctrl);
+    for (atc_hdlc_u32 i = 0; i < len; i++)
+        emit(ctx, data[i]);
+    frame_end(ctx);
+}
+
 static inline void send_u(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl) {
     frame_begin(ctx, address, ctrl);
     frame_end(ctx);

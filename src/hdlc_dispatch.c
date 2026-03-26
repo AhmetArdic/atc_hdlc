@@ -300,10 +300,7 @@ static void handle_uframe(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc
 
     case U_TEST:
         if (is_cmd(ctx, address)) {
-            frame_begin(ctx, ctx->my_address, U_CTRL(U_TEST, pf));
-            for (atc_hdlc_u16 i = 0; i < info_len; i++)
-                emit(ctx, info[i]);
-            frame_end(ctx);
+            frame_send(ctx, ctx->my_address, U_CTRL(U_TEST, pf), info, info_len);
         } else {
             if (ctx->platform->on_data && info)
                 ctx->platform->on_data(info, info_len, ctx->platform->user_ctx);
