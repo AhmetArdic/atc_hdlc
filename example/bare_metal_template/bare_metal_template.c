@@ -165,17 +165,16 @@ static void on_event(atc_hdlc_event_t event, void* u) {
 /* ================================================================== */
 
 #define WINDOW_SIZE    1
-#define MAX_FRAME_SIZE 64
+#define MAX_INFO_SIZE 64
 
-static atc_hdlc_u8 rx_buf_mem[MAX_FRAME_SIZE + 8]; /* +8 for addr/ctrl/FCS */
-static atc_hdlc_u8 tx_slots[WINDOW_SIZE * MAX_FRAME_SIZE];
+static atc_hdlc_u8 rx_buf_mem[MAX_INFO_SIZE + 8]; /* +8 for addr/ctrl/FCS */
+static atc_hdlc_u8 tx_slots[WINDOW_SIZE * MAX_INFO_SIZE];
 static atc_hdlc_u32 tx_lens[WINDOW_SIZE];
 
 static const atc_hdlc_config_t cfg = {
     .mode = ATC_HDLC_MODE_ABM,
     .address = 0x01, /* PLATFORM: this station's address */
-    .window_size = WINDOW_SIZE,
-    .max_frame_size = MAX_FRAME_SIZE,
+    .max_info_size = MAX_INFO_SIZE,
     .max_retries = 3,
     .t1_ms = 500,
     .t2_ms = 20,
@@ -191,7 +190,7 @@ static const atc_hdlc_platform_t platform = {
     .t2_stop = t2_stop,
 };
 
-static atc_hdlc_tx_window_t tx_win = {tx_slots, tx_lens, MAX_FRAME_SIZE, WINDOW_SIZE};
+static atc_hdlc_tx_window_t tx_win = {tx_slots, tx_lens, MAX_INFO_SIZE, WINDOW_SIZE};
 static atc_hdlc_rx_buffer_t rx_buf = {rx_buf_mem, sizeof(rx_buf_mem)};
 static atc_hdlc_context_t ctx;
 

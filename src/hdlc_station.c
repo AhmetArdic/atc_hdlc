@@ -32,19 +32,16 @@ atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t* ctx, atc_hdlc_params_t params
     if (config->mode != ATC_HDLC_MODE_ABM)
         return ATC_HDLC_ERR_UNSUPPORTED_MODE;
 
-    if (config->window_size < 1 || config->window_size > 7)
-        return ATC_HDLC_ERR_INVALID_PARAM;
-
-    atc_hdlc_u32 min_cap = config->max_frame_size + ADDR_LEN + CTRL_LEN + FCS_LEN;
+    atc_hdlc_u32 min_cap = config->max_info_size + ADDR_LEN + CTRL_LEN + FCS_LEN;
     if (rx_buf->capacity < min_cap || rx_buf->capacity < MIN_FRAME_LEN)
         return ATC_HDLC_ERR_INCONSISTENT_BUFFER;
 
     if (tx_window) {
         if (!tx_window->slots || !tx_window->slot_lens)
             return ATC_HDLC_ERR_INCONSISTENT_BUFFER;
-        if (tx_window->slot_count != config->window_size)
-            return ATC_HDLC_ERR_INCONSISTENT_BUFFER;
-        if (tx_window->slot_capacity < config->max_frame_size)
+        if (tx_window->slot_count < 1 || tx_window->slot_count > 7)
+            return ATC_HDLC_ERR_INVALID_PARAM;
+        if (tx_window->slot_capacity < config->max_info_size)
             return ATC_HDLC_ERR_INCONSISTENT_BUFFER;
     }
 

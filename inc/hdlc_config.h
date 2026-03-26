@@ -34,11 +34,6 @@ extern "C" {
 #define ATC_HDLC_DEFAULT_N2_RETRY_COUNT 3
 #endif
 
-/** @brief Default TX window size (1-7). */
-#ifndef ATC_HDLC_DEFAULT_WINDOW_SIZE
-#define ATC_HDLC_DEFAULT_WINDOW_SIZE 1
-#endif
-
 /** @brief Enable debug logging (0 = all logs compiled out). */
 #ifndef ATC_HDLC_ENABLE_DEBUG_LOGS
 #define ATC_HDLC_ENABLE_DEBUG_LOGS 0

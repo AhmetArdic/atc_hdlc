@@ -41,7 +41,7 @@ static void frames_acked(atc_hdlc_context_t* ctx, atc_hdlc_u8 nr) {
     ctx->va = nr;
     ctx->n2 = 0;
 
-    if (prev_out >= ctx->config->window_size)
+    if (prev_out >= ctx->tx_window->slot_count)
         if (ctx->platform->on_event)
             ctx->platform->on_event(ATC_HDLC_EVENT_WINDOW_OPEN, ctx->platform->user_ctx);
 

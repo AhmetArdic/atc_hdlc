@@ -14,7 +14,7 @@
 static void retransmit_outstanding(atc_hdlc_context_t* ctx) {
     CTX_CLR(ctx, HDLC_F_RETRANSMIT_PENDING);
     atc_hdlc_u8 end_vs = ctx->vs;
-    atc_hdlc_u8 w = ctx->config->window_size;
+    atc_hdlc_u8 w = ctx->tx_window->slot_count;
     /* Slot of oldest frame = (tx_next_slot - outstanding + w) % w. */
     atc_hdlc_u8 outstanding = (atc_hdlc_u8)((end_vs - ctx->retransmit_from + MOD8) % MOD8);
     atc_hdlc_u8 slot_idx = (atc_hdlc_u8)((ctx->tx_next_slot + w - outstanding) % w);
@@ -27,7 +27,7 @@ static void retransmit_outstanding(atc_hdlc_context_t* ctx) {
             emit(ctx, sd[i]);
         frame_end(ctx);
         ctx->vs = (atc_hdlc_u8)((ctx->vs + 1) % MOD8);
-        slot_idx = (atc_hdlc_u8)((slot_idx + 1) % w);
+        slot_idx = (atc_hdlc_u8)((slot_idx + 1u) % w);
     }
     t1_start(ctx);
 }

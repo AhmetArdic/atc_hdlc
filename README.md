@@ -143,7 +143,7 @@ atc_hdlc_config_t config = {
     .mode = ATC_HDLC_MODE_ABM,
     .address = 0x01,
     .window_size = 3,
-    .max_frame_size = 256,
+    .max_info_size = 256,
     .max_retries = 3,
     .t1_ms = 1000,
     .t2_ms = 50,
@@ -293,7 +293,7 @@ Set these fields before calling `atc_hdlc_init()`:
 | `mode` | `ATC_HDLC_MODE_ABM` | Operating mode (only ABM supported) |
 | `address` | — | Local station address |
 | `window_size` | `1` | Sliding window size (1–7) |
-| `max_frame_size` | `256` | Maximum information field size (MRU) |
+| `max_info_size` | `256` | Maximum information field size |
 | `max_retries` | `3` | N2 retry limit before link failure |
 | `t1_ms` | `1000` | T1 retransmission timeout (ms) |
 | `t2_ms` | `10` | T2 delayed ACK timeout (ms, must be < t1_ms) |

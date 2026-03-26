@@ -313,14 +313,13 @@ void test_input_buffer_overflow() {
     // We can't easily overflow 16k without looping huge data.
     // Instead, we initialize a context with SMALL buffer locally.
 
-    /* RX buffer must hold: max_frame_size(8) + addr(1)+ctrl(1)+fcs(2) = 12 bytes minimum */
+    /* RX buffer must hold: max_info_size(8) + addr(1)+ctrl(1)+fcs(2) = 12 bytes minimum */
     atc_hdlc_u8 small_rx_buf[12];
     atc_hdlc_context_t small_ctx;
     static const atc_hdlc_config_t small_cfg = {
         .mode = ATC_HDLC_MODE_ABM,
         .address = 0x01,
-        .window_size = 1,
-        .max_frame_size = 8,
+        .max_info_size = 8,
         .max_retries = 3,
         .t1_ms = 1000,
         .t2_ms = 10,
@@ -338,7 +337,7 @@ void test_input_buffer_overflow() {
     if (init_err != ATC_HDLC_OK)
         test_fail("Buffer Overflow", "small_ctx init failed unexpectedly");
 
-    /* Feed 20 bytes of payload (exceeds small_ctx's 8-byte max_frame_size) */
+    /* Feed 20 bytes of payload (exceeds small_ctx's 8-byte max_info_size) */
     atc_hdlc_u8 flag = 0x7E;
     atc_hdlc_u8 byte = 0xAA;
     atc_hdlc_data_in(&small_ctx, &flag, 1);

@@ -549,7 +549,7 @@ static bool verify_results(physical_node_t* node, const uint8_t* original, uint3
     if (out_kbps)
         *out_kbps = kbps;
 
-    printf("\n\n--- Test Results (Window %u) ---\n", node->ctx.config->window_size);
+    printf("\n\n--- Test Results (Window %u) ---\n", node->ctx.tx_window->slot_count);
     printf("Total Sent    : %u bytes\n", sent_bytes);
     printf("Total Received: %u bytes\n", node->bytes_received);
     printf("Frames Rcvd   : %u\n", node->frames_received);
@@ -560,7 +560,7 @@ static bool verify_results(physical_node_t* node, const uint8_t* original, uint3
         bool match = (memcmp(original, node->recv_buffer, data_len) == 0);
         if (match) {
             printf("%s[PASS] Window %u: Perfect Match!%s\n", COL_GREEN,
-                   node->ctx.config->window_size, COL_RESET);
+                   node->ctx.tx_window->slot_count, COL_RESET);
             return true;
         } else {
             uint32_t pos = 0;
@@ -571,17 +571,17 @@ static bool verify_results(physical_node_t* node, const uint8_t* original, uint3
                 }
             }
             printf("%s[FAIL] Window %u: Data mismatch at byte %u: sent=0x%02X, recv=0x%02X%s\n",
-                   COL_RED, node->ctx.config->window_size, pos, original[pos],
+                   COL_RED, node->ctx.tx_window->slot_count, pos, original[pos],
                    node->recv_buffer[pos], COL_RESET);
             return false;
         }
     } else if (node->bytes_received > 0) {
         printf("%s[FAIL] Window %u: Size mismatch: sent=%u, received=%u%s\n", COL_RED,
-               node->ctx.config->window_size, data_len, node->bytes_received, COL_RESET);
+               node->ctx.tx_window->slot_count, data_len, node->bytes_received, COL_RESET);
         return false;
     } else {
         printf("%s[FAIL] Window %u: No echo data received%s\n", COL_RED,
-               node->ctx.config->window_size, COL_RESET);
+               node->ctx.tx_window->slot_count, COL_RESET);
         return false;
     }
 }
@@ -612,8 +612,7 @@ static bool node_init(physical_node_t* node, uint32_t recv_len, uint8_t window_s
     /* Config stored in node struct — lives as long as the node itself */
     node->cfg.mode = ATC_HDLC_MODE_ABM;
     node->cfg.address = 0x01; /* PC is address 0x01 */
-    node->cfg.window_size = (atc_hdlc_u8)window_size;
-    node->cfg.max_frame_size = 1024;
+    node->cfg.max_info_size = 1024;
     node->cfg.max_retries = 10;
     node->cfg.t1_ms = ATC_HDLC_DEFAULT_T1_TIMEOUT;
     node->cfg.t2_ms = 1; /* Minimal ACK delay for high-baud physical link */

@@ -80,7 +80,7 @@ typedef enum {
     ATC_HDLC_ERR_INCONSISTENT_BUFFER = -12, /**< Buffer geometry violates constraints. */
     ATC_HDLC_ERR_REMOTE_BUSY = -13,         /**< Peer is busy (RNR received); TX suspended. */
     ATC_HDLC_ERR_WINDOW_FULL = -14,         /**< TX window full; no free slots. */
-    ATC_HDLC_ERR_FRAME_TOO_LARGE = -15,     /**< Payload exceeds max_frame_size (MRU). */
+    ATC_HDLC_ERR_FRAME_TOO_LARGE = -15,     /**< Payload exceeds max_info_size. */
 } atc_hdlc_error_t;
 
 typedef enum {
@@ -90,8 +90,7 @@ typedef enum {
 typedef struct {
     atc_hdlc_link_mode_t mode;   /**< Operating mode. */
     atc_hdlc_u8 address;         /**< Local station address. */
-    atc_hdlc_u8 window_size;     /**< Sliding window size, 1–7 (mod-8). */
-    atc_hdlc_u32 max_frame_size; /**< Maximum information field size in octets (MRU). */
+    atc_hdlc_u32 max_info_size; /**< Maximum information field size in octets. */
     atc_hdlc_u8 max_retries;     /**< N2: maximum retransmission attempts before
                                     link failure. */
     atc_hdlc_u32 t1_ms;          /**< T1 retransmission timer in ms (typical 200–3000). */
@@ -146,7 +145,7 @@ typedef struct {
                                    slot_capacity octets. */
     atc_hdlc_u32* slot_lens;    /**< Per-slot stored payload length (slot_count elements). */
     atc_hdlc_u32 slot_capacity; /**< Capacity of a single slot in octets. */
-    atc_hdlc_u8 slot_count;     /**< Total number of slots (must equal window_size). */
+    atc_hdlc_u8 slot_count;     /**< TX window depth: number of retransmit slots (1–7). */
 } atc_hdlc_tx_window_t;
 
 typedef struct {

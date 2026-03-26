@@ -123,7 +123,7 @@ static void t_stop(void* u) {
 /* ------------------------------------------------------------------ */
 
 static atc_hdlc_u8 rx_a[128], rx_b[128];
-static atc_hdlc_u8 tx_slots_a[1 * 64]; /* window_size=1, max_frame=64 */
+static atc_hdlc_u8 tx_slots_a[1 * 64];
 static atc_hdlc_u32 tx_lens_a[1];
 
 static atc_hdlc_rx_buffer_t rx_buf_a = {rx_a, sizeof(rx_a)};
@@ -133,8 +133,7 @@ static atc_hdlc_tx_window_t tx_win_a = {tx_slots_a, tx_lens_a, 64, 1};
 static const atc_hdlc_config_t cfg_a = {
     .mode = ATC_HDLC_MODE_ABM,
     .address = 0x01,
-    .window_size = 1,
-    .max_frame_size = 64,
+    .max_info_size = 64,
     .max_retries = 3,
     .t1_ms = 1000,
     .t2_ms = 10,
@@ -142,8 +141,7 @@ static const atc_hdlc_config_t cfg_a = {
 static const atc_hdlc_config_t cfg_b = {
     .mode = ATC_HDLC_MODE_ABM,
     .address = 0x02,
-    .window_size = 1,
-    .max_frame_size = 64,
+    .max_info_size = 64,
     .max_retries = 3,
     .t1_ms = 1000,
     .t2_ms = 10,

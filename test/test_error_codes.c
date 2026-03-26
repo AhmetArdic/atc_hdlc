@@ -121,12 +121,12 @@ void test_err_window_full(void) {
     printf("TEST: ATC_HDLC_ERR_WINDOW_FULL\n");
 
     atc_hdlc_context_t ctx;
-    setup_test_context(&ctx); /* window_size = 1 */
+    setup_test_context(&ctx); /* slot_count = 1 */
     force_connected(&ctx);
 
     atc_hdlc_u8 payload[] = {0x01, 0x02};
 
-    /* First frame — window_size=1, should succeed */
+    /* First frame — slot_count=1, should succeed */
     if (atc_hdlc_transmit_i(&ctx, payload, 2) != ATC_HDLC_OK)
         test_fail("ERR_WINDOW_FULL", "First frame should succeed");
 
@@ -139,13 +139,13 @@ void test_err_window_full(void) {
 }
 
 /**
- * @brief ATC_HDLC_ERR_FRAME_TOO_LARGE — payload > max_frame_size.
+ * @brief ATC_HDLC_ERR_FRAME_TOO_LARGE — payload > max_info_size.
  */
 void test_err_frame_too_large(void) {
     printf("TEST: ATC_HDLC_ERR_FRAME_TOO_LARGE\n");
 
     atc_hdlc_context_t ctx;
-    setup_test_context(&ctx); /* max_frame_size = 1024 */
+    setup_test_context(&ctx); /* max_info_size = 1024 */
     force_connected(&ctx);
 
     /* Payload exactly at limit — OK */

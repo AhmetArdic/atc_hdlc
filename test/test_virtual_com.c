@@ -187,8 +187,7 @@ static void node_pair_init(virtual_node_t* node1, virtual_node_t* node2, pipe_qu
     /* --- Node 1: fill per-node descriptors, then init --- */
     node1->hdlc_cfg.mode = ATC_HDLC_MODE_ABM;
     node1->hdlc_cfg.address = 0x01;
-    node1->hdlc_cfg.window_size = (atc_hdlc_u8)window_size;
-    node1->hdlc_cfg.max_frame_size = CHUNK_SIZE;
+    node1->hdlc_cfg.max_info_size = CHUNK_SIZE;
     node1->hdlc_cfg.max_retries = 25;
     node1->hdlc_cfg.t1_ms = 20;
     node1->hdlc_cfg.t2_ms = 10;
@@ -219,8 +218,7 @@ static void node_pair_init(virtual_node_t* node1, virtual_node_t* node2, pipe_qu
     /* --- Node 2: fill per-node descriptors, then init --- */
     node2->hdlc_cfg.mode = ATC_HDLC_MODE_ABM;
     node2->hdlc_cfg.address = 0x02;
-    node2->hdlc_cfg.window_size = (atc_hdlc_u8)window_size;
-    node2->hdlc_cfg.max_frame_size = CHUNK_SIZE;
+    node2->hdlc_cfg.max_info_size = CHUNK_SIZE;
     node2->hdlc_cfg.max_retries = 25;
 
     node2->hdlc_cfg.t1_ms = 20;

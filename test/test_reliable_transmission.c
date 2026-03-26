@@ -8,6 +8,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define DEFAULT_WINDOW_SIZE 1
+
 /* Scratch buffer for packing frames to feed into RX */
 static atc_hdlc_u8 temp_input_buffer[2048];
 
@@ -32,8 +34,7 @@ static const atc_hdlc_platform_t s_make_ctx_plat = {
 static void make_ctx(atc_hdlc_context_t* ctx, atc_hdlc_u8 window_size, atc_hdlc_u32 t1_ms) {
     s_make_ctx_cfg.mode = ATC_HDLC_MODE_ABM;
     s_make_ctx_cfg.address = 0x01;
-    s_make_ctx_cfg.window_size = window_size;
-    s_make_ctx_cfg.max_frame_size = 1024;
+    s_make_ctx_cfg.max_info_size = 1024;
     s_make_ctx_cfg.max_retries = 3;
     s_make_ctx_cfg.t1_ms = t1_ms;
     s_make_ctx_cfg.t2_ms = ATC_HDLC_DEFAULT_T2_TIMEOUT;
@@ -66,7 +67,7 @@ void test_reliable_transmission(void) {
     reset_test_state();
 
     atc_hdlc_context_t ctx;
-    make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
+    make_ctx(&ctx, DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // Send I-Frame
     mock_output_len = 0;
@@ -97,7 +98,7 @@ void test_reliable_retransmission(void) {
     reset_test_state();
 
     atc_hdlc_context_t ctx;
-    make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
+    make_ctx(&ctx, DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // Send I-Frame
     atc_hdlc_u8 data[] = {0xCA, 0xFE};
@@ -167,7 +168,7 @@ void test_sequence_rollover(void) {
     reset_test_state();
 
     atc_hdlc_context_t ctx;
-    make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
+    make_ctx(&ctx, DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     atc_hdlc_u8 data[] = {0x00};
 
@@ -201,7 +202,7 @@ void test_duplicate_ack_ignored(void) {
     reset_test_state();
 
     atc_hdlc_context_t ctx;
-    make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
+    make_ctx(&ctx, DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // Send I-Frame (VS becomes 1)
     atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8*)"A", 1);
@@ -229,7 +230,7 @@ void test_rej_retransmit(void) {
     reset_test_state();
 
     atc_hdlc_context_t ctx;
-    make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
+    make_ctx(&ctx, DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // Send I-Frame [VS=0] -> VS becomes 1
     atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8*)"XY", 2);
@@ -253,7 +254,7 @@ void test_piggyback_ack(void) {
     reset_test_state();
 
     atc_hdlc_context_t ctx;
-    make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
+    make_ctx(&ctx, DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // --- Phase 1: Outgoing Piggyback ---
     // Receive an I-frame from peer: N(S)=0, N(R)=0 (peer expects our frame 0)
@@ -771,7 +772,7 @@ void test_state_initialization(void) {
     reset_test_state();
 
     atc_hdlc_context_t ctx;
-    make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
+    make_ctx(&ctx, DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // 1. Send an I-frame so that V(S) increments to 1
     atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8*)"TEST", 4);

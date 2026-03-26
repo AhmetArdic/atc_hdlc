@@ -82,8 +82,7 @@ void mock_t2_stop_cb(void* user_ctx) {
 static const atc_hdlc_config_t s_default_config = {
     .mode = ATC_HDLC_MODE_ABM,
     .address = 0x01,
-    .window_size = ATC_HDLC_DEFAULT_WINDOW_SIZE,
-    .max_frame_size = 1024,
+    .max_info_size = 1024,
     .max_retries = 3,
     .t1_ms = ATC_HDLC_DEFAULT_T1_TIMEOUT,
     .t2_ms = ATC_HDLC_DEFAULT_T2_TIMEOUT,
@@ -144,7 +143,6 @@ void setup_test_context_w(atc_hdlc_context_t* ctx, atc_hdlc_u8 window_size) {
 
     static atc_hdlc_config_t cfg;
     cfg = s_default_config;
-    cfg.window_size = window_size;
 
     static atc_hdlc_tx_window_t tw;
     tw.slots = s_tw_slots;

@@ -42,8 +42,8 @@
 #define TX_RING_MASK       (TX_RING_SIZE - 1u)
 
 /* ---- HDLC Buffer Sizes ---- */
-#define HDLC_MAX_FRAME_SIZE  512u                               /**< Max payload per I-frame (bytes). */
-#define HDLC_RX_BUF_SIZE     (HDLC_MAX_FRAME_SIZE + 4u)        /**< Addr(1)+Ctrl(1)+Payload+FCS(2). */
+#define HDLC_MAX_INFO_SIZE  512u                               /**< Max payload per I-frame (bytes). */
+#define HDLC_RX_BUF_SIZE     (HDLC_MAX_INFO_SIZE + 4u)        /**< Addr(1)+Ctrl(1)+Payload+FCS(2). */
 #define HDLC_WINDOW_SIZE     7u
 
 /* USER CODE END PD */
@@ -80,7 +80,7 @@ static atc_hdlc_rx_buffer_t hdlc_rx;
 
 /* Static storage for HDLC buffers */
 static uint8_t  hdlc_rx_buf[HDLC_RX_BUF_SIZE];
-static uint8_t  hdlc_tx_slots[HDLC_WINDOW_SIZE * HDLC_MAX_FRAME_SIZE];
+static uint8_t  hdlc_tx_slots[HDLC_WINDOW_SIZE * HDLC_MAX_INFO_SIZE];
 static uint32_t hdlc_tx_lens[HDLC_WINDOW_SIZE];
 static uint8_t  hdlc_tx_seq[8];  /* seq_to_slot map: indexed by V(S) 0..7 (mod-8) */
 
@@ -303,8 +303,7 @@ int main(void)
   /* ---- Build HDLC config ---- */
   hdlc_cfg.mode           = ATC_HDLC_MODE_ABM;
   hdlc_cfg.address        = 0x02;          /* This station (STM32) */
-  hdlc_cfg.window_size    = HDLC_WINDOW_SIZE;
-  hdlc_cfg.max_frame_size = HDLC_MAX_FRAME_SIZE;
+  hdlc_cfg.max_info_size = HDLC_MAX_INFO_SIZE;
   hdlc_cfg.max_retries    = 10;
   hdlc_cfg.t1_ms          = 500;           /* Retransmission timeout */
   hdlc_cfg.t2_ms          = 1;             /* Delayed-ACK timeout (1ms = 1 HAL tick) */
@@ -328,7 +327,7 @@ int main(void)
   hdlc_tw.slot_lens    = hdlc_tx_lens;
   hdlc_tw.seq_to_slot  = hdlc_tx_seq;
   hdlc_tw.slot_count   = HDLC_WINDOW_SIZE;
-  hdlc_tw.slot_capacity = HDLC_MAX_FRAME_SIZE;
+  hdlc_tw.slot_capacity = HDLC_MAX_INFO_SIZE;
 
   /* ---- Build RX buffer descriptor ---- */
   hdlc_rx.buffer   = hdlc_rx_buf;
