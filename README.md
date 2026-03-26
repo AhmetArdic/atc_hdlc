@@ -22,7 +22,6 @@ This library implements a highly capable subset of the ISO/IEC 13239 HDLC standa
 
 - **[TODO] Selective Reject (SREJ)**: Upgrading from Go-Back-N to Selective Repeat for higher efficiency on lossy links.
 - **[TODO] Extended Sequence Numbers (Modulo-128)**: Supporting extended control fields for `SABME`/I-frames.
-- **[TODO] Extended Addressing**: Multi-byte station addresses for large networks.
 - **[TODO] Parameter Negotiation (XID)**: Dynamic negotiation of Window Size, Modulus, Timers, and Max Frame Length.
 
 ## Project Structure
@@ -255,9 +254,9 @@ void T2_TIMER_IRQ(void) {  // Delayed ACK timeout
 | Function | Description |
 |---|---|
 | `atc_hdlc_init()` | Initialize context with config and callbacks |
-| `atc_hdlc_link_setup()` | Initiate connection (sends SABM) |
-| `atc_hdlc_disconnect()` | Terminate connection (sends DISC) |
-| `atc_hdlc_link_reset()` | Reset and reconnect (after FRMR) |
+| `atc_hdlc_link_setup()` | Initiate connection |
+| `atc_hdlc_disconnect()` | Terminate connection |
+| `atc_hdlc_link_reset()` | Reset and reconnect |
 | `atc_hdlc_abort()` | Abort on line break/framing error |
 | `atc_hdlc_get_state()` | Get current state |
 
