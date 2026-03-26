@@ -63,9 +63,9 @@ atc_hdlc_error_t atc_hdlc_link_setup(atc_hdlc_context_t* ctx, atc_hdlc_u8 peer_a
 atc_hdlc_error_t atc_hdlc_disconnect(atc_hdlc_context_t* ctx);
 
 /**
- * @brief Reset and reconnect.
+ * @brief Reset link and re-send SABM.
  *
- * Use after FRMR_ERROR or for recovery.
+ * Use after FRMR_ERROR or to recover from an unresponsive peer.
  *
  * @param ctx Context.
  * @return ATC_HDLC_OK always.
@@ -73,12 +73,10 @@ atc_hdlc_error_t atc_hdlc_disconnect(atc_hdlc_context_t* ctx);
 atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_context_t* ctx);
 
 /**
- * @brief Unconditional abort.
+ * @brief Unconditional abort — call on PHY line break or framing error.
  *
- * Call when UART hardware detects a line break or framing error.
- * Sends two flag bytes (0x7E 0x7E) to force the peer into HUNT state,
- * stops all timers, resets connection state, and moves to DISCONNECTED
- * without firing an event.
+ * Sends 0x7E 0x7E to push the peer into HUNT state, stops all timers,
+ * and moves to DISCONNECTED without firing an event.
  *
  * @param ctx Context.
  */
@@ -119,7 +117,7 @@ atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_context_t* ctx, atc_hdlc_u8 addre
                                       const atc_hdlc_u8* data, atc_hdlc_u32 len);
 
 /**
- * @brief Send TEST frame and wait for echo.
+ * @brief Send TEST frame; echo is delivered via @c on_event callback.
  *
  * @param ctx     Context.
  * @param address Destination.
