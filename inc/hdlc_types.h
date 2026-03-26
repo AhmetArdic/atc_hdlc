@@ -69,16 +69,8 @@ typedef enum {
 } atc_hdlc_error_t;
 
 typedef enum {
-    ATC_HDLC_MODE_ABM = 0, /**< Asynchronous Balanced Mode (SABM). Combined stations. */
-    ATC_HDLC_MODE_NRM = 1, /**< Normal Response Mode (SNRM). Primary polls Secondary. */
-    ATC_HDLC_MODE_ARM = 2  /**< Asynchronous Response Mode (SARM). */
+    ATC_HDLC_MODE_ABM = 0, /**< Asynchronous Balanced Mode (SABM). */
 } atc_hdlc_link_mode_t;
-
-typedef enum {
-    ATC_HDLC_ROLE_COMBINED = 0, /**< Equal rights (used in ABM). */
-    ATC_HDLC_ROLE_PRIMARY  = 1, /**< Master node (sends Commands, receives Responses). */
-    ATC_HDLC_ROLE_SECONDARY= 2  /**< Slave node (receives Commands, sends Responses). */
-} atc_hdlc_station_role_t;
 
 typedef struct {
     atc_hdlc_link_mode_t mode;              /**< Operating mode. */
@@ -88,7 +80,6 @@ typedef struct {
     atc_hdlc_u8          max_retries;       /**< N2: maximum retransmission attempts before link failure. */
     atc_hdlc_u32         t1_ms;             /**< T1 retransmission timer in ms (typical 200–3000). */
     atc_hdlc_u32         t2_ms;             /**< T2 acknowledgement delay timer in ms (must be < t1_ms). */
-    atc_hdlc_bool        use_extended;      /**< Extended (mod-128) mode flag. Must be false in v1. */
 } atc_hdlc_config_t;
 
 /** @brief Byte output callback.
@@ -137,7 +128,6 @@ typedef struct {
 typedef struct {
     atc_hdlc_u8  *slots;            /**< Flat buffer for frame payloads: slot_count * slot_capacity octets. */
     atc_hdlc_u32 *slot_lens;        /**< Per-slot stored payload length (slot_count elements). */
-    atc_hdlc_u8  *seq_to_slot;      /**< Sequence-number-to-slot-index mapping (slot_count elements). */
     atc_hdlc_u32  slot_capacity;    /**< Capacity of a single slot in octets. */
     atc_hdlc_u8   slot_count;       /**< Total number of slots (must equal window_size). */
 } atc_hdlc_tx_window_t;
@@ -154,34 +144,39 @@ typedef struct {
     atc_hdlc_rx_buffer_t      *rx_buf;    /**< RX buffer (required). */
 } atc_hdlc_params_t;
 
-/** @brief Main context (opaque). */
+/** @brief Main context. */
 typedef struct {
-    const atc_hdlc_config_t   *config;    /**< Protocol configuration (user-owned, must outlive ctx). */
-    const atc_hdlc_platform_t *platform;  /**< Platform callbacks (user-owned, must outlive ctx). */
-    atc_hdlc_tx_window_t      *tx_window; /**< TX retransmit window descriptor (user-owned). */
-    atc_hdlc_rx_buffer_t      *rx_buf;    /**< RX buffer descriptor (user-owned). */
-    atc_hdlc_u32 rx_index;         /**< Current write index into rx_buf->buffer. */
-    atc_hdlc_u16 rx_crc;           /**< Running FCS accumulator for the RX path (fed with 2-byte delay to exclude FCS bytes). */
-    volatile atc_hdlc_state_t current_state; /**< Current station state. */
-    atc_hdlc_station_role_t role;            /**< Station role (set at init; always COMBINED for ABM). */
-    atc_hdlc_u16 tx_crc;            /**< Running FCS accumulator for the streaming TX path. */
-    atc_hdlc_u8 my_address;   /**< Local station address (set at init time). */
-    atc_hdlc_u8 peer_address; /**< Remote station address (set at connect time). */
-    atc_hdlc_u8 vs;           /**< Send state variable V(S). */
-    atc_hdlc_u8 vr;           /**< Receive state variable V(R). */
-    atc_hdlc_u8 va;           /**< Acknowledge state variable V(A). */
-    atc_hdlc_u8 window_size;  /**< TX window size cached from config (1–7). */
-    atc_hdlc_u8 next_tx_slot; /**< Index of the next slot to allocate in tx_window. */
-    atc_hdlc_u8 retry_count;  /**< Current retransmission attempt count. */
-    atc_hdlc_u8 rx_state;     /**< RX byte-parser state (rx_state_t). */
-    atc_hdlc_u8 frmr_ctrl;  /**< Control byte of the rejected frame (for FRMR retransmission). */
-    atc_hdlc_u8 frmr_flags; /**< FRMR reason bits W/X/Y/Z (for FRMR retransmission). */
-    atc_hdlc_bool rej_exception; /**< REJ exception: suppresses duplicate REJ transmissions. */
-    atc_hdlc_bool remote_busy;   /**< Peer is in RNR state; outgoing I-frames are suspended. */
-    atc_hdlc_bool local_busy;    /**< Local RNR has been sent; peer TX is throttled. */
-    atc_hdlc_bool t1_active; /**< T1 retransmission timer is currently running. */
-    atc_hdlc_bool t2_active; /**< T2 delayed-ACK timer is currently running. */
+    const atc_hdlc_config_t   *config;    /**< Protocol configuration (must outlive ctx). */
+    const atc_hdlc_platform_t *platform;  /**< Platform callbacks (must outlive ctx). */
+    atc_hdlc_tx_window_t      *tx_window; /**< TX retransmit window descriptor (must outlive ctx). */
+    atc_hdlc_rx_buffer_t      *rx_buf;    /**< RX buffer descriptor (must outlive ctx). */
+
+    atc_hdlc_u32 rx_index;
+    atc_hdlc_u16 rx_crc;
+    atc_hdlc_u16 tx_crc;
+    atc_hdlc_u8 rx_state;
+    atc_hdlc_u8 retransmit_from;
+    volatile uint8_t current_state;
+
+    atc_hdlc_u8 my_address, peer_address;
+    volatile atc_hdlc_u8 vs, vr, va;
+    volatile atc_hdlc_u8 n2;
+    atc_hdlc_u8 frmr_ctrl, frmr_flags;
+    
+    volatile uint8_t flags;
 } atc_hdlc_context_t;
+
+/* --- Context flag bits (ctx->flags) --- */
+#define HDLC_F_T1_ACTIVE          ((uint8_t)0x01u)
+#define HDLC_F_T2_ACTIVE          ((uint8_t)0x02u)
+#define HDLC_F_REJ_EXCEPTION      ((uint8_t)0x04u)
+#define HDLC_F_REMOTE_BUSY        ((uint8_t)0x08u)
+#define HDLC_F_LOCAL_BUSY         ((uint8_t)0x10u)
+#define HDLC_F_RETRANSMIT_PENDING ((uint8_t)0x20u)
+
+#define CTX_FLAG(ctx, f)  ((ctx)->flags & (uint8_t)(f))
+#define CTX_SET(ctx, f)   ((ctx)->flags |= (uint8_t)(f))
+#define CTX_CLR(ctx, f)   ((ctx)->flags &= (uint8_t)~(unsigned)(f))
 
 #ifdef __cplusplus
 }

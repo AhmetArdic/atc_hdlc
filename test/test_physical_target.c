@@ -107,7 +107,6 @@ typedef struct {
     atc_hdlc_u8          input_buffer[BUFFER_SIZE * 2];
     atc_hdlc_u8          retransmit_slots[7 * 1024];
     atc_hdlc_u32         retransmit_lens[7];
-    atc_hdlc_u8          retransmit_seq[8];  /* mod-8: indexed by V(S) 0..7 */
     thread_handle_t rx_thread;
     volatile bool   running;
 
@@ -565,7 +564,7 @@ static bool verify_results(physical_node_t *node,
     double kbps = (physical_bytes_sent * 8) / (duration * 1000.0);
     if (out_kbps) *out_kbps = kbps;
 
-    printf("\n\n--- Test Results (Window %u) ---\n", node->ctx.window_size);
+    printf("\n\n--- Test Results (Window %u) ---\n", node->ctx.config->window_size);
     printf("Total Sent    : %u bytes\n", sent_bytes);
     printf("Total Received: %u bytes\n", node->bytes_received);
     printf("Frames Rcvd   : %u\n",       node->frames_received);
@@ -575,7 +574,7 @@ static bool verify_results(physical_node_t *node,
     if (node->bytes_received == data_len) {
         bool match = (memcmp(original, node->recv_buffer, data_len) == 0);
         if (match) {
-            printf("%s[PASS] Window %u: Perfect Match!%s\n", COL_GREEN, node->ctx.window_size, COL_RESET);
+            printf("%s[PASS] Window %u: Perfect Match!%s\n", COL_GREEN, node->ctx.config->window_size, COL_RESET);
             return true;
         } else {
             uint32_t pos = 0;
@@ -583,15 +582,15 @@ static bool verify_results(physical_node_t *node,
                 if (original[i] != node->recv_buffer[i]) { pos = i; break; }
             }
             printf("%s[FAIL] Window %u: Data mismatch at byte %u: sent=0x%02X, recv=0x%02X%s\n", 
-                   COL_RED, node->ctx.window_size, pos, original[pos], node->recv_buffer[pos], COL_RESET);
+                   COL_RED, node->ctx.config->window_size, pos, original[pos], node->recv_buffer[pos], COL_RESET);
             return false;
         }
     } else if (node->bytes_received > 0) {
         printf("%s[FAIL] Window %u: Size mismatch: sent=%u, received=%u%s\n", 
-               COL_RED, node->ctx.window_size, data_len, node->bytes_received, COL_RESET);
+               COL_RED, node->ctx.config->window_size, data_len, node->bytes_received, COL_RESET);
         return false;
     } else {
-        printf("%s[FAIL] Window %u: No echo data received%s\n", COL_RED, node->ctx.window_size, COL_RESET);
+        printf("%s[FAIL] Window %u: No echo data received%s\n", COL_RED, node->ctx.config->window_size, COL_RESET);
         return false;
     }
 }
@@ -627,7 +626,6 @@ static bool node_init(physical_node_t *node, uint32_t recv_len, uint8_t window_s
     node->cfg.max_retries    = 10;
     node->cfg.t1_ms          = ATC_HDLC_DEFAULT_T1_TIMEOUT;
     node->cfg.t2_ms          = 1;  /* Minimal ACK delay for high-baud physical link */
-    node->cfg.use_extended   = false;
 
     node->plat.on_send  = node_output_cb;
     node->plat.on_data  = node_on_data_cb;
@@ -640,7 +638,6 @@ static bool node_init(physical_node_t *node, uint32_t recv_len, uint8_t window_s
 
     node->tw.slots         = node->retransmit_slots;
     node->tw.slot_lens     = node->retransmit_lens;
-    node->tw.seq_to_slot   = node->retransmit_seq;
     node->tw.slot_capacity = 1024;
     node->tw.slot_count    = (atc_hdlc_u8)window_size;
 

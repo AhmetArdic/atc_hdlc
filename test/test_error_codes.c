@@ -179,7 +179,7 @@ void test_err_remote_busy(void) {
     setup_test_context(&ctx);
     force_connected(&ctx);
 
-    ctx.remote_busy = true; /* simulate received RNR */
+    ctx.flags |= HDLC_F_REMOTE_BUSY; /* simulate received RNR */
 
     atc_hdlc_u8 payload[] = {0x55};
     atc_hdlc_error_t err = atc_hdlc_transmit_i(&ctx, payload, 1);

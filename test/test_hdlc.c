@@ -318,7 +318,7 @@ void test_input_buffer_overflow() {
   static const atc_hdlc_config_t small_cfg = {
       .mode = ATC_HDLC_MODE_ABM, .address = 0x01, .window_size = 1,
       .max_frame_size = 8, .max_retries = 3,
-      .t1_ms = 1000, .t2_ms = 10, .use_extended = false,
+      .t1_ms = 1000, .t2_ms = 10,
   };
   static const atc_hdlc_platform_t small_plat = {
       .on_send = mock_send_cb, .on_data = mock_on_data_cb,

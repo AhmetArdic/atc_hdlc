@@ -16,6 +16,7 @@ atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_context_t *ctx,
                                         const atc_hdlc_u8  *data,
                                         atc_hdlc_u32        len) {
   if (!ctx) return ATC_HDLC_ERR_INVALID_PARAM;
+  if (!data && len > 0) return ATC_HDLC_ERR_INVALID_PARAM;
   if (ctx->config && len > ctx->config->max_frame_size)
     return ATC_HDLC_ERR_FRAME_TOO_LARGE;
 
@@ -32,6 +33,7 @@ atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_context_t *ctx,
                                           const atc_hdlc_u8  *data,
                                           atc_hdlc_u32        len) {
   if (!ctx) return ATC_HDLC_ERR_INVALID_PARAM;
+  if (!data && len > 0) return ATC_HDLC_ERR_INVALID_PARAM;
   if (ctx->config && len > ctx->config->max_frame_size)
     return ATC_HDLC_ERR_FRAME_TOO_LARGE;
 
@@ -49,19 +51,17 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t *ctx,
   if (!ctx) return ATC_HDLC_ERR_INVALID_PARAM;
   if (ctx->current_state != ATC_HDLC_STATE_CONNECTED)
     return ATC_HDLC_ERR_INVALID_STATE;
-  if (ctx->remote_busy) return ATC_HDLC_ERR_REMOTE_BUSY;
+  if (CTX_FLAG(ctx, HDLC_F_REMOTE_BUSY)) return ATC_HDLC_ERR_REMOTE_BUSY;
   if (!ctx->tx_window)  return ATC_HDLC_ERR_NO_BUFFER;
   if (ctx->config && len > ctx->config->max_frame_size)
     return ATC_HDLC_ERR_FRAME_TOO_LARGE;
 
   atc_hdlc_u8 outstanding = (atc_hdlc_u8)((ctx->vs - ctx->va +
                              MOD8) % MOD8);
-  if (outstanding >= ctx->window_size)
+  if (outstanding >= ctx->config->window_size)
     return ATC_HDLC_ERR_WINDOW_FULL;
 
-  atc_hdlc_u8 slot = ctx->next_tx_slot;
-  ctx->tx_window->seq_to_slot[ctx->vs] = slot;
-  ctx->next_tx_slot = (atc_hdlc_u8)((ctx->next_tx_slot + 1) % ctx->window_size);
+  atc_hdlc_u8 slot = (atc_hdlc_u8)(ctx->vs % ctx->config->window_size);
 
   if (len > 0 && data) {
     if (len > ctx->tx_window->slot_capacity)

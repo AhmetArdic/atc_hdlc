@@ -86,7 +86,6 @@ static const atc_hdlc_config_t s_default_config = {
     .max_retries    = 3,
     .t1_ms          = ATC_HDLC_DEFAULT_T1_TIMEOUT,
     .t2_ms          = ATC_HDLC_DEFAULT_T2_TIMEOUT,
-    .use_extended   = false,
 };
 
 /** Full platform with all mock callbacks wired (including timers). */
@@ -104,12 +103,10 @@ static const atc_hdlc_platform_t s_default_platform = {
 /* Static backing storage for default single-slot TX window */
 static atc_hdlc_u8  s_tx_slots[1 * 1024];
 static atc_hdlc_u32 s_tx_slot_lens[1];
-static atc_hdlc_u8  s_tx_seq_to_slot[8]; /* mod-8: indexed by V(S) 0..7 */
 
 static atc_hdlc_tx_window_t s_tx_window = {
     .slots         = s_tx_slots,
     .slot_lens     = s_tx_slot_lens,
-    .seq_to_slot   = s_tx_seq_to_slot,
     .slot_capacity = 1024,
     .slot_count    = 1,
 };
@@ -122,7 +119,6 @@ static atc_hdlc_rx_buffer_t s_rx_buf = {
 /* Multi-slot storage for variable window size tests (up to 7) */
 static atc_hdlc_u8  s_tw_slots[7 * 1024];
 static atc_hdlc_u32 s_tw_lens[7];
-static atc_hdlc_u8  s_tw_seq[8];
 
 /* ================================================================
  *  Context setup helpers
@@ -148,7 +144,6 @@ void setup_test_context_w(atc_hdlc_context_t *ctx, atc_hdlc_u8 window_size) {
     static atc_hdlc_tx_window_t tw;
     tw.slots         = s_tw_slots;
     tw.slot_lens     = s_tw_lens;
-    tw.seq_to_slot   = s_tw_seq;
     tw.slot_capacity = 1024;
     tw.slot_count    = window_size;
 
@@ -222,8 +217,8 @@ int test_pack_frame(atc_hdlc_u8 addr, atc_hdlc_u8 ctrl,
     _ESCC(addr);
     _ESCC(ctrl);
     for (atc_hdlc_u16 i = 0; i < info_len && info; i++) _ESCC(info[i]);
-    _ESC((atc_hdlc_u8)(crc >> 8));
     _ESC((atc_hdlc_u8)(crc & 0xFF));
+    _ESC((atc_hdlc_u8)(crc >> 8));
     _RAW(0x7E);
 #undef _RAW
 #undef _ESC
@@ -257,7 +252,7 @@ test_frame_t test_unpack_frame(const atc_hdlc_u8 *buf, int buf_len,
     int data_len = wi - 2;
     for (int i = 0; i < data_len; i++)
         calced = atc_hdlc_crc_ccitt_update(calced, flat[i]);
-    atc_hdlc_u16 rx_fcs = (atc_hdlc_u16)(((atc_hdlc_u16)flat[data_len] << 8) | flat[data_len + 1]);
+    atc_hdlc_u16 rx_fcs = (atc_hdlc_u16)(flat[data_len] | ((atc_hdlc_u16)flat[data_len + 1] << 8));
     if (calced != rx_fcs) return r;
 
     r.address  = flat[0];

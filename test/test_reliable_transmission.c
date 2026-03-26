@@ -17,7 +17,6 @@ static atc_hdlc_u8 temp_input_buffer[2048];
  */
 static atc_hdlc_u8  s_slots_rt[7 * 1024];
 static atc_hdlc_u32 s_lens_rt[7];
-static atc_hdlc_u8  s_seq_rt[8]; /* mod-8: indexed by V(S) 0..7 */
 
 static atc_hdlc_config_t    s_make_ctx_cfg;
 static atc_hdlc_tx_window_t s_make_ctx_tw;
@@ -38,11 +37,9 @@ static void make_ctx(atc_hdlc_context_t *ctx,
     s_make_ctx_cfg.max_retries    = 3;
     s_make_ctx_cfg.t1_ms          = t1_ms;
     s_make_ctx_cfg.t2_ms          = ATC_HDLC_DEFAULT_T2_TIMEOUT;
-    s_make_ctx_cfg.use_extended   = false;
 
     s_make_ctx_tw.slots         = s_slots_rt;
     s_make_ctx_tw.slot_lens     = s_lens_rt;
-    s_make_ctx_tw.seq_to_slot   = s_seq_rt;
     s_make_ctx_tw.slot_capacity = 1024;
     s_make_ctx_tw.slot_count    = window_size;
 
@@ -140,7 +137,7 @@ void test_n2_retry_connected(void) {
         atc_hdlc_t1_expired(&ctx);
         if (mock_output_len == 0)
             test_fail("N2 Connected", "T1 expiry did not send RR enquiry");
-        if (!ctx.t1_active)
+        if (!(ctx.flags & HDLC_F_T1_ACTIVE))
             test_fail("N2 Connected", "T1 not restarted after enquiry");
         if (ctx.current_state == ATC_HDLC_STATE_DISCONNECTED) {
             char msg[64];
@@ -156,7 +153,7 @@ void test_n2_retry_connected(void) {
         test_fail("N2 Connected", "State not DISCONNECTED after N2 exceeded");
     if (last_event != ATC_HDLC_EVENT_LINK_FAILURE)
         test_fail("N2 Connected", "LINK_FAILURE event not fired");
-    if (ctx.t1_active)
+    if (ctx.flags & HDLC_F_T1_ACTIVE)
         test_fail("N2 Connected", "T1 should be stopped after link failure");
 
     test_pass("N2 Retry Exhaustion in CONNECTED State");
@@ -281,7 +278,7 @@ make_ctx(&ctx, ATC_HDLC_DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
         return;
     }
 
-    if (ctx.t2_active)
+    if (ctx.flags & HDLC_F_T2_ACTIVE)
         test_fail("Piggyback", "T2 not cleared by outgoing I-frame (piggyback)");
     if (ctx.va == ctx.vs)
         test_fail("Piggyback", "Expected va != vs before peer ACK");
@@ -389,7 +386,7 @@ void test_gobackn_retransmit(void) {
     }
     if (ctx.vs != 3 || ctx.va != 0)
         test_fail("GBN Retransmit", "State corrupted after retransmit");
-    if (!ctx.t1_active)
+    if (!(ctx.flags & HDLC_F_T1_ACTIVE))
         test_fail("GBN Retransmit", "T1 not restarted after retransmit");
 
     test_pass("Go-Back-N Retransmission");
@@ -634,7 +631,7 @@ void test_nr_modulo_validation(void) {
 
     // Tick the timer so we can observe if it resets
     atc_hdlc_t1_expired(&ctx); /* simulated T1 expiry */
-    atc_hdlc_bool timer_was_active = ctx.t1_active;
+    int timer_was_active = (ctx.flags & HDLC_F_T1_ACTIVE) != 0;
 
     // 4. Peer sends RR N(R)=6. This is perfectly valid (peer acknowledging up to 5, waiting for 6)
     // If hdlc_nr_valid has the bug, it will reject N(R)=6 because it thinks 6 is outside [6, 0].
@@ -644,7 +641,7 @@ void test_nr_modulo_validation(void) {
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
     // If valid, the timer should be reset to timeout. If ignored, the timer continues ticking down.
-    if (!ctx.t1_active) {
+    if (!(ctx.flags & HDLC_F_T1_ACTIVE)) {
         test_fail("NR Modulo Bug", "Ignored valid N(R)=6 due to modulo arithmetic bug");
         return;
     }
@@ -697,7 +694,7 @@ void test_nr_edge_cases(void) {
     for (int i = 0; i < sizeof(cases)/sizeof(cases[0]); i++) {
         ctx.va = cases[i].va;
         ctx.vs = cases[i].vs;
-        ctx.t1_active = false; /* reset to observe change */
+        ctx.flags &= (uint8_t)~HDLC_F_T1_ACTIVE; /* reset to observe change */
 
         atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, cases[i].nr, 0),
                                                            NULL, 0,
@@ -801,7 +798,7 @@ void test_public_query_api(void) {
 
     /* T2 starts when I-frame is received */
     atc_hdlc_u8 payload[] = {0x01};
-    if (ctx.t2_active)
+    if (ctx.flags & HDLC_F_T2_ACTIVE)
         test_fail("Query API", "t2_active should be false before receiving I-frame");
 
     /* Simulate receiving an I-frame → T2 starts */
@@ -810,7 +807,7 @@ void test_public_query_api(void) {
                                                          payload, 1, i_raw, sizeof(i_raw));
     reset_test_state();
     atc_hdlc_data_in(&ctx, i_raw, i_len);
-    if (!ctx.t2_active)
+    if (!(ctx.flags & HDLC_F_T2_ACTIVE))
         test_fail("Query API", "t2_active should be true after I-frame");
 
     /* NULL safety */
@@ -843,7 +840,7 @@ void test_set_local_busy(void) {
     atc_hdlc_error_t err = atc_hdlc_set_local_busy(&ctx, true);
     if (err != ATC_HDLC_OK)
         test_fail("Local Busy", "set_local_busy(true) failed");
-    if (!ctx.local_busy)
+    if (!(ctx.flags & HDLC_F_LOCAL_BUSY))
         test_fail("Local Busy", "local_busy flag not set");
 
     /* Clear busy — RR must be sent */
@@ -851,7 +848,7 @@ void test_set_local_busy(void) {
     err = atc_hdlc_set_local_busy(&ctx, false);
     if (err != ATC_HDLC_OK)
         test_fail("Local Busy", "set_local_busy(false) failed");
-    if (ctx.local_busy)
+    if (ctx.flags & HDLC_F_LOCAL_BUSY)
         test_fail("Local Busy", "local_busy flag not cleared");
     if (mock_output_len < 6)
         test_fail("Local Busy", "RR not sent on busy-clear");
@@ -931,7 +928,7 @@ void test_rnr_reception(void) {
     reset_test_state();
     atc_hdlc_data_in(&ctx, rnr_raw, rnr_len);
 
-    if (!ctx.remote_busy)
+    if (!(ctx.flags & HDLC_F_REMOTE_BUSY))
         test_fail("RNR Reception", "remote_busy not set after RNR");
 
     /* transmit_i must return REMOTE_BUSY */
@@ -947,7 +944,7 @@ void test_rnr_reception(void) {
     atc_hdlc_data_in(&ctx, rr_raw, rr_len);
 
     /* remote_busy should clear on RR */
-    if (ctx.remote_busy)
+    if (ctx.flags & HDLC_F_REMOTE_BUSY)
         test_fail("RNR Reception", "remote_busy not cleared by RR");
 
     /* transmit_i should succeed now */
@@ -980,13 +977,13 @@ void test_t2_timer_callbacks(void) {
     atc_hdlc_data_in(&ctx, i_raw, i_len);
     if (mock_t2_start_count < 1)
         test_fail("T2 Callbacks", "T2 not started after I-frame");
-    if (!ctx.t2_active)
+    if (!(ctx.flags & HDLC_F_T2_ACTIVE))
         test_fail("T2 Callbacks", "t2_active not set");
 
     /* atc_hdlc_t2_expired → RR sent, T2 clears */
     reset_test_state();
     atc_hdlc_t2_expired(&ctx);
-    if (ctx.t2_active)
+    if (ctx.flags & HDLC_F_T2_ACTIVE)
         test_fail("T2 Callbacks", "t2_active not cleared after expiry");
     if (mock_output_len < 6)
         test_fail("T2 Callbacks", "RR not sent on T2 expiry");
@@ -1008,7 +1005,7 @@ void test_t2_timer_callbacks(void) {
     atc_hdlc_u32 i_len2 = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0),
                                                           payload, 2, i_raw2, sizeof(i_raw2));
     atc_hdlc_data_in(&ctx, i_raw2, i_len2);
-    if (!ctx.t2_active)
+    if (!(ctx.flags & HDLC_F_T2_ACTIVE))
         test_fail("T2 Callbacks", "T2 not started before piggybacked ACK test");
     int t2_stop_before = mock_t2_stop_count;
     /* Sending outgoing I-frame with N(R)=vr piggybacks ACK → T2 should stop */

@@ -31,8 +31,6 @@ atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t *ctx,
 
   if (config->mode != ATC_HDLC_MODE_ABM)
     return ATC_HDLC_ERR_UNSUPPORTED_MODE;
-  if (config->use_extended)
-    return ATC_HDLC_ERR_UNSUPPORTED_MODE;
 
   if (config->window_size < 1 || config->window_size > 7)
     return ATC_HDLC_ERR_INVALID_PARAM;
@@ -42,7 +40,7 @@ atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t *ctx,
     return ATC_HDLC_ERR_INCONSISTENT_BUFFER;
 
   if (tx_window) {
-    if (!tx_window->slots || !tx_window->slot_lens || !tx_window->seq_to_slot)
+    if (!tx_window->slots || !tx_window->slot_lens)
       return ATC_HDLC_ERR_INCONSISTENT_BUFFER;
     if (tx_window->slot_count != config->window_size)
       return ATC_HDLC_ERR_INCONSISTENT_BUFFER;
@@ -57,10 +55,8 @@ atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t *ctx,
   ctx->tx_window = tx_window;
   ctx->rx_buf    = rx_buf;
 
-  ctx->my_address  = config->address;
-  ctx->window_size = config->window_size;
-  ctx->role        = ATC_HDLC_ROLE_COMBINED;
-  ctx->rx_state    = RX_HUNT;
+  ctx->my_address = config->address;
+  ctx->rx_state   = RX_HUNT;
   ctx->rx_crc      = ATC_HDLC_FCS_INIT_VALUE;
 
   return ATC_HDLC_OK;
@@ -110,11 +106,11 @@ atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_context_t *ctx, atc_hdlc_bool 
   if (ctx->current_state != ATC_HDLC_STATE_CONNECTED)
     return ATC_HDLC_ERR_INVALID_STATE;
 
-  if (busy && !ctx->local_busy) {
-    ctx->local_busy = true;
+  if (busy && !CTX_FLAG(ctx, HDLC_F_LOCAL_BUSY)) {
+    CTX_SET(ctx, HDLC_F_LOCAL_BUSY);
     LOG_INFO("flow: Local busy asserted");
-  } else if (!busy && ctx->local_busy) {
-    ctx->local_busy = false;
+  } else if (!busy && CTX_FLAG(ctx, HDLC_F_LOCAL_BUSY)) {
+    CTX_CLR(ctx, HDLC_F_LOCAL_BUSY);
     send_rr(ctx, 0);
     LOG_INFO("flow: Local busy cleared, RR sent");
   }
@@ -125,12 +121,12 @@ atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_context_t *ctx, atc_hdlc_bool 
 void atc_hdlc_t1_expired(atc_hdlc_context_t *ctx) {
   if (!ctx) return;
 
-  ctx->t1_active = false;
+  CTX_CLR(ctx, HDLC_F_T1_ACTIVE);
 
   const atc_hdlc_u8 max_retries = ctx->config ? ctx->config->max_retries : 0;
-  ctx->retry_count++;
+  ctx->n2++;
 
-  if (max_retries > 0 && ctx->retry_count > max_retries) {
+  if (max_retries > 0 && ctx->n2 > max_retries) {
     LOG_ERR("tx: Link failure — N2 exceeded (state %d)", ctx->current_state);
     set_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_LINK_FAILURE);
     reset_state(ctx);
@@ -140,14 +136,14 @@ void atc_hdlc_t1_expired(atc_hdlc_context_t *ctx) {
   switch (ctx->current_state) {
     case ATC_HDLC_STATE_CONNECTING:
       LOG_WRN("tx: T1 expired in CONNECTING, retry SABM (%u/%u)",
-                        ctx->retry_count, max_retries);
+                        ctx->n2, max_retries);
       send_u(ctx, ctx->peer_address, U_CTRL(U_SABM, 1));
       t1_start(ctx);
       break;
 
     case ATC_HDLC_STATE_DISCONNECTING:
       LOG_WRN("tx: T1 expired in DISCONNECTING, retry DISC (%u/%u)",
-                        ctx->retry_count, max_retries);
+                        ctx->n2, max_retries);
       send_u(ctx, ctx->peer_address, U_CTRL(U_DISC, 1));
       t1_start(ctx);
       break;
@@ -155,7 +151,7 @@ void atc_hdlc_t1_expired(atc_hdlc_context_t *ctx) {
     case ATC_HDLC_STATE_CONNECTED:
       if (ctx->va != ctx->vs) {
         LOG_WRN("tx: T1 expired, enquiry RR(P=1) (%u/%u)",
-                          ctx->retry_count, max_retries);
+                          ctx->n2, max_retries);
         send_rr(ctx, 1);
         t1_start(ctx);
       }
@@ -163,7 +159,7 @@ void atc_hdlc_t1_expired(atc_hdlc_context_t *ctx) {
 
     case ATC_HDLC_STATE_FRMR_ERROR:
       LOG_WRN("tx: T1 expired in FRMR_ERROR, retransmit FRMR (%u/%u)",
-                        ctx->retry_count, max_retries);
+                        ctx->n2, max_retries);
       retransmit_frmr(ctx);
       t1_start(ctx);
       break;
@@ -175,13 +171,13 @@ void atc_hdlc_t1_expired(atc_hdlc_context_t *ctx) {
 
 void atc_hdlc_t2_expired(atc_hdlc_context_t *ctx) {
   if (!ctx) return;
-  ctx->t2_active = false;
+  CTX_CLR(ctx, HDLC_F_T2_ACTIVE);
   send_rr(ctx, 0);
 }
 
 atc_hdlc_state_t atc_hdlc_get_state(const atc_hdlc_context_t *ctx) {
   if (!ctx) return ATC_HDLC_STATE_DISCONNECTED;
-  return ctx->current_state;
+  return (atc_hdlc_state_t)ctx->current_state;
 }
 
 void atc_hdlc_abort(atc_hdlc_context_t *ctx) {

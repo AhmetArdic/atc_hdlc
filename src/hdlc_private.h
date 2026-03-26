@@ -120,25 +120,25 @@ void dispatch_frame(atc_hdlc_context_t *ctx,
 static inline void t1_start(atc_hdlc_context_t *ctx) {
   if (ctx->platform->t1_start && ctx->config)
     ctx->platform->t1_start(ctx->config->t1_ms, ctx->platform->user_ctx);
-  ctx->t1_active = true;
+  CTX_SET(ctx, HDLC_F_T1_ACTIVE);
 }
 
 static inline void t1_stop(atc_hdlc_context_t *ctx) {
-  if (ctx->t1_active && ctx->platform->t1_stop)
+  if (CTX_FLAG(ctx, HDLC_F_T1_ACTIVE) && ctx->platform->t1_stop)
     ctx->platform->t1_stop(ctx->platform->user_ctx);
-  ctx->t1_active = false;
+  CTX_CLR(ctx, HDLC_F_T1_ACTIVE);
 }
 
 static inline void t2_start(atc_hdlc_context_t *ctx) {
   if (ctx->platform->t2_start && ctx->config)
     ctx->platform->t2_start(ctx->config->t2_ms, ctx->platform->user_ctx);
-  ctx->t2_active = true;
+  CTX_SET(ctx, HDLC_F_T2_ACTIVE);
 }
 
 static inline void t2_stop(atc_hdlc_context_t *ctx) {
-  if (ctx->t2_active && ctx->platform->t2_stop)
+  if (CTX_FLAG(ctx, HDLC_F_T2_ACTIVE) && ctx->platform->t2_stop)
     ctx->platform->t2_stop(ctx->platform->user_ctx);
-  ctx->t2_active = false;
+  CTX_CLR(ctx, HDLC_F_T2_ACTIVE);
 }
 
 /* --- TX byte-level primitives --- */
@@ -173,10 +173,10 @@ static inline void frame_begin(atc_hdlc_context_t *ctx,
   LOG_DBG("tx: Frame start (Addr: 0x%02X, Ctrl: 0x%02X)", address, control);
 }
 
-/* End a frame: FCS bytes + closing FLAG. */
+/* End a frame: FCS bytes (LSB first) + closing FLAG. */
 static inline void frame_end(atc_hdlc_context_t *ctx) {
-  put_escaped(ctx, (atc_hdlc_u8)(ctx->tx_crc >> 8));
   put_escaped(ctx, (atc_hdlc_u8)(ctx->tx_crc & 0xFF));
+  put_escaped(ctx, (atc_hdlc_u8)(ctx->tx_crc >> 8));
   put_raw(ctx, FLAG, true);
 }
 

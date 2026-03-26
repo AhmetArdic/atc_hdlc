@@ -63,10 +63,12 @@ extern "C" {
 
 /** @brief Log sink. Override before including this header to redirect logs
  *  without pulling in stdio.h (e.g. on bare-metal targets). */
+#if ATC_HDLC_ENABLE_DEBUG_LOGS
 #ifndef ATC_HDLC_LOG_IMPL
 #include <stdio.h>
 #define ATC_HDLC_LOG_IMPL(level, fmt, ...)                                     \
   printf("[HDLC %-4s] " fmt "\n", level, ##__VA_ARGS__)
+#endif
 #endif
 
 #ifdef __cplusplus

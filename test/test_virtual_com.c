@@ -23,7 +23,6 @@ typedef struct {
     atc_hdlc_u8 input_buffer[BUFFER_SIZE * 2];
     atc_hdlc_u8  retransmit_slots[7 * 1024]; /* 7 slots x 1024 B */
     atc_hdlc_u32 retransmit_lens[7];
-    atc_hdlc_u8  retransmit_seq[7];
     /* Descriptors stored per-node so they outlive node_pair_init() */
     atc_hdlc_config_t    hdlc_cfg;
     atc_hdlc_platform_t  hdlc_plat;
@@ -191,7 +190,6 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     node1->hdlc_cfg.window_size = (atc_hdlc_u8)window_size;
     node1->hdlc_cfg.max_frame_size = CHUNK_SIZE; node1->hdlc_cfg.max_retries = 25;
     node1->hdlc_cfg.t1_ms = 20; node1->hdlc_cfg.t2_ms = 10;
-    node1->hdlc_cfg.use_extended = false;
 
     node1->hdlc_plat.on_send   = node_output_cb;
     node1->hdlc_plat.on_data   = node_on_data_cb;
@@ -204,7 +202,6 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
 
     node1->hdlc_tw.slots         = node1->retransmit_slots;
     node1->hdlc_tw.slot_lens     = node1->retransmit_lens;
-    node1->hdlc_tw.seq_to_slot   = node1->retransmit_seq;
     node1->hdlc_tw.slot_capacity = CHUNK_SIZE;
     node1->hdlc_tw.slot_count    = (atc_hdlc_u8)window_size;
 
@@ -221,7 +218,6 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
     node2->hdlc_cfg.max_frame_size = CHUNK_SIZE; node2->hdlc_cfg.max_retries = 25;
 
     node2->hdlc_cfg.t1_ms = 20; node2->hdlc_cfg.t2_ms = 10;
-    node2->hdlc_cfg.use_extended = false;
 
     node2->hdlc_plat.on_send   = node_output_cb;
     node2->hdlc_plat.on_data   = node_on_data_cb;
@@ -234,7 +230,6 @@ static void node_pair_init(virtual_node_t *node1, virtual_node_t *node2, pipe_qu
 
     node2->hdlc_tw.slots         = node2->retransmit_slots;
     node2->hdlc_tw.slot_lens     = node2->retransmit_lens;
-    node2->hdlc_tw.seq_to_slot   = node2->retransmit_seq;
     node2->hdlc_tw.slot_capacity = CHUNK_SIZE;
     node2->hdlc_tw.slot_count    = (atc_hdlc_u8)window_size;
 

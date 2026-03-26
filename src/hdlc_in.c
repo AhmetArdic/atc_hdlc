@@ -19,11 +19,10 @@ void reset_state(atc_hdlc_context_t *ctx) {
   if (ctx->tx_window && ctx->tx_window->slot_lens)
     memset(ctx->tx_window->slot_lens, 0,
            ctx->tx_window->slot_count * sizeof(ctx->tx_window->slot_lens[0]));
-  ctx->next_tx_slot  = 0;
-  ctx->rej_exception = false;
-  ctx->remote_busy   = false;
-  ctx->local_busy    = false;
-  ctx->retry_count   = 0;
+  CTX_CLR(ctx, HDLC_F_REJ_EXCEPTION);
+  CTX_CLR(ctx, HDLC_F_REMOTE_BUSY);
+  CTX_CLR(ctx, HDLC_F_LOCAL_BUSY);
+  ctx->n2   = 0;
   t1_stop(ctx);
   t2_stop(ctx);
 }
@@ -39,9 +38,9 @@ static void frames_acked(atc_hdlc_context_t *ctx, atc_hdlc_u8 nr) {
 
   atc_hdlc_u8 prev_out = (atc_hdlc_u8)((ctx->vs - ctx->va) & (MOD8 - 1));
   ctx->va          = nr;
-  ctx->retry_count = 0;
+  ctx->n2 = 0;
 
-  if (prev_out >= ctx->window_size)
+  if (prev_out >= ctx->config->window_size)
     if (ctx->platform->on_event)
       ctx->platform->on_event(ATC_HDLC_EVENT_WINDOW_OPEN, ctx->platform->user_ctx);
 
@@ -67,30 +66,25 @@ static void send_rr_if_polled(atc_hdlc_context_t *ctx, int cmd, atc_hdlc_u8 pf) 
 
 static void go_back_n(atc_hdlc_context_t *ctx, atc_hdlc_u8 from_seq) {
   if (!ctx->tx_window || ctx->vs == from_seq) return;
+  LOG_WRN("tx: Go-Back-N V(S) %u -> %u", ctx->vs, from_seq);
+  ctx->retransmit_from = from_seq;
+  CTX_SET(ctx, HDLC_F_RETRANSMIT_PENDING);
+}
 
-  atc_hdlc_u8 old_vs = ctx->vs;
-  LOG_WRN("tx: Go-Back-N V(S) %u -> %u", old_vs, from_seq);
-
-  ctx->vs = from_seq;
-  if (ctx->tx_window->slots)
-    ctx->next_tx_slot = ctx->tx_window->seq_to_slot[ctx->vs];
-
-  while (ctx->vs != old_vs) {
-    atc_hdlc_u8 slot      = ctx->tx_window->seq_to_slot[ctx->vs];
-    const atc_hdlc_u8 *sd = ctx->tx_window->slots +
-                             (slot * ctx->tx_window->slot_capacity);
-    atc_hdlc_u32 slen     = ctx->tx_window->slot_lens[slot];
-
+static void flush_retransmit(atc_hdlc_context_t *ctx) {
+  CTX_CLR(ctx, HDLC_F_RETRANSMIT_PENDING);
+  atc_hdlc_u8 end_vs = ctx->vs;
+  ctx->vs = ctx->retransmit_from;
+  while (ctx->vs != end_vs) {
+    atc_hdlc_u8        slot = (atc_hdlc_u8)(ctx->vs % ctx->config->window_size);
+    const atc_hdlc_u8 *sd   = ctx->tx_window->slots +
+                               (slot * ctx->tx_window->slot_capacity);
+    atc_hdlc_u32       slen = ctx->tx_window->slot_lens[slot];
     frame_begin(ctx, ctx->peer_address, I_CTRL(ctx->vs, ctx->vr, 0));
     for (atc_hdlc_u32 i = 0; i < slen; i++)
       emit(ctx, sd[i]);
     frame_end(ctx);
-
     ctx->vs = (atc_hdlc_u8)((ctx->vs + 1) % MOD8);
-
-    /* keep next_tx_slot in sync with vs so new I-frames land in the correct slot */
-    if (ctx->tx_window->slots)
-      ctx->next_tx_slot = (atc_hdlc_u8)((ctx->next_tx_slot + 1) % ctx->window_size);
   }
   t1_start(ctx);
 }
@@ -182,20 +176,20 @@ static bool enforce_valid_nr(atc_hdlc_context_t *ctx, atc_hdlc_u8 ctrl, atc_hdlc
 static void handle_in_sequence_iframe(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf,
                                        const atc_hdlc_u8 *info, atc_hdlc_u16 info_len) {
   ctx->vr = (atc_hdlc_u8)((ctx->vr + 1) % MOD8);
-  ctx->rej_exception = false;
+  CTX_CLR(ctx, HDLC_F_REJ_EXCEPTION);
 
   if (ctx->platform->on_data)
     ctx->platform->on_data(info, info_len, ctx->platform->user_ctx);
 
   if (pf) {
-    if (ctx->local_busy)
+    if (CTX_FLAG(ctx, HDLC_F_LOCAL_BUSY))
       send_rnr(ctx, 1);
     else
       send_rr_resp(ctx, 1);
     t2_stop(ctx);
   } else {
-    if (!ctx->t2_active) {
-      if (ctx->local_busy)
+    if (!CTX_FLAG(ctx, HDLC_F_T2_ACTIVE)) {
+      if (CTX_FLAG(ctx, HDLC_F_LOCAL_BUSY))
         send_rnr(ctx, 0);
       else
         t2_start(ctx);
@@ -206,12 +200,12 @@ static void handle_in_sequence_iframe(atc_hdlc_context_t *ctx, atc_hdlc_u8 pf,
 static void handle_out_of_sequence_iframe(atc_hdlc_context_t *ctx,
                                            atc_hdlc_u8 ns, atc_hdlc_u8 pf) {
   (void)ns; /* used only in LOG_WRN; suppress warning when logs disabled */
-  if (ctx->rej_exception) {
+  if (CTX_FLAG(ctx, HDLC_F_REJ_EXCEPTION)) {
     if (pf)
       send_rr_resp(ctx, 1);
   } else {
     LOG_WRN("S3 OOS I N(S)=%u exp=%u -> REJ", ns, ctx->vr);
-    ctx->rej_exception = true;
+    CTX_SET(ctx, HDLC_F_REJ_EXCEPTION);
     send_rej(ctx, pf);
     t2_stop(ctx);
   }
@@ -244,22 +238,22 @@ static void handle_sframe(atc_hdlc_context_t *ctx,
   LOG_DBG("S3 RX S s=%u N(R)=%u P/F=%u", s, nr, pf);
 
   if (s == S_RR) {
-    bool was_busy = ctx->remote_busy;
-    ctx->remote_busy = false;
+    int was_busy = CTX_FLAG(ctx, HDLC_F_REMOTE_BUSY);
+    CTX_CLR(ctx, HDLC_F_REMOTE_BUSY);
     if (was_busy) {
       LOG_DBG("flow: remote_busy cleared by RR");
       if (ctx->platform->on_event)
         ctx->platform->on_event(ATC_HDLC_EVENT_REMOTE_BUSY_OFF, ctx->platform->user_ctx);
     }
   } else if (s == S_RNR) {
-    if (!ctx->remote_busy) {
-      ctx->remote_busy = true;
+    if (!CTX_FLAG(ctx, HDLC_F_REMOTE_BUSY)) {
+      CTX_SET(ctx, HDLC_F_REMOTE_BUSY);
       LOG_DBG("flow: remote_busy set by RNR");
       if (ctx->platform->on_event)
         ctx->platform->on_event(ATC_HDLC_EVENT_REMOTE_BUSY_ON, ctx->platform->user_ctx);
     }
   } else if (s == S_REJ) {
-    ctx->remote_busy = false;
+    CTX_CLR(ctx, HDLC_F_REMOTE_BUSY);
   }
 
   send_rr_if_polled(ctx, cmd, pf);
@@ -268,7 +262,7 @@ static void handle_sframe(atc_hdlc_context_t *ctx,
   if (s == S_REJ) {
     frames_acked(ctx, nr);
     t1_stop(ctx);
-    ctx->retry_count = 0;
+    ctx->n2 = 0;
     if (ctx->va != ctx->vs)
       go_back_n(ctx, nr);
   } else {
@@ -440,8 +434,8 @@ void dispatch_frame(atc_hdlc_context_t *ctx,
 static void handle_flag(atc_hdlc_context_t *ctx) {
   if (ctx->rx_state != RX_HUNT && ctx->rx_index >= MIN_FRAME_LEN) {
     atc_hdlc_u32 dlen   = ctx->rx_index - FCS_LEN;
-    atc_hdlc_u16 rx_fcs = (atc_hdlc_u16)(((atc_hdlc_u16)ctx->rx_buf->buffer[dlen] << 8) |
-                                           ctx->rx_buf->buffer[dlen + 1]);
+    atc_hdlc_u16 rx_fcs = (atc_hdlc_u16)(ctx->rx_buf->buffer[dlen] |
+                                           ((atc_hdlc_u16)ctx->rx_buf->buffer[dlen + 1] << 8));
 
     if (ctx->rx_crc == rx_fcs) {
       atc_hdlc_u8 address     = ctx->rx_buf->buffer[0];
@@ -458,7 +452,7 @@ static void handle_flag(atc_hdlc_context_t *ctx) {
       }
       dispatch_frame(ctx, address, ctrl, info, info_len);
     } else {
-      LOG_WRN("rx: CRC Error! Calc: 0x%04X, RX: 0x%04X", crc, rx_fcs);
+      LOG_WRN("rx: CRC Error! Calc: 0x%04X, RX: 0x%04X", ctx->rx_crc, rx_fcs);
     }
   }
   ctx->rx_state = RX_ADDR;
@@ -503,4 +497,6 @@ void atc_hdlc_data_in(atc_hdlc_context_t *ctx, const atc_hdlc_u8 *data, atc_hdlc
   if (!ctx || !data) return;
   for (atc_hdlc_u32 i = 0; i < len; i++)
     rx_byte(ctx, data[i]);
+  if (CTX_FLAG(ctx, HDLC_F_RETRANSMIT_PENDING))
+    flush_retransmit(ctx);
 }

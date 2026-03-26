@@ -22,7 +22,6 @@
 static atc_hdlc_u8  s_rx_storage[1028]; /* 1024 + 4 overhead */
 static atc_hdlc_u8  s_tx_slots[1 * 1024];
 static atc_hdlc_u32 s_tx_lens[1];
-static atc_hdlc_u8  s_tx_seq[8];
 
 static atc_hdlc_config_t make_valid_cfg(void) {
     atc_hdlc_config_t c;
@@ -34,7 +33,6 @@ static atc_hdlc_config_t make_valid_cfg(void) {
     c.max_retries    = 3;
     c.t1_ms          = 1000;
     c.t2_ms          = 10;
-    c.use_extended   = false;
     return c;
 }
 
@@ -56,7 +54,6 @@ static atc_hdlc_tx_window_t make_valid_tw(void) {
     atc_hdlc_tx_window_t tw;
     tw.slots         = s_tx_slots;
     tw.slot_lens     = s_tx_lens;
-    tw.seq_to_slot   = s_tx_seq;
     tw.slot_capacity = 1024;
     tw.slot_count    = 1;
     return tw;
@@ -138,20 +135,14 @@ void test_init_unsupported_mode(void) {
     atc_hdlc_rx_buffer_t rx  = make_valid_rx();
     atc_hdlc_params_t p = { .config = &cfg, .platform = &plat, .tx_window = NULL, .rx_buf = &rx };
 
-    /* Non-ABM mode */
-    cfg.mode = ATC_HDLC_MODE_ARM;
+    /* Non-ABM mode (cast to force invalid value past enum) */
+    cfg.mode = (atc_hdlc_link_mode_t)1;
     if (atc_hdlc_init(&ctx, p) != ATC_HDLC_ERR_UNSUPPORTED_MODE)
-        test_fail("Init Mode", "ARM mode should return UNSUPPORTED_MODE");
+        test_fail("Init Mode", "non-ABM mode should return UNSUPPORTED_MODE");
 
-    cfg.mode = ATC_HDLC_MODE_NRM;
+    cfg.mode = (atc_hdlc_link_mode_t)2;
     if (atc_hdlc_init(&ctx, p) != ATC_HDLC_ERR_UNSUPPORTED_MODE)
-        test_fail("Init Mode", "NRM mode should return UNSUPPORTED_MODE");
-
-    /* use_extended = true */
-    cfg.mode = ATC_HDLC_MODE_ABM;
-    cfg.use_extended = true;
-    if (atc_hdlc_init(&ctx, p) != ATC_HDLC_ERR_UNSUPPORTED_MODE)
-        test_fail("Init Mode", "use_extended=true should return UNSUPPORTED_MODE");
+        test_fail("Init Mode", "non-ABM mode should return UNSUPPORTED_MODE");
 
     test_pass("Init — unsupported mode");
 }
@@ -180,8 +171,7 @@ void test_init_invalid_window_size(void) {
     atc_hdlc_tx_window_t tw7;
     static atc_hdlc_u8  tw7_slots[7 * 1024];
     static atc_hdlc_u32 tw7_lens[7];
-    static atc_hdlc_u8  tw7_seq[8];
-    tw7.slots = tw7_slots; tw7.slot_lens = tw7_lens; tw7.seq_to_slot = tw7_seq;
+    tw7.slots = tw7_slots; tw7.slot_lens = tw7_lens;
     tw7.slot_capacity = 1024; tw7.slot_count = 7;
     p.tx_window = &tw7;
     if (atc_hdlc_init(&ctx, p) != ATC_HDLC_OK)
@@ -243,12 +233,6 @@ void test_init_inconsistent_tx_window(void) {
     if (atc_hdlc_init(&ctx, p) != ATC_HDLC_ERR_INCONSISTENT_BUFFER)
         test_fail("Init TX Window", "NULL slot_lens should return INCONSISTENT_BUFFER");
 
-    /* NULL seq_to_slot */
-    bad_tw = tw; bad_tw.seq_to_slot = NULL;
-    p.tx_window = &bad_tw;
-    if (atc_hdlc_init(&ctx, p) != ATC_HDLC_ERR_INCONSISTENT_BUFFER)
-        test_fail("Init TX Window", "NULL seq_to_slot should return INCONSISTENT_BUFFER");
-
     /* slot_count != window_size */
     bad_tw = tw; bad_tw.slot_count = 3; /* cfg.window_size = 1 */
     p.tx_window = &bad_tw;
@@ -292,7 +276,7 @@ void test_init_success_sets_state(void) {
     if (ctx.vs != 0 || ctx.vr != 0 || ctx.va != 0)
         test_fail("Init Success", "Sequence variables should be 0 after init");
 
-    if (ctx.t1_active || ctx.t2_active)
+    if ((ctx.flags & HDLC_F_T1_ACTIVE) || (ctx.flags & HDLC_F_T2_ACTIVE))
         test_fail("Init Success", "No timers should be active after init");
 
     if (ctx.config != &cfg)

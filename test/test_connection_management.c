@@ -59,14 +59,12 @@ void on_state_change(atc_hdlc_event_t event, void *user_data) {
 void setup_context(void) {
     static atc_hdlc_u8  s_retx_slots[1 * 1024];
     static atc_hdlc_u32 s_retx_lens[1];
-    static atc_hdlc_u8  s_retx_seq[1];
 
     static const atc_hdlc_config_t cfg = {
         .mode = ATC_HDLC_MODE_ABM, .address = 0x01, .window_size = 1,
         .max_frame_size = 1024, .max_retries = 3,
         .t1_ms = ATC_HDLC_DEFAULT_T1_TIMEOUT,
         .t2_ms = ATC_HDLC_DEFAULT_T2_TIMEOUT,
-        .use_extended = false,
     };
     static const atc_hdlc_platform_t plat = {
         .on_send = mock_send_cb,
@@ -76,7 +74,7 @@ void setup_context(void) {
     };
     static atc_hdlc_tx_window_t tw = {
         .slots = s_retx_slots, .slot_lens = s_retx_lens,
-        .seq_to_slot = s_retx_seq, .slot_capacity = 1024, .slot_count = 1,
+        .slot_capacity = 1024, .slot_count = 1,
     };
     static atc_hdlc_rx_buffer_t rx = {
         .buffer = mock_rx_buffer, .capacity = sizeof(mock_rx_buffer),
@@ -414,7 +412,7 @@ void test_contention_resolution_loser(void) {
          test_fail("Contention Loser", "Did not send UA(F=1) in response to collision SABM");
 
     /* T1 is still running — we are waiting for peer's UA */
-    if (!ctx.t1_active)
+    if (!(ctx.flags & HDLC_F_T1_ACTIVE))
          test_fail("Contention Loser", "T1 should be running while waiting for UA");
 
     // 3. T1 expires before UA arrives — retransmit SABM
@@ -470,7 +468,7 @@ void test_link_reset(void) {
         test_fail("Link Reset", "No SABM frame in output");
 
     /* T1 must be started */
-    if (!ctx.t1_active)
+    if (!(ctx.flags & HDLC_F_T1_ACTIVE))
         test_fail("Link Reset", "T1 not active after link_reset");
     if (mock_t1_start_count < 1)
         test_fail("Link Reset", "T1 start callback not invoked");
@@ -599,7 +597,7 @@ void test_t1_timer_callbacks(void) {
     atc_hdlc_data_in(&ctx, ua_raw, (atc_hdlc_u32)ua_len);
     if (mock_t1_stop_count < 1)
         test_fail("T1 Callbacks", "T1 not stopped on UA");
-    if (ctx.t1_active)
+    if (ctx.flags & HDLC_F_T1_ACTIVE)
         test_fail("T1 Callbacks", "t1_active still set after UA");
 
     test_pass("T1 Timer Callbacks");
@@ -725,7 +723,7 @@ void test_dm_on_connecting(void) {
         test_fail("DM on Connecting", "State not DISCONNECTED after DM");
     if (last_event != ATC_HDLC_EVENT_PEER_REJECT)
         test_fail("DM on Connecting", "PEER_REJECT event not fired");
-    if (ctx.t1_active)
+    if (ctx.flags & HDLC_F_T1_ACTIVE)
         test_fail("DM on Connecting", "T1 should be stopped after DM");
 
     test_pass("DM received in CONNECTING state");
@@ -748,7 +746,7 @@ void test_duplicate_rej_guard(void) {
 
     reset_test_state();
     atc_hdlc_data_in(&ctx, i_raw, (atc_hdlc_u32)i_len);
-    if (!ctx.rej_exception)
+    if (!(ctx.flags & HDLC_F_REJ_EXCEPTION))
         test_fail("Duplicate REJ", "rej_exception not set after OOS frame");
     int first_output_len = mock_output_len;
     if (first_output_len < 6)
