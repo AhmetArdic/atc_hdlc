@@ -43,6 +43,11 @@ This library implements a highly capable subset of the ISO/IEC 13239 HDLC standa
 │   ├── hdlc_in.c           # Byte-by-byte RX parser (byte-stuffing removal, CRC)
 │   ├── hdlc_dispatch.c     # Frame dispatch and receive-side protocol logic
 │   └── hdlc_out.c          # TX streaming engine (byte-stuffing, frame construction)
+├── example/
+│   ├── CMakeLists.txt
+│   ├── loopback/           # Self-loopback integration example
+│   ├── minimal_ui/         # Minimal UI-frame send/receive example
+│   └── bare_metal_template/ # Bare-metal integration template
 ├── test/
 │   ├── test_hdlc.c
 │   ├── test_reliable_transmission.c
@@ -142,7 +147,6 @@ atc_hdlc_context_t ctx;
 atc_hdlc_config_t config = {
     .mode = ATC_HDLC_MODE_ABM,
     .address = 0x01,
-    .window_size = 3,
     .max_info_size = 256,
     .max_retries = 3,
     .t1_ms = 1000,
@@ -154,11 +158,11 @@ atc_hdlc_platform_t platform = {
     .on_send = my_on_send,
     .on_data = my_on_data,
     .on_event = my_on_event,
-    .user_ctx = NULL,
     .t1_start = my_t1_start,
     .t1_stop = my_t1_stop,
     .t2_start = my_t2_start,
     .t2_stop = my_t2_stop,
+    .user_ctx = NULL,
 };
 
 // TX window (for reliable I-frames)
@@ -292,7 +296,6 @@ Set these fields before calling `atc_hdlc_init()`:
 |---|---|---|
 | `mode` | `ATC_HDLC_MODE_ABM` | Operating mode (only ABM supported) |
 | `address` | — | Local station address |
-| `window_size` | `1` | Sliding window size (1–7) |
 | `max_info_size` | `256` | Maximum information field size |
 | `max_retries` | `3` | N2 retry limit before link failure |
 | `t1_ms` | `1000` | T1 retransmission timeout (ms) |
@@ -307,7 +310,6 @@ Override these macros before including `hdlc.h`:
 | `ATC_HDLC_DEFAULT_T1_TIMEOUT` | `1000` | Default T1 timeout (ms) |
 | `ATC_HDLC_DEFAULT_T2_TIMEOUT` | `10` | Default T2 timeout (ms) |
 | `ATC_HDLC_DEFAULT_N2_RETRY_COUNT` | `3` | Default N2 retry limit |
-| `ATC_HDLC_DEFAULT_WINDOW_SIZE` | `1` | Default window size (1–7) |
 | `ATC_HDLC_ENABLE_DEBUG_LOGS` | `0` | Enable debug logging |
 | `ATC_HDLC_LOG_LEVEL` | `WRN` | Verbosity ceiling (`ERR`/`WRN`/`INFO`/`DBG`) |
 
