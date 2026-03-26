@@ -51,10 +51,10 @@ extern "C" {
  *   INFO — state transitions and connection events
  *   DBG  — per-frame detail and flow-control tracking
  */
-#define ATC_HDLC_LOG_LEVEL_ERR   0
-#define ATC_HDLC_LOG_LEVEL_WRN   1
-#define ATC_HDLC_LOG_LEVEL_INFO  2
-#define ATC_HDLC_LOG_LEVEL_DBG   3
+#define ATC_HDLC_LOG_LEVEL_ERR  0
+#define ATC_HDLC_LOG_LEVEL_WRN  1
+#define ATC_HDLC_LOG_LEVEL_INFO 2
+#define ATC_HDLC_LOG_LEVEL_DBG  3
 
 /** @brief Verbosity ceiling when ATC_HDLC_ENABLE_DEBUG_LOGS is set. */
 #ifndef ATC_HDLC_LOG_LEVEL
@@ -66,8 +66,7 @@ extern "C" {
 #if ATC_HDLC_ENABLE_DEBUG_LOGS
 #ifndef ATC_HDLC_LOG_IMPL
 #include <stdio.h>
-#define ATC_HDLC_LOG_IMPL(level, fmt, ...)                                     \
-  printf("[HDLC %-4s] " fmt "\n", level, ##__VA_ARGS__)
+#define ATC_HDLC_LOG_IMPL(level, fmt, ...) printf("[HDLC %-4s] " fmt "\n", level, ##__VA_ARGS__)
 #endif
 #endif
 

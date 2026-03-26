@@ -98,7 +98,7 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-static int  hdlc_on_send_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data);
+static int  hdlc_on_send_cb(atc_hdlc_u8 byte, bool flush, void *user_data);
 static void hdlc_on_data_cb(const atc_hdlc_u8 *data, atc_hdlc_u16 len, void *user_data);
 static void hdlc_on_event_cb(atc_hdlc_event_t event, void *user_data);
 static void hdlc_t1_start_cb(atc_hdlc_u32 ms, void *user_data);
@@ -151,7 +151,7 @@ static void tx_flush_dma(void)
  * @brief Physical byte-output callback.
  *        Appends byte to TX ring buffer and triggers DMA on frame end.
  */
-static int hdlc_on_send_cb(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data)
+static int hdlc_on_send_cb(atc_hdlc_u8 byte, bool flush, void *user_data)
 {
     (void)user_data;
 

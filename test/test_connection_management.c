@@ -1,13 +1,13 @@
+#include "../inc/hdlc.h"
+#include "../src/hdlc_frame.h"
+#include "test_common.h"
+#include <assert.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
-#include <assert.h>
-#include "../inc/hdlc.h"
-#include "../src/hdlc_private.h"
-#include "test_common.h"
+#include <string.h>
 
 // -----------------------------------------------------------------------------
 // Mocks & Helpers
@@ -19,68 +19,74 @@ static int state_change_call_count = 0;
 
 /* on_event callback — matches atc_hdlc_on_event_fn signature.
  * We derive the "new state" from the event type for test assertions. */
-void on_state_change(atc_hdlc_event_t event, void *user_data) {
+void on_state_change(atc_hdlc_event_t event, void* user_data) {
     (void)user_data;
     state_change_call_count++;
 
     /* Map events to states for backward-compatible test assertions */
     switch (event) {
-        case ATC_HDLC_EVENT_CONNECT_ACCEPTED:
-        case ATC_HDLC_EVENT_INCOMING_CONNECT:
-            last_state_change = ATC_HDLC_STATE_CONNECTED;
-            printf("   %s[EVENT] Connected (event %d)%s\n", COL_GREEN, event, COL_RESET);
-            break;
-        case ATC_HDLC_EVENT_LINK_SETUP_REQUEST:
-            last_state_change = ATC_HDLC_STATE_CONNECTING;
-            printf("   %s[EVENT] Connecting (event %d)%s\n", COL_YELLOW, event, COL_RESET);
-            break;
-        case ATC_HDLC_EVENT_DISCONNECT_REQUEST:
-            last_state_change = ATC_HDLC_STATE_DISCONNECTING;
-            printf("   %s[EVENT] Disconnecting (event %d)%s\n", COL_YELLOW, event, COL_RESET);
-            break;
-        case ATC_HDLC_EVENT_DISCONNECT_COMPLETE:
-        case ATC_HDLC_EVENT_PEER_DISCONNECT:
-        case ATC_HDLC_EVENT_PEER_REJECT:
-        case ATC_HDLC_EVENT_LINK_FAILURE:
-            last_state_change = ATC_HDLC_STATE_DISCONNECTED;
-            printf("   %s[EVENT] Disconnected (event %d)%s\n", COL_RED, event, COL_RESET);
-            break;
-        case ATC_HDLC_EVENT_PROTOCOL_ERROR:
-            last_state_change = ATC_HDLC_STATE_FRMR_ERROR;
-            printf("   %s[EVENT] FRMR Error (event %d)%s\n", COL_RED, event, COL_RESET);
-            break;
-        default:
-            printf("   %s[EVENT] Event %d%s\n", COL_YELLOW, event, COL_RESET);
-            break;
+    case ATC_HDLC_EVENT_CONNECT_ACCEPTED:
+    case ATC_HDLC_EVENT_INCOMING_CONNECT:
+        last_state_change = ATC_HDLC_STATE_CONNECTED;
+        printf("   %s[EVENT] Connected (event %d)%s\n", COL_GREEN, event, COL_RESET);
+        break;
+    case ATC_HDLC_EVENT_LINK_SETUP_REQUEST:
+        last_state_change = ATC_HDLC_STATE_CONNECTING;
+        printf("   %s[EVENT] Connecting (event %d)%s\n", COL_YELLOW, event, COL_RESET);
+        break;
+    case ATC_HDLC_EVENT_DISCONNECT_REQUEST:
+        last_state_change = ATC_HDLC_STATE_DISCONNECTING;
+        printf("   %s[EVENT] Disconnecting (event %d)%s\n", COL_YELLOW, event, COL_RESET);
+        break;
+    case ATC_HDLC_EVENT_DISCONNECT_COMPLETE:
+    case ATC_HDLC_EVENT_PEER_DISCONNECT:
+    case ATC_HDLC_EVENT_PEER_REJECT:
+    case ATC_HDLC_EVENT_LINK_FAILURE:
+        last_state_change = ATC_HDLC_STATE_DISCONNECTED;
+        printf("   %s[EVENT] Disconnected (event %d)%s\n", COL_RED, event, COL_RESET);
+        break;
+    case ATC_HDLC_EVENT_PROTOCOL_ERROR:
+        last_state_change = ATC_HDLC_STATE_FRMR_ERROR;
+        printf("   %s[EVENT] FRMR Error (event %d)%s\n", COL_RED, event, COL_RESET);
+        break;
+    default:
+        printf("   %s[EVENT] Event %d%s\n", COL_YELLOW, event, COL_RESET);
+        break;
     }
 }
 
 /* Helper to reset test state (custom for this file to inject on_state_change). */
 void setup_context(void) {
-    static atc_hdlc_u8  s_retx_slots[1 * 1024];
+    static atc_hdlc_u8 s_retx_slots[1 * 1024];
     static atc_hdlc_u32 s_retx_lens[1];
 
     static const atc_hdlc_config_t cfg = {
-        .mode = ATC_HDLC_MODE_ABM, .address = 0x01, .window_size = 1,
-        .max_frame_size = 1024, .max_retries = 3,
+        .mode = ATC_HDLC_MODE_ABM,
+        .address = 0x01,
+        .window_size = 1,
+        .max_frame_size = 1024,
+        .max_retries = 3,
         .t1_ms = ATC_HDLC_DEFAULT_T1_TIMEOUT,
         .t2_ms = ATC_HDLC_DEFAULT_T2_TIMEOUT,
     };
     static const atc_hdlc_platform_t plat = {
         .on_send = mock_send_cb,
-        .on_data  = mock_on_data_cb,
+        .on_data = mock_on_data_cb,
         .on_event = on_state_change,
         .user_ctx = NULL,
     };
     static atc_hdlc_tx_window_t tw = {
-        .slots = s_retx_slots, .slot_lens = s_retx_lens,
-        .slot_capacity = 1024, .slot_count = 1,
+        .slots = s_retx_slots,
+        .slot_lens = s_retx_lens,
+        .slot_capacity = 1024,
+        .slot_count = 1,
     };
     static atc_hdlc_rx_buffer_t rx = {
-        .buffer = mock_rx_buffer, .capacity = sizeof(mock_rx_buffer),
+        .buffer = mock_rx_buffer,
+        .capacity = sizeof(mock_rx_buffer),
     };
 
-    atc_hdlc_params_t p = { .config = &cfg, .platform = &plat, .tx_window = &tw, .rx_buf = &rx };
+    atc_hdlc_params_t p = {.config = &cfg, .platform = &plat, .tx_window = &tw, .rx_buf = &rx};
     atc_hdlc_init(&ctx, p);
     ctx.peer_address = 0x02; /* peer address for tests */
 
@@ -91,7 +97,7 @@ void setup_context(void) {
 
 // Helper to inspect the last transmitted frame (assumes it's a valid frame)
 // Use mock_output_buffer
-test_frame_t decode_last_tx(atc_hdlc_u8 *flat_buf, uint32_t flat_len) {
+test_frame_t decode_last_tx(atc_hdlc_u8* flat_buf, uint32_t flat_len) {
     return test_unpack_frame(mock_output_buffer, mock_output_len, flat_buf, (int)flat_len);
 }
 
@@ -102,41 +108,44 @@ test_frame_t decode_last_tx(atc_hdlc_u8 *flat_buf, uint32_t flat_len) {
 void test_init_state(void) {
     printf("TEST: Init State\n");
     setup_context();
-    
-    if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED) 
+
+    if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED)
         test_fail("Init State", "Initial state is not DISCONNECTED");
-    
+
     if (atc_hdlc_get_state(&ctx) == ATC_HDLC_STATE_CONNECTED)
         test_fail("Init State", "Reported connected initially");
-        
+
     test_pass("Init State");
 }
 
 void test_connect_sends_sabm(void) {
     printf("TEST: Connect Sends SABM\n");
     setup_context();
-    
+
     // 1. Trigger Connect
     atc_hdlc_error_t res = atc_hdlc_link_setup(&ctx, 0x02);
-    if (res != ATC_HDLC_OK) test_fail("Connect Sends SABM", "Connect returned error");
-    
+    if (res != ATC_HDLC_OK)
+        test_fail("Connect Sends SABM", "Connect returned error");
+
     // State Check
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTING)
         test_fail("Connect Sends SABM", "State not CONNECTING");
-        
+
     if (state_change_call_count != 1)
         test_fail("Connect Sends SABM", "State change callback count incorrect");
 
     if (last_state_change != ATC_HDLC_STATE_CONNECTING)
         test_fail("Connect Sends SABM", "Last state change not CONNECTING");
-        
+
     // 2. Check Output Frame (SABM to Peer)
     uint8_t flat[32];
     test_frame_t frame_out = decode_last_tx(flat, sizeof(flat));
 
-    if (frame_out.address != 0x02) test_fail("Connect Sends SABM", "Wrong Dest Address");   // To Peer
-    if (frame_out.control != 0x3F) test_fail("Connect Sends SABM", "Not SABM(P=1)");  // SABM (P=1) -> 0x3F
-    
+    if (frame_out.address != 0x02)
+        test_fail("Connect Sends SABM", "Wrong Dest Address"); // To Peer
+    if (frame_out.control != 0x3F)
+        test_fail("Connect Sends SABM", "Not SABM(P=1)"); // SABM (P=1) -> 0x3F
+
     test_pass("Connect Sends SABM");
 }
 
@@ -144,8 +153,8 @@ void test_connect_complete_on_ua(void) {
     printf("TEST: Connect Complete on UA\n");
     setup_context();
     atc_hdlc_link_setup(&ctx, 0x02); // Go to CONNECTING
-    mock_output_len = 0; // Clear TX buffer
-    state_change_call_count = 0; // Clear counters
+    mock_output_len = 0;             // Clear TX buffer
+    state_change_call_count = 0;     // Clear counters
 
     // Simulate Receiving UA from Peer
     uint8_t packed[32];
@@ -156,13 +165,13 @@ void test_connect_complete_on_ua(void) {
 
     // Verify State Change
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
-         test_fail("Connect Complete UA", "State not CONNECTED");
-         
+        test_fail("Connect Complete UA", "State not CONNECTED");
+
     if (state_change_call_count != 1)
-         test_fail("Connect Complete UA", "Callback count mismatch");
-         
+        test_fail("Connect Complete UA", "Callback count mismatch");
+
     if (atc_hdlc_get_state(&ctx) != ATC_HDLC_STATE_CONNECTED)
-         test_fail("Connect Complete UA", "State not CONNECTED after UA");
+        test_fail("Connect Complete UA", "State not CONNECTED after UA");
 
     test_pass("Connect Complete on UA");
 }
@@ -176,19 +185,22 @@ void test_disconnect_flow(void) {
 
     // Send Disconnect
     atc_hdlc_error_t res = atc_hdlc_disconnect(&ctx);
-    if (res != ATC_HDLC_OK) test_fail("Disconnect Flow", "Disconnect returned error");
+    if (res != ATC_HDLC_OK)
+        test_fail("Disconnect Flow", "Disconnect returned error");
 
     // 1. Check State
     if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTING)
-         test_fail("Disconnect Flow", "State not DISCONNECTING");
-    
+        test_fail("Disconnect Flow", "State not DISCONNECTING");
+
     // 2. Check Output Frame (DISC to Peer)
     uint8_t flat[32];
     test_frame_t frame_out = decode_last_tx(flat, sizeof(flat));
 
     // DISC(P=1) = 0x53
-    if (frame_out.address != 0x02) test_fail("Disconnect Flow", "Wrong Address");
-    if (frame_out.control != 0x53) test_fail("Disconnect Flow", "Not DISC(P=1)");
+    if (frame_out.address != 0x02)
+        test_fail("Disconnect Flow", "Wrong Address");
+    if (frame_out.control != 0x53)
+        test_fail("Disconnect Flow", "Not DISC(P=1)");
 
     // 3. Receive UA
     // Clear buffer
@@ -200,7 +212,7 @@ void test_disconnect_flow(void) {
 
     // Check State
     if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED)
-         test_fail("Disconnect Flow", "State NOT disconnected after UA");
+        test_fail("Disconnect Flow", "State NOT disconnected after UA");
 
     test_pass("Disconnect Flow");
 }
@@ -208,7 +220,7 @@ void test_disconnect_flow(void) {
 void test_passive_open(void) {
     printf("TEST: Passive Open (Accept SABM)\n");
     setup_context();
-    
+
     // Simulate Receiving SABM from Peer (Command)
     // Addressed to ME (0x01).
     // SABM(P=1) = 0x3F.
@@ -219,15 +231,17 @@ void test_passive_open(void) {
 
     // 1. Should be CONNECTED
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
-         test_fail("Passive Open", "State not CONNECTED after SABM");
+        test_fail("Passive Open", "State not CONNECTED after SABM");
 
     // 2. Should have sent UA (Response from Me)
     uint8_t flat[32];
     test_frame_t frame_out = decode_last_tx(flat, sizeof(flat));
 
-    if (frame_out.address != 0x01) test_fail("Passive Open", "UA wrong address");   // My address
-    if (frame_out.control != 0x73) test_fail("Passive Open", "Not UA(F=1)");  // UA(F=1)
-    
+    if (frame_out.address != 0x01)
+        test_fail("Passive Open", "UA wrong address"); // My address
+    if (frame_out.control != 0x73)
+        test_fail("Passive Open", "Not UA(F=1)"); // UA(F=1)
+
     test_pass("Passive Open (Accept SABM)");
 }
 
@@ -244,12 +258,11 @@ void test_frmr_reception(void) {
     // Byte 0: Rejected Control = 0x11 (Random)
     // Byte 1: 0 V(S) C/R V(R) -> 0 001 1 010 -> 0001 1010 = 0x1A (V(S)=1, C/R=1, V(R)=2)
     // Byte 2: W X Y Z V 0 0 0 -> 1 0 0 1 0 0 0 0 -> 1001 0000 = 0x90 (W=1, Z=1)
-    
+
     uint8_t frmr_payload[] = {0x11, 0x1A, 0x90};
 
     uint8_t packed[32];
-    int packed_len = test_pack_frame(0x02, U_CTRL(U_FRMR, 0),
-                                     frmr_payload, sizeof(frmr_payload),
+    int packed_len = test_pack_frame(0x02, U_CTRL(U_FRMR, 0), frmr_payload, sizeof(frmr_payload),
                                      packed, sizeof(packed));
 
     // Feed bytes
@@ -258,11 +271,11 @@ void test_frmr_reception(void) {
     /* FRMR now transitions to FRMR_ERROR (lock-down state), not DISCONNECTED.
      * The peer rejected one of our frames; only link_reset or disconnect is valid. */
     if (ctx.current_state != ATC_HDLC_STATE_FRMR_ERROR)
-         test_fail("FRMR Reception", "State not FRMR_ERROR");
+        test_fail("FRMR Reception", "State not FRMR_ERROR");
 
     if (state_change_call_count != 1)
-         test_fail("FRMR Reception", "State change callback count incorrect");
-         
+        test_fail("FRMR Reception", "State change callback count incorrect");
+
     test_pass("FRMR Reception");
 }
 
@@ -272,10 +285,9 @@ void test_mode_rejection(void) {
     // Use SNRM (Set Normal Response Mode) - Not Supported
     // M=100 00 -> Hi=4, Lo=0. P=1.
     // Ctrl: 100 1 00 11 -> 1001 0011 -> 0x93
-    
+
     uint8_t packed[32];
-    int packed_len = test_pack_frame(0x01, U_CTRL(U_SNRM, 1),
-                                     NULL, 0, packed, sizeof(packed));
+    int packed_len = test_pack_frame(0x01, U_CTRL(U_SNRM, 1), NULL, 0, packed, sizeof(packed));
 
     // Clear TX capture
     mock_output_len = 0;
@@ -288,7 +300,7 @@ void test_mode_rejection(void) {
 
     // 1. State should remain DISCONNECTED
     if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED)
-         test_fail("Mode Rejection", "State changed on invalid mode!");
+        test_fail("Mode Rejection", "State changed on invalid mode!");
 
     // 2. Output should be DM
     uint8_t flat[32];
@@ -297,8 +309,8 @@ void test_mode_rejection(void) {
     // DM: 000 F 00 11 (Hi=0, Lo=3). F should match P (1).
     // 000 1 11 11 -> 0x1F.
     if (frame_out.control != 0x1F) // DM with F=1
-         test_fail("Mode Rejection", "Did not send DM");
-    
+        test_fail("Mode Rejection", "Did not send DM");
+
     test_pass("Mode Rejection (SNRM)");
 }
 
@@ -308,17 +320,16 @@ void test_extended_mode_rejection(void) {
 
     static const struct {
         atc_hdlc_u8 ctrl;
-        const char *name;
+        const char* name;
     } cases[] = {
-        { U_CTRL(U_SABME, 1), "SABME" },
-        { U_CTRL(U_SNRME, 1), "SNRME" },
-        { U_CTRL(U_SARME, 1), "SARME" },
+        {U_CTRL(U_SABME, 1), "SABME"},
+        {U_CTRL(U_SNRME, 1), "SNRME"},
+        {U_CTRL(U_SARME, 1), "SARME"},
     };
 
     for (int i = 0; i < 3; i++) {
         atc_hdlc_u8 packed[32];
-        int packed_len = test_pack_frame(0x01, cases[i].ctrl,
-                                         NULL, 0, packed, sizeof(packed));
+        int packed_len = test_pack_frame(0x01, cases[i].ctrl, NULL, 0, packed, sizeof(packed));
 
         mock_output_len = 0;
         atc_hdlc_data_in(&ctx, packed, packed_len);
@@ -345,13 +356,13 @@ void test_contention_resolution_winner(void) {
      * UA(F=1) and transition to CONNECTED with CONNECT_ACCEPTED. No address
      * comparison needed — the protocol resolves it symmetrically. */
 
-    ctx.my_address   = 0x02;
+    ctx.my_address = 0x02;
     ctx.peer_address = 0x01;
 
     // 1. We initiate connection (SABM sent)
     atc_hdlc_link_setup(&ctx, 0x01);
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTING)
-         test_fail("Contention Winner", "State not CONNECTING");
+        test_fail("Contention Winner", "State not CONNECTING");
 
     mock_output_len = 0;
 
@@ -363,13 +374,15 @@ void test_contention_resolution_winner(void) {
 
     // LAPB behaviour: send UA, remain in CONNECTING (wait for peer's UA)
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTING)
-         test_fail("Contention Winner", "State should remain CONNECTING after collision");
+        test_fail("Contention Winner", "State should remain CONNECTING after collision");
 
     uint8_t flat[32];
     test_frame_t frame_out = decode_last_tx(flat, sizeof(flat));
 
-    if (frame_out.address != 0x02) test_fail("Contention Winner", "UA wrong address");
-    if (frame_out.control != 0x73) test_fail("Contention Winner", "Did not send UA(F=1)");
+    if (frame_out.address != 0x02)
+        test_fail("Contention Winner", "UA wrong address");
+    if (frame_out.control != 0x73)
+        test_fail("Contention Winner", "Did not send UA(F=1)");
 
     // 3. Now peer's UA(F=1) arrives in response to our SABM → CONNECTED
     mock_output_len = 0;
@@ -377,7 +390,7 @@ void test_contention_resolution_winner(void) {
     atc_hdlc_data_in(&ctx, packed, ua_len);
 
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
-         test_fail("Contention Winner", "State should be CONNECTED after receiving UA(F=1)");
+        test_fail("Contention Winner", "State should be CONNECTED after receiving UA(F=1)");
 
     test_pass("Contention Resolution (Winner)");
 }
@@ -403,17 +416,17 @@ void test_contention_resolution_loser(void) {
 
     // LAPB behaviour: send UA, remain in CONNECTING
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTING)
-         test_fail("Contention Loser", "State changed from CONNECTING");
+        test_fail("Contention Loser", "State changed from CONNECTING");
 
     // UA must have been sent
     uint8_t flat[32];
     test_frame_t frame_out = decode_last_tx(flat, sizeof(flat));
     if (frame_out.control != 0x73)
-         test_fail("Contention Loser", "Did not send UA(F=1) in response to collision SABM");
+        test_fail("Contention Loser", "Did not send UA(F=1) in response to collision SABM");
 
     /* T1 is still running — we are waiting for peer's UA */
     if (!(ctx.flags & HDLC_F_T1_ACTIVE))
-         test_fail("Contention Loser", "T1 should be running while waiting for UA");
+        test_fail("Contention Loser", "T1 should be running while waiting for UA");
 
     // 3. T1 expires before UA arrives — retransmit SABM
     mock_output_len = 0;
@@ -443,7 +456,9 @@ void test_link_reset(void) {
 
     /* Force CONNECTED state */
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
-    ctx.vs = 3; ctx.vr = 2; ctx.va = 1;
+    ctx.vs = 3;
+    ctx.vr = 2;
+    ctx.va = 1;
     ctx.peer_address = 0x02;
 
     reset_test_state();
@@ -485,12 +500,11 @@ void test_peer_disconnect(void) {
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
-    ctx.peer_address  = 0x02;
+    ctx.peer_address = 0x02;
 
     /* Build DISC(P=1) addressed to me (0x01) */
     atc_hdlc_u8 disc_raw[32];
-    int disc_len = test_pack_frame(0x01, U_CTRL(U_DISC, 1),
-                                   NULL, 0, disc_raw, sizeof(disc_raw));
+    int disc_len = test_pack_frame(0x01, U_CTRL(U_DISC, 1), NULL, 0, disc_raw, sizeof(disc_raw));
 
     reset_test_state();
     atc_hdlc_data_in(&ctx, disc_raw, disc_len);
@@ -509,8 +523,8 @@ void test_peer_disconnect(void) {
 
     /* Verify UA type in response */
     atc_hdlc_u8 resp_flat[64];
-    test_frame_t resp = test_unpack_frame(mock_output_buffer, mock_output_len,
-                                          resp_flat, sizeof(resp_flat));
+    test_frame_t resp =
+        test_unpack_frame(mock_output_buffer, mock_output_len, resp_flat, sizeof(resp_flat));
     if (resp.valid) {
         if ((resp.control & ~PF_BIT) != U_UA)
             test_fail("Peer Disconnect", "Response is not UA");
@@ -540,8 +554,7 @@ void test_event_callbacks(void) {
 
     /* Feed UA → CONNECT_ACCEPTED */
     atc_hdlc_u8 ua_raw[32];
-    int ua_len = test_pack_frame(0x02, U_CTRL(U_UA, 1),
-                                 NULL, 0, ua_raw, sizeof(ua_raw));
+    int ua_len = test_pack_frame(0x02, U_CTRL(U_UA, 1), NULL, 0, ua_raw, sizeof(ua_raw));
     reset_test_state();
     atc_hdlc_data_in(&ctx, ua_raw, ua_len);
     if (last_event != ATC_HDLC_EVENT_CONNECT_ACCEPTED)
@@ -591,8 +604,7 @@ void test_t1_timer_callbacks(void) {
 
     /* Feed UA → t1_stop */
     atc_hdlc_u8 ua_raw[32];
-    int ua_len = test_pack_frame(0x02, U_CTRL(U_UA, 1),
-                                 NULL, 0, ua_raw, sizeof(ua_raw));
+    int ua_len = test_pack_frame(0x02, U_CTRL(U_UA, 1), NULL, 0, ua_raw, sizeof(ua_raw));
     reset_test_state();
     atc_hdlc_data_in(&ctx, ua_raw, (atc_hdlc_u32)ua_len);
     if (mock_t1_stop_count < 1)
@@ -612,13 +624,13 @@ void test_frmr_send_invalid_nr(void) {
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
-    ctx.peer_address  = 0x02;
-    ctx.va = 0; ctx.vs = 2; /* outstanding frames 0..1 */
+    ctx.peer_address = 0x02;
+    ctx.va = 0;
+    ctx.vs = 2; /* outstanding frames 0..1 */
 
     /* Send RR with N(R)=5 — invalid (outside V(A)..V(S) = 0..2) */
     atc_hdlc_u8 rr_raw[32];
-    int rr_len = test_pack_frame(0x01, S_CTRL(S_RR, 5, 0),
-                                 NULL, 0, rr_raw, sizeof(rr_raw));
+    int rr_len = test_pack_frame(0x01, S_CTRL(S_RR, 5, 0), NULL, 0, rr_raw, sizeof(rr_raw));
 
     reset_test_state();
     atc_hdlc_data_in(&ctx, rr_raw, (atc_hdlc_u32)rr_len);
@@ -633,8 +645,8 @@ void test_frmr_send_invalid_nr(void) {
 
     /* Verify FRMR Z bit set — decode the frame */
     atc_hdlc_u8 flat[32];
-    test_frame_t frmr_out = test_unpack_frame(mock_output_buffer, mock_output_len,
-                                               flat, sizeof(flat));
+    test_frame_t frmr_out =
+        test_unpack_frame(mock_output_buffer, mock_output_len, flat, sizeof(flat));
     if (frmr_out.valid) {
         if ((frmr_out.control & ~PF_BIT) != U_FRMR)
             test_fail("FRMR Invalid NR", "Output is not a FRMR frame");
@@ -662,7 +674,7 @@ void test_frmr_error_lockdown(void) {
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_FRMR_ERROR;
-    ctx.peer_address  = 0x02;
+    ctx.peer_address = 0x02;
 
     /* transmit_i must be rejected */
     atc_hdlc_u8 payload[] = {0xAA};
@@ -683,8 +695,7 @@ void test_frmr_error_lockdown(void) {
     /* SABM from peer while in FRMR_ERROR: peer re-establishes → CONNECTED */
     ctx.current_state = ATC_HDLC_STATE_FRMR_ERROR;
     atc_hdlc_u8 sabm_raw[32];
-    int sabm_len = test_pack_frame(0x01, U_CTRL(U_SABM, 1),
-                                   NULL, 0, sabm_raw, sizeof(sabm_raw));
+    int sabm_len = test_pack_frame(0x01, U_CTRL(U_SABM, 1), NULL, 0, sabm_raw, sizeof(sabm_raw));
     reset_test_state();
     atc_hdlc_data_in(&ctx, sabm_raw, (atc_hdlc_u32)sabm_len);
     if (ctx.current_state != ATC_HDLC_STATE_CONNECTED)
@@ -713,8 +724,7 @@ void test_dm_on_connecting(void) {
 
     /* Peer sends DM(F=1) to our address */
     atc_hdlc_u8 dm_raw[32];
-    int dm_len = test_pack_frame(0x01, U_CTRL(U_DM, 1),
-                                 NULL, 0, dm_raw, sizeof(dm_raw));
+    int dm_len = test_pack_frame(0x01, U_CTRL(U_DM, 1), NULL, 0, dm_raw, sizeof(dm_raw));
 
     reset_test_state();
     atc_hdlc_data_in(&ctx, dm_raw, (atc_hdlc_u32)dm_len);
@@ -735,14 +745,13 @@ void test_duplicate_rej_guard(void) {
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
-    ctx.peer_address  = 0x02;
+    ctx.peer_address = 0x02;
     ctx.vr = 0;
 
     /* Send I-frame N(S)=1 (out of sequence, expect N(S)=0) → REJ sent */
     atc_hdlc_u8 payload[] = {0xBB};
     atc_hdlc_u8 i_raw[64];
-    int i_len = test_pack_frame(0x01, I_CTRL(1, 0, 0),
-                                payload, 1, i_raw, sizeof(i_raw));
+    int i_len = test_pack_frame(0x01, I_CTRL(1, 0, 0), payload, 1, i_raw, sizeof(i_raw));
 
     reset_test_state();
     atc_hdlc_data_in(&ctx, i_raw, (atc_hdlc_u32)i_len);
@@ -754,16 +763,15 @@ void test_duplicate_rej_guard(void) {
 
     /* Send second OOS I-frame N(S)=2 — REJ must NOT be sent again */
     atc_hdlc_u8 i_raw2[64];
-    int i_len2 = test_pack_frame(0x01, I_CTRL(2, 0, 0),
-                                 payload, 1, i_raw2, sizeof(i_raw2));
+    int i_len2 = test_pack_frame(0x01, I_CTRL(2, 0, 0), payload, 1, i_raw2, sizeof(i_raw2));
     reset_test_state();
     atc_hdlc_data_in(&ctx, i_raw2, (atc_hdlc_u32)i_len2);
     /* No REJ should be in output (rej_exception guards duplicate REJ) */
     if (mock_output_len >= 6) {
         /* Check that the output is NOT a REJ */
         atc_hdlc_u8 flat[32];
-        test_frame_t resp = test_unpack_frame(mock_output_buffer, mock_output_len,
-                                              flat, sizeof(flat));
+        test_frame_t resp =
+            test_unpack_frame(mock_output_buffer, mock_output_len, flat, sizeof(flat));
         if (resp.valid) {
             if (CTRL_S(resp.control) == S_REJ)
                 test_fail("Duplicate REJ", "Duplicate REJ sent — rej_exception guard failed");
@@ -776,7 +784,7 @@ void test_duplicate_rej_guard(void) {
 int main(void) {
     printf("\n%sSTARTING CONNECTION MANAGEMENT TESTS%s\n", COL_YELLOW, COL_RESET);
     printf("----------------------------------------\n\n");
-    
+
     test_init_state();
     test_connect_sends_sabm();
     test_connect_complete_on_ua();
@@ -799,4 +807,3 @@ int main(void) {
     printf("\n%sALL TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
     return 0;
 }
-

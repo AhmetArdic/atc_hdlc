@@ -6,22 +6,24 @@
  * when the documented error condition is triggered.
  */
 
+#include "../inc/hdlc.h"
+#include "../src/hdlc_frame.h"
+#include "test_common.h"
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
-#include "../inc/hdlc.h"
-#include "../src/hdlc_private.h"
-#include "test_common.h"
+#include <string.h>
 
 /* ================================================================
  *  Helpers — connect a context to CONNECTED state
  * ================================================================ */
-static void force_connected(atc_hdlc_context_t *ctx) {
+static void force_connected(atc_hdlc_context_t* ctx) {
     ctx->current_state = ATC_HDLC_STATE_CONNECTED;
-    ctx->vs = 0; ctx->vr = 0; ctx->va = 0;
+    ctx->vs = 0;
+    ctx->vr = 0;
+    ctx->va = 0;
 }
 
 /* ================================================================
@@ -48,7 +50,7 @@ void test_err_invalid_state(void) {
 
     /* link_setup in CONNECTING (not DISCONNECTED) */
     ctx.current_state = ATC_HDLC_STATE_CONNECTING;
-    ctx.peer_address  = 0x02;
+    ctx.peer_address = 0x02;
     if (atc_hdlc_link_setup(&ctx, 0x02) != ATC_HDLC_ERR_INVALID_STATE)
         test_fail("ERR_INVALID_STATE", "link_setup in CONNECTING should fail");
 

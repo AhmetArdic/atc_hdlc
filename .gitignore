@@ -41,3 +41,4 @@ test/crc_check
 .vscode/
 .idea/
 .DS_Store
+.clang-format

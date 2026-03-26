@@ -1,6 +1,7 @@
 add_library(hdlc STATIC
     hdlc_crc.c
     hdlc_station.c
+    hdlc_dispatch.c
     hdlc_in.c
     hdlc_out.c
 )

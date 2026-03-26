@@ -6,62 +6,62 @@
  * verifies that error codes are returned (not just "non-zero").
  */
 
+#include "../inc/hdlc.h"
+#include "../src/hdlc_frame.h"
+#include "test_common.h"
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
-#include "../inc/hdlc.h"
-#include "../src/hdlc_private.h"
-#include "test_common.h"
+#include <string.h>
 
 /* ================================================================
  *  Minimal valid descriptors reused across tests
  * ================================================================ */
-static atc_hdlc_u8  s_rx_storage[1028]; /* 1024 + 4 overhead */
-static atc_hdlc_u8  s_tx_slots[1 * 1024];
+static atc_hdlc_u8 s_rx_storage[1028]; /* 1024 + 4 overhead */
+static atc_hdlc_u8 s_tx_slots[1 * 1024];
 static atc_hdlc_u32 s_tx_lens[1];
 
 static atc_hdlc_config_t make_valid_cfg(void) {
     atc_hdlc_config_t c;
     memset(&c, 0, sizeof(c));
-    c.mode           = ATC_HDLC_MODE_ABM;
-    c.address        = 0x01;
-    c.window_size    = 1;
+    c.mode = ATC_HDLC_MODE_ABM;
+    c.address = 0x01;
+    c.window_size = 1;
     c.max_frame_size = 1024;
-    c.max_retries    = 3;
-    c.t1_ms          = 1000;
-    c.t2_ms          = 10;
+    c.max_retries = 3;
+    c.t1_ms = 1000;
+    c.t2_ms = 10;
     return c;
 }
 
 static atc_hdlc_platform_t make_valid_plat(void) {
     atc_hdlc_platform_t p;
     memset(&p, 0, sizeof(p));
-    p.on_send  = mock_send_cb;
-    p.on_data  = NULL;
+    p.on_send = mock_send_cb;
+    p.on_data = NULL;
     p.on_event = NULL;
     p.user_ctx = NULL;
     p.t1_start = mock_t1_start_cb;
-    p.t1_stop  = mock_t1_stop_cb;
+    p.t1_stop = mock_t1_stop_cb;
     p.t2_start = mock_t2_start_cb;
-    p.t2_stop  = mock_t2_stop_cb;
+    p.t2_stop = mock_t2_stop_cb;
     return p;
 }
 
 static atc_hdlc_tx_window_t make_valid_tw(void) {
     atc_hdlc_tx_window_t tw;
-    tw.slots         = s_tx_slots;
-    tw.slot_lens     = s_tx_lens;
+    tw.slots = s_tx_slots;
+    tw.slot_lens = s_tx_lens;
     tw.slot_capacity = 1024;
-    tw.slot_count    = 1;
+    tw.slot_count = 1;
     return tw;
 }
 
 static atc_hdlc_rx_buffer_t make_valid_rx(void) {
     atc_hdlc_rx_buffer_t rx;
-    rx.buffer   = s_rx_storage;
+    rx.buffer = s_rx_storage;
     rx.capacity = sizeof(s_rx_storage);
     return rx;
 }
@@ -74,11 +74,11 @@ void test_init_null_params(void) {
     printf("TEST: init — NULL parameter checks\n");
 
     atc_hdlc_context_t ctx;
-    atc_hdlc_config_t   cfg  = make_valid_cfg();
+    atc_hdlc_config_t cfg = make_valid_cfg();
     atc_hdlc_platform_t plat = make_valid_plat();
-    atc_hdlc_tx_window_t tw  = make_valid_tw();
-    atc_hdlc_rx_buffer_t rx  = make_valid_rx();
-    atc_hdlc_params_t p = { .config = &cfg, .platform = &plat, .tx_window = &tw, .rx_buf = &rx };
+    atc_hdlc_tx_window_t tw = make_valid_tw();
+    atc_hdlc_rx_buffer_t rx = make_valid_rx();
+    atc_hdlc_params_t p = {.config = &cfg, .platform = &plat, .tx_window = &tw, .rx_buf = &rx};
 
     /* NULL ctx */
     if (atc_hdlc_init(NULL, p) != ATC_HDLC_ERR_INVALID_PARAM)
@@ -130,10 +130,10 @@ void test_init_unsupported_mode(void) {
     printf("TEST: init — unsupported mode\n");
 
     atc_hdlc_context_t ctx;
-    atc_hdlc_config_t   cfg  = make_valid_cfg();
+    atc_hdlc_config_t cfg = make_valid_cfg();
     atc_hdlc_platform_t plat = make_valid_plat();
-    atc_hdlc_rx_buffer_t rx  = make_valid_rx();
-    atc_hdlc_params_t p = { .config = &cfg, .platform = &plat, .tx_window = NULL, .rx_buf = &rx };
+    atc_hdlc_rx_buffer_t rx = make_valid_rx();
+    atc_hdlc_params_t p = {.config = &cfg, .platform = &plat, .tx_window = NULL, .rx_buf = &rx};
 
     /* Non-ABM mode (cast to force invalid value past enum) */
     cfg.mode = (atc_hdlc_link_mode_t)1;
@@ -151,10 +151,10 @@ void test_init_invalid_window_size(void) {
     printf("TEST: init — invalid window size\n");
 
     atc_hdlc_context_t ctx;
-    atc_hdlc_config_t   cfg  = make_valid_cfg();
+    atc_hdlc_config_t cfg = make_valid_cfg();
     atc_hdlc_platform_t plat = make_valid_plat();
-    atc_hdlc_rx_buffer_t rx  = make_valid_rx();
-    atc_hdlc_params_t p = { .config = &cfg, .platform = &plat, .tx_window = NULL, .rx_buf = &rx };
+    atc_hdlc_rx_buffer_t rx = make_valid_rx();
+    atc_hdlc_params_t p = {.config = &cfg, .platform = &plat, .tx_window = NULL, .rx_buf = &rx};
 
     /* window_size = 0 */
     cfg.window_size = 0;
@@ -169,10 +169,12 @@ void test_init_invalid_window_size(void) {
     /* window_size = 7 — valid boundary */
     cfg.window_size = 7;
     atc_hdlc_tx_window_t tw7;
-    static atc_hdlc_u8  tw7_slots[7 * 1024];
+    static atc_hdlc_u8 tw7_slots[7 * 1024];
     static atc_hdlc_u32 tw7_lens[7];
-    tw7.slots = tw7_slots; tw7.slot_lens = tw7_lens;
-    tw7.slot_capacity = 1024; tw7.slot_count = 7;
+    tw7.slots = tw7_slots;
+    tw7.slot_lens = tw7_lens;
+    tw7.slot_capacity = 1024;
+    tw7.slot_count = 7;
     p.tx_window = &tw7;
     if (atc_hdlc_init(&ctx, p) != ATC_HDLC_OK)
         test_fail("Init Window", "window_size=7 should be valid");
@@ -184,25 +186,25 @@ void test_init_inconsistent_rx_buffer(void) {
     printf("TEST: init — rx buffer too small\n");
 
     atc_hdlc_context_t ctx;
-    atc_hdlc_config_t   cfg  = make_valid_cfg();
+    atc_hdlc_config_t cfg = make_valid_cfg();
     atc_hdlc_platform_t plat = make_valid_plat();
-    atc_hdlc_params_t p = { .config = &cfg, .platform = &plat, .tx_window = NULL, .rx_buf = NULL };
+    atc_hdlc_params_t p = {.config = &cfg, .platform = &plat, .tx_window = NULL, .rx_buf = NULL};
 
     /* Buffer exactly max_frame_size — NOT enough (needs +4 for header/FCS) */
     static atc_hdlc_u8 small_buf[1024];
-    atc_hdlc_rx_buffer_t rx_small = { .buffer = small_buf, .capacity = 1024 };
+    atc_hdlc_rx_buffer_t rx_small = {.buffer = small_buf, .capacity = 1024};
     p.rx_buf = &rx_small;
     if (atc_hdlc_init(&ctx, p) != ATC_HDLC_ERR_INCONSISTENT_BUFFER)
         test_fail("Init RX Buf", "capacity == max_frame_size should return INCONSISTENT_BUFFER");
 
     /* Buffer = max_frame_size + 3 — still one byte short */
-    atc_hdlc_rx_buffer_t rx_near = { .buffer = small_buf, .capacity = 1027 };
+    atc_hdlc_rx_buffer_t rx_near = {.buffer = small_buf, .capacity = 1027};
     p.rx_buf = &rx_near;
     if (atc_hdlc_init(&ctx, p) != ATC_HDLC_ERR_INCONSISTENT_BUFFER)
         test_fail("Init RX Buf", "capacity = max_frame_size+3 should return INCONSISTENT_BUFFER");
 
     /* Buffer = max_frame_size + 4 — exact minimum */
-    atc_hdlc_rx_buffer_t rx_exact = { .buffer = small_buf, .capacity = 1028 };
+    atc_hdlc_rx_buffer_t rx_exact = {.buffer = small_buf, .capacity = 1028};
     p.rx_buf = &rx_exact;
     if (atc_hdlc_init(&ctx, p) != ATC_HDLC_OK)
         test_fail("Init RX Buf", "capacity = max_frame_size+4 should succeed");
@@ -214,11 +216,11 @@ void test_init_inconsistent_tx_window(void) {
     printf("TEST: init — tx window inconsistencies\n");
 
     atc_hdlc_context_t ctx;
-    atc_hdlc_config_t   cfg  = make_valid_cfg();
+    atc_hdlc_config_t cfg = make_valid_cfg();
     atc_hdlc_platform_t plat = make_valid_plat();
-    atc_hdlc_rx_buffer_t rx  = make_valid_rx();
-    atc_hdlc_tx_window_t tw  = make_valid_tw();
-    atc_hdlc_params_t p = { .config = &cfg, .platform = &plat, .tx_window = NULL, .rx_buf = &rx };
+    atc_hdlc_rx_buffer_t rx = make_valid_rx();
+    atc_hdlc_tx_window_t tw = make_valid_tw();
+    atc_hdlc_params_t p = {.config = &cfg, .platform = &plat, .tx_window = NULL, .rx_buf = &rx};
 
     /* NULL slots inside tx_window */
     atc_hdlc_tx_window_t bad_tw = tw;
@@ -228,22 +230,26 @@ void test_init_inconsistent_tx_window(void) {
         test_fail("Init TX Window", "NULL slots should return INCONSISTENT_BUFFER");
 
     /* NULL slot_lens */
-    bad_tw = tw; bad_tw.slot_lens = NULL;
+    bad_tw = tw;
+    bad_tw.slot_lens = NULL;
     p.tx_window = &bad_tw;
     if (atc_hdlc_init(&ctx, p) != ATC_HDLC_ERR_INCONSISTENT_BUFFER)
         test_fail("Init TX Window", "NULL slot_lens should return INCONSISTENT_BUFFER");
 
     /* slot_count != window_size */
-    bad_tw = tw; bad_tw.slot_count = 3; /* cfg.window_size = 1 */
+    bad_tw = tw;
+    bad_tw.slot_count = 3; /* cfg.window_size = 1 */
     p.tx_window = &bad_tw;
     if (atc_hdlc_init(&ctx, p) != ATC_HDLC_ERR_INCONSISTENT_BUFFER)
         test_fail("Init TX Window", "slot_count != window_size should return INCONSISTENT_BUFFER");
 
     /* slot_capacity < max_frame_size */
-    bad_tw = tw; bad_tw.slot_capacity = 512; /* cfg.max_frame_size = 1024 */
+    bad_tw = tw;
+    bad_tw.slot_capacity = 512; /* cfg.max_frame_size = 1024 */
     p.tx_window = &bad_tw;
     if (atc_hdlc_init(&ctx, p) != ATC_HDLC_ERR_INCONSISTENT_BUFFER)
-        test_fail("Init TX Window", "slot_capacity < max_frame_size should return INCONSISTENT_BUFFER");
+        test_fail("Init TX Window",
+                  "slot_capacity < max_frame_size should return INCONSISTENT_BUFFER");
 
     /* Valid tx_window */
     p.tx_window = &tw;
@@ -257,11 +263,11 @@ void test_init_success_sets_state(void) {
     printf("TEST: init — successful init sets DISCONNECTED state\n");
 
     atc_hdlc_context_t ctx;
-    atc_hdlc_config_t   cfg  = make_valid_cfg();
+    atc_hdlc_config_t cfg = make_valid_cfg();
     atc_hdlc_platform_t plat = make_valid_plat();
-    atc_hdlc_tx_window_t tw  = make_valid_tw();
-    atc_hdlc_rx_buffer_t rx  = make_valid_rx();
-    atc_hdlc_params_t p = { .config = &cfg, .platform = &plat, .tx_window = &tw, .rx_buf = &rx };
+    atc_hdlc_tx_window_t tw = make_valid_tw();
+    atc_hdlc_rx_buffer_t rx = make_valid_rx();
+    atc_hdlc_params_t p = {.config = &cfg, .platform = &plat, .tx_window = &tw, .rx_buf = &rx};
 
     atc_hdlc_error_t err = atc_hdlc_init(&ctx, p);
     if (err != ATC_HDLC_OK)
