@@ -15,6 +15,7 @@ void reset_state(atc_hdlc_context_t* ctx) {
     ctx->vs = 0;
     ctx->vr = 0;
     ctx->va = 0;
+    ctx->tx_next_slot = 0;
     if (ctx->tx_window && ctx->tx_window->slot_lens)
         memset(ctx->tx_window->slot_lens, 0,
                ctx->tx_window->slot_count * sizeof(ctx->tx_window->slot_lens[0]));

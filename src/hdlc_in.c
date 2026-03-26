@@ -14,16 +14,20 @@
 static void retransmit_outstanding(atc_hdlc_context_t* ctx) {
     CTX_CLR(ctx, HDLC_F_RETRANSMIT_PENDING);
     atc_hdlc_u8 end_vs = ctx->vs;
+    atc_hdlc_u8 w = ctx->config->window_size;
+    /* Slot of oldest frame = (tx_next_slot - outstanding + w) % w. */
+    atc_hdlc_u8 outstanding = (atc_hdlc_u8)((end_vs - ctx->retransmit_from + MOD8) % MOD8);
+    atc_hdlc_u8 slot_idx = (atc_hdlc_u8)((ctx->tx_next_slot + w - outstanding) % w);
     ctx->vs = ctx->retransmit_from;
     while (ctx->vs != end_vs) {
-        atc_hdlc_u8 slot = (atc_hdlc_u8)(ctx->vs % ctx->config->window_size);
-        const atc_hdlc_u8* sd = ctx->tx_window->slots + (slot * ctx->tx_window->slot_capacity);
-        atc_hdlc_u32 slen = ctx->tx_window->slot_lens[slot];
+        const atc_hdlc_u8* sd = ctx->tx_window->slots + (slot_idx * ctx->tx_window->slot_capacity);
+        atc_hdlc_u32 slen = ctx->tx_window->slot_lens[slot_idx];
         frame_begin(ctx, ctx->peer_address, I_CTRL(ctx->vs, ctx->vr, 0));
         for (atc_hdlc_u32 i = 0; i < slen; i++)
             emit(ctx, sd[i]);
         frame_end(ctx);
         ctx->vs = (atc_hdlc_u8)((ctx->vs + 1) % MOD8);
+        slot_idx = (atc_hdlc_u8)((slot_idx + 1) % w);
     }
     t1_start(ctx);
 }

@@ -167,12 +167,13 @@ typedef struct {
     atc_hdlc_tx_window_t* tx_window;     /**< TX retransmit window descriptor (must outlive ctx). */
     atc_hdlc_rx_buffer_t* rx_buf;        /**< RX buffer descriptor (must outlive ctx). */
 
+    volatile atc_hdlc_u8 current_state;
     atc_hdlc_u32 rx_index;
     atc_hdlc_u16 rx_crc;
     atc_hdlc_u16 tx_crc;
     atc_hdlc_u8 rx_state;
     atc_hdlc_u8 retransmit_from;
-    volatile atc_hdlc_u8 current_state;
+    atc_hdlc_u8 tx_next_slot;
 
     atc_hdlc_u8 my_address, peer_address;
     volatile atc_hdlc_u8 vs, vr, va;

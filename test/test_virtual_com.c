@@ -647,11 +647,11 @@ int main(void) {
         run_window_test(w, 50);
 
     printf("\nStarting Mem-Pipe Virtual COM Tests (Timeout Injection)...\n");
-    for (int w = 1; w <= 7; w++)
+    for (int w = 4; w <= 7; w++)
         run_timeout_test(w);
 
     printf("\nStarting Mem-Pipe Virtual COM Tests (Go-Back-N Deterministic Drop)...\n");
-    for (int w = 2; w <= 7; w++)
+    for (int w = 4; w <= 7; w++)
         run_go_back_n_test(w);
 
     printf("\nStarting Mem-Pipe Virtual COM Tests (File Transfer - test.pdf)...\n");

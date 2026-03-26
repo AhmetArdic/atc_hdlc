@@ -62,7 +62,8 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t* ctx, const atc_hdlc_u8*
     if (outstanding >= ctx->config->window_size)
         return ATC_HDLC_ERR_WINDOW_FULL;
 
-    atc_hdlc_u8 slot = (atc_hdlc_u8)(ctx->vs % ctx->config->window_size);
+    atc_hdlc_u8 slot = ctx->tx_next_slot;
+    ctx->tx_next_slot = (atc_hdlc_u8)((slot + 1u) % ctx->config->window_size);
 
     if (len > 0 && data) {
         if (len > ctx->tx_window->slot_capacity)
