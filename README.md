@@ -35,17 +35,23 @@ This library implements a highly capable subset of the ISO/IEC 13239 HDLC standa
 │   └── hdlc_config.h       # Configuration defaults (overridable via #define)
 ├── src/
 │   ├── CMakeLists.txt
-│   ├── hdlc_private.h      # Internal constants, bit-field accessors, RX state machine
+│   ├── hdlc_private.h      # Internal constants, bit-field accessors, timer helpers
+│   ├── hdlc_frame.h        # Frame constants, field macros (FLAG, ESC, CTRL_*)
 │   ├── hdlc_crc.c          # CRC-16-CCITT LUT and update function
 │   ├── hdlc_crc.h
 │   ├── hdlc_station.c      # Init, link setup/disconnect, state transitions
 │   ├── hdlc_in.c           # Byte-by-byte RX parser (byte-stuffing removal, CRC)
+│   ├── hdlc_dispatch.c     # Frame dispatch and receive-side protocol logic
 │   └── hdlc_out.c          # TX streaming engine (byte-stuffing, frame construction)
 ├── test/
 │   ├── test_hdlc.c
 │   ├── test_reliable_transmission.c
 │   ├── test_connection_management.c
+│   ├── test_init_validation.c
+│   ├── test_error_codes.c
 │   ├── test_virtual_com.c
+│   ├── test_virtual_pipe.c
+│   ├── test_virtual_pipe.h
 │   ├── test_physical_target.c
 │   ├── test_common.c
 │   └── test_common.h
@@ -60,9 +66,11 @@ Three layers:
 **Public API** (`inc/`): `hdlc.h`, `hdlc_types.h`, `hdlc_config.h`.
 
 **Core Implementation** (`src/`):
+- `hdlc_frame.h` — Frame constants and field accessor macros.
 - `hdlc_crc.c` — CRC-16-CCITT lookup table.
 - `hdlc_station.c` — Init, link setup/disconnect, state transitions.
 - `hdlc_in.c` — RX parser (byte-stuffing removal, CRC validation, reassembly).
+- `hdlc_dispatch.c` — Frame dispatch and receive-side protocol logic (I/S/U handling).
 - `hdlc_out.c` — TX streaming engine (byte-stuffing, frame construction, flush).
 
 ### Data Flow
@@ -105,21 +113,17 @@ void my_on_data(const atc_hdlc_u8 *payload, atc_hdlc_u16 len, void *ctx) {
 
 void my_on_event(atc_hdlc_event_t event, void *ctx) {
     switch (event) {
-        case ATC_HDLC_EVENT_CONNECT_ACCEPTED:
-            printf("Connected!\n");
-            break;
-        case ATC_HDLC_EVENT_PEER_DISCONNECT:
-            printf("Peer disconnected.\n");
-            break;
-        case ATC_HDLC_EVENT_LINK_FAILURE:
-            printf("Link failure!\n");
-            break;
-        case ATC_HDLC_EVENT_REMOTE_BUSY_ON:
-            printf("Peer is busy.\n");
-            break;
-        case ATC_HDLC_EVENT_WINDOW_OPEN:
-            // Can send more I-frames
-            break;
+        case ATC_HDLC_EVENT_CONNECT_ACCEPTED:    /* UA received for our SABM */     break;
+        case ATC_HDLC_EVENT_INCOMING_CONNECT:    /* peer sent SABM, auto-accepted */ break;
+        case ATC_HDLC_EVENT_DISCONNECT_COMPLETE: /* UA received for our DISC */      break;
+        case ATC_HDLC_EVENT_PEER_DISCONNECT:     /* peer sent DISC */                break;
+        case ATC_HDLC_EVENT_PEER_REJECT:         /* peer sent DM */                  break;
+        case ATC_HDLC_EVENT_PROTOCOL_ERROR:      /* peer sent FRMR */                break;
+        case ATC_HDLC_EVENT_LINK_FAILURE:        /* N2 retries exceeded */           break;
+        case ATC_HDLC_EVENT_REMOTE_BUSY_ON:      /* peer sent RNR */                 break;
+        case ATC_HDLC_EVENT_REMOTE_BUSY_OFF:     /* peer sent RR after RNR */        break;
+        case ATC_HDLC_EVENT_WINDOW_OPEN:         /* TX window slot freed */          break;
+        default: break;
     }
 }
 
@@ -143,7 +147,6 @@ atc_hdlc_config_t config = {
     .max_retries = 3,
     .t1_ms = 1000,
     .t2_ms = 50,
-    .use_extended = false,
 };
 
 // Platform callbacks
@@ -161,11 +164,9 @@ atc_hdlc_platform_t platform = {
 // TX window (for reliable I-frames)
 uint8_t tx_slots[3 * 256];  // slot_count * slot_capacity
 uint32_t tx_slot_lens[3];
-uint8_t tx_seq_to_slot[3];
 atc_hdlc_tx_window_t tx_window = {
     .slots = tx_slots,
     .slot_lens = tx_slot_lens,
-    .seq_to_slot = tx_seq_to_slot,
     .slot_capacity = 256,
     .slot_count = 3,
 };
@@ -225,10 +226,10 @@ atc_hdlc_transmit_test(&ctx, 0x02, (atc_hdlc_u8 *)"ping", 4);
 ### 5. Streaming TX (Low-Memory)
 
 ```c
-atc_hdlc_transmit_start_ui(&ctx, 0x02);
-atc_hdlc_transmit_data(&ctx, (atc_hdlc_u8 *)"chunk1", 6);
-atc_hdlc_transmit_data(&ctx, (atc_hdlc_u8 *)"chunk2", 6);
-atc_hdlc_transmit_end(&ctx);
+atc_hdlc_transmit_ui_start(&ctx, 0x02);
+atc_hdlc_transmit_ui_data(&ctx, (atc_hdlc_u8 *)"chunk1", 6);
+atc_hdlc_transmit_ui_data(&ctx, (atc_hdlc_u8 *)"chunk2", 6);
+atc_hdlc_transmit_ui_end(&ctx);
 ```
 
 ### 6. Timer Interrupts
@@ -263,9 +264,9 @@ void T2_TIMER_IRQ(void) {  // Delayed ACK timeout
 | `atc_hdlc_transmit_i()` | Send reliable I-frame |
 | `atc_hdlc_transmit_ui()` | Send UI-frame (connectionless) |
 | `atc_hdlc_transmit_test()` | Send TEST frame |
-| `atc_hdlc_transmit_start_ui()` | Begin streaming UI TX |
-| `atc_hdlc_transmit_data()` | Add bytes to TX stream |
-| `atc_hdlc_transmit_end()` | Finish TX stream |
+| `atc_hdlc_transmit_ui_start()` | Begin streaming UI TX |
+| `atc_hdlc_transmit_ui_data()` | Add bytes to TX stream |
+| `atc_hdlc_transmit_ui_end()` | Finish TX stream |
 | `atc_hdlc_data_in()` | Feed received bytes |
 
 ### Timers
@@ -289,14 +290,13 @@ Set these fields before calling `atc_hdlc_init()`:
 
 | Field | Default | Description |
 |---|---|---|
-| `mode` | `ATC_HDLC_MODE_ABM` | Operating mode (ABM/NRM/ARM) |
+| `mode` | `ATC_HDLC_MODE_ABM` | Operating mode (only ABM supported) |
 | `address` | — | Local station address |
 | `window_size` | `1` | Sliding window size (1–7) |
 | `max_frame_size` | `256` | Maximum information field size (MRU) |
 | `max_retries` | `3` | N2 retry limit before link failure |
 | `t1_ms` | `1000` | T1 retransmission timeout (ms) |
 | `t2_ms` | `10` | T2 delayed ACK timeout (ms, must be < t1_ms) |
-| `use_extended` | `false` | Extended (mod-128) mode (must be false in this version) |
 
 ### Compile-Time Defaults (`inc/hdlc_config.h`)
 
