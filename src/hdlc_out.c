@@ -51,6 +51,8 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t* ctx, const atc_hdlc_u8*
         return ATC_HDLC_ERR_NO_BUFFER;
     if (ctx->config && len > ctx->config->max_info_size)
         return ATC_HDLC_ERR_FRAME_TOO_LARGE;
+    if (len > 0 && data && len > ctx->tx_window->slot_capacity)
+        return ATC_HDLC_ERR_FRAME_TOO_LARGE;
 
     atc_hdlc_u8 outstanding = (atc_hdlc_u8)((ctx->vs - ctx->va + MOD8) % MOD8);
     if (outstanding >= ctx->tx_window->slot_count)
@@ -59,11 +61,8 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t* ctx, const atc_hdlc_u8*
     atc_hdlc_u8 slot = ctx->tx_next_slot;
     ctx->tx_next_slot = (atc_hdlc_u8)((slot + 1u) % ctx->tx_window->slot_count);
 
-    if (len > 0 && data) {
-        if (len > ctx->tx_window->slot_capacity)
-            return ATC_HDLC_ERR_FRAME_TOO_LARGE;
+    if (len > 0 && data)
         memcpy(ctx->tx_window->slots + (slot * ctx->tx_window->slot_capacity), data, len);
-    }
     ctx->tx_window->slot_lens[slot] = len;
 
     LOG_DBG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
