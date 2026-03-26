@@ -82,7 +82,6 @@ static atc_hdlc_rx_buffer_t hdlc_rx;
 static uint8_t  hdlc_rx_buf[HDLC_RX_BUF_SIZE];
 static uint8_t  hdlc_tx_slots[HDLC_WINDOW_SIZE * HDLC_MAX_INFO_SIZE];
 static uint32_t hdlc_tx_lens[HDLC_WINDOW_SIZE];
-static uint8_t  hdlc_tx_seq[8];  /* seq_to_slot map: indexed by V(S) 0..7 (mod-8) */
 
 /* Timer state flags (set/cleared by platform callbacks) */
 static volatile uint8_t  t1_active     = 0;
@@ -307,8 +306,6 @@ int main(void)
   hdlc_cfg.max_retries    = 10;
   hdlc_cfg.t1_ms          = 500;           /* Retransmission timeout */
   hdlc_cfg.t2_ms          = 1;             /* Delayed-ACK timeout (1ms = 1 HAL tick) */
-  hdlc_cfg.t3_ms          = 0;             /* Keep-alive disabled */
-  hdlc_cfg.use_extended   = false;
 
   /* ---- Build platform callbacks ---- */
   hdlc_plat.on_send   = hdlc_on_send_cb;
@@ -319,13 +316,10 @@ int main(void)
   hdlc_plat.t1_stop   = hdlc_t1_stop_cb;
   hdlc_plat.t2_start  = hdlc_t2_start_cb;
   hdlc_plat.t2_stop   = hdlc_t2_stop_cb;
-  hdlc_plat.t3_start  = NULL;              /* T3 not used */
-  hdlc_plat.t3_stop   = NULL;
 
   /* ---- Build TX window descriptor ---- */
   hdlc_tw.slots        = hdlc_tx_slots;
   hdlc_tw.slot_lens    = hdlc_tx_lens;
-  hdlc_tw.seq_to_slot  = hdlc_tx_seq;
   hdlc_tw.slot_count   = HDLC_WINDOW_SIZE;
   hdlc_tw.slot_capacity = HDLC_MAX_INFO_SIZE;
 
