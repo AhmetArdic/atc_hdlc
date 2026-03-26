@@ -10,9 +10,9 @@
 #ifndef ATC_HDLC_CRC_H
 #define ATC_HDLC_CRC_H
 
-#include "../../inc/hdlc_types.h"
+#include "../inc/hdlc_types.h"
 
-#define ATC_HDLC_FCS_INIT_VALUE     (0xFFFF)
+#define ATC_HDLC_FCS_INIT_VALUE (0xFFFF)
 
 atc_hdlc_u16 atc_hdlc_crc_ccitt_update(atc_hdlc_u16 fcs, atc_hdlc_u8 data);
 

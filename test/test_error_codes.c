@@ -6,22 +6,24 @@
  * when the documented error condition is triggered.
  */
 
+#include "../inc/hdlc.h"
+#include "../src/hdlc_frame.h"
+#include "test_common.h"
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
-#include "../inc/hdlc.h"
-#include "../src/hdlc_private.h"
-#include "test_common.h"
+#include <string.h>
 
 /* ================================================================
  *  Helpers — connect a context to CONNECTED state
  * ================================================================ */
-static void force_connected(atc_hdlc_context_t *ctx) {
+static void force_connected(atc_hdlc_context_t* ctx) {
     ctx->current_state = ATC_HDLC_STATE_CONNECTED;
-    ctx->vs = 0; ctx->vr = 0; ctx->va = 0;
+    ctx->vs = 0;
+    ctx->vr = 0;
+    ctx->va = 0;
 }
 
 /* ================================================================
@@ -48,7 +50,7 @@ void test_err_invalid_state(void) {
 
     /* link_setup in CONNECTING (not DISCONNECTED) */
     ctx.current_state = ATC_HDLC_STATE_CONNECTING;
-    ctx.peer_address  = 0x02;
+    ctx.peer_address = 0x02;
     if (atc_hdlc_link_setup(&ctx, 0x02) != ATC_HDLC_ERR_INVALID_STATE)
         test_fail("ERR_INVALID_STATE", "link_setup in CONNECTING should fail");
 
@@ -153,7 +155,7 @@ void test_err_frame_too_large(void) {
 
     /* ACK so window is free again */
     ctx.va = ctx.vs;
-    hdlc_t1_stop(&ctx);
+    t1_stop(&ctx);
 
     /* One byte over limit */
     static atc_hdlc_u8 oversized[1025];
@@ -179,7 +181,7 @@ void test_err_remote_busy(void) {
     setup_test_context(&ctx);
     force_connected(&ctx);
 
-    ctx.remote_busy = true; /* simulate received RNR */
+    ctx.flags |= HDLC_F_REMOTE_BUSY; /* simulate received RNR */
 
     atc_hdlc_u8 payload[] = {0x55};
     atc_hdlc_error_t err = atc_hdlc_transmit_i(&ctx, payload, 1);
@@ -187,29 +189,6 @@ void test_err_remote_busy(void) {
         test_fail("ERR_REMOTE_BUSY", "transmit_i while remote_busy should return REMOTE_BUSY");
 
     test_pass("ATC_HDLC_ERR_REMOTE_BUSY");
-}
-
-/**
- * @brief ATC_HDLC_ERR_TEST_PENDING — second transmit_test while first pending.
- */
-void test_err_test_pending(void) {
-    printf("TEST: ATC_HDLC_ERR_TEST_PENDING\n");
-
-    atc_hdlc_context_t ctx;
-    setup_test_context(&ctx);
-
-    atc_hdlc_u8 pattern[] = {0xDE, 0xAD};
-
-    /* First TEST — OK */
-    if (atc_hdlc_transmit_test(&ctx, 0x02, pattern, 2) != ATC_HDLC_OK)
-        test_fail("ERR_TEST_PENDING", "First transmit_test should succeed");
-
-    /* Second TEST while first pending — must fail */
-    atc_hdlc_error_t err = atc_hdlc_transmit_test(&ctx, 0x02, pattern, 2);
-    if (err != ATC_HDLC_ERR_TEST_PENDING)
-        test_fail("ERR_TEST_PENDING", "Second transmit_test should return TEST_PENDING");
-
-    test_pass("ATC_HDLC_ERR_TEST_PENDING");
 }
 
 /**
@@ -253,7 +232,6 @@ int main(void) {
     test_err_window_full();
     test_err_frame_too_large();
     test_err_remote_busy();
-    test_err_test_pending();
     test_err_max_retry();
 
     printf("\n%sALL ERROR CODE TESTS PASSED!%s\n", COL_GREEN, COL_RESET);
