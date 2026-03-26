@@ -25,11 +25,10 @@
 
 static atc_hdlc_context_t ctx;
 
-static atc_hdlc_u8  loopback_buf[64];
-static int          loopback_len = 0;
+static atc_hdlc_u8 loopback_buf[64];
+static int loopback_len = 0;
 
-static int send_cb(atc_hdlc_u8 byte, bool flush, void *user_ctx)
-{
+static int send_cb(atc_hdlc_u8 byte, bool flush, void* user_ctx) {
     (void)user_ctx;
     if (loopback_len < (int)sizeof(loopback_buf))
         loopback_buf[loopback_len++] = byte;
@@ -40,10 +39,9 @@ static int send_cb(atc_hdlc_u8 byte, bool flush, void *user_ctx)
     return 0;
 }
 
-static void on_data(const atc_hdlc_u8 *data, atc_hdlc_u16 len, void *u)
-{
+static void on_data(const atc_hdlc_u8* data, atc_hdlc_u16 len, void* u) {
     (void)u;
-    printf("received %u bytes: %.*s\n", len, (int)len, (const char *)data);
+    printf("received %u bytes: %.*s\n", len, (int)len, (const char*)data);
 }
 
 /* ------------------------------------------------------------------ */
@@ -53,33 +51,32 @@ static void on_data(const atc_hdlc_u8 *data, atc_hdlc_u16 len, void *u)
 static atc_hdlc_u8 rx_buf_mem[32];
 
 static const atc_hdlc_config_t cfg = {
-    .mode           = ATC_HDLC_MODE_ABM,
-    .address        = 0x01,
-    .window_size    = 1,   /* required by init even when TX window is NULL */
+    .mode = ATC_HDLC_MODE_ABM,
+    .address = 0x01,
+    .window_size = 1, /* required by init even when TX window is NULL */
     .max_frame_size = 16,
-    .max_retries    = 0,
-    .t1_ms          = 0,
-    .t2_ms          = 0,
+    .max_retries = 0,
+    .t1_ms = 0,
+    .t2_ms = 0,
 };
 
 static const atc_hdlc_platform_t platform = {
-    .on_send  = send_cb,
-    .on_data  = on_data,
+    .on_send = send_cb,
+    .on_data = on_data,
     /* All timer callbacks NULL — UI frames never start T1 or T2. */
 };
 
-static atc_hdlc_rx_buffer_t rx_buf = { rx_buf_mem, sizeof(rx_buf_mem) };
+static atc_hdlc_rx_buffer_t rx_buf = {rx_buf_mem, sizeof(rx_buf_mem)};
 
 /* ------------------------------------------------------------------ */
 
-int main(void)
-{
+int main(void) {
     atc_hdlc_init(&ctx, (atc_hdlc_params_t){
-        .config    = &cfg,
-        .platform  = &platform,
-        .tx_window = NULL,  /* disable reliable I-frame TX */
-        .rx_buf    = &rx_buf,
-    });
+                            .config = &cfg,
+                            .platform = &platform,
+                            .tx_window = NULL, /* disable reliable I-frame TX */
+                            .rx_buf = &rx_buf,
+                        });
 
     const atc_hdlc_u8 msg[] = "hello world";
 
@@ -90,8 +87,8 @@ int main(void)
     /* Send a larger payload using the streaming API to avoid
      * assembling it in a single buffer. */
     atc_hdlc_transmit_ui_start(&ctx, ATC_HDLC_BROADCAST_ADDRESS);
-    atc_hdlc_transmit_ui_data(&ctx, (const atc_hdlc_u8 *)"stream", 6);
-    atc_hdlc_transmit_ui_data(&ctx, (const atc_hdlc_u8 *)"ed", 2);
+    atc_hdlc_transmit_ui_data(&ctx, (const atc_hdlc_u8*)"stream", 6);
+    atc_hdlc_transmit_ui_data(&ctx, (const atc_hdlc_u8*)"ed", 2);
     atc_hdlc_transmit_ui_end(&ctx);
 
     return 0;
