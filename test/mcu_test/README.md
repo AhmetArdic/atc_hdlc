@@ -193,6 +193,130 @@ void hdlc_port_on_event(atc_hdlc_event_t event)
 }
 ```
 
+## C2000 + DriverLib example
+
+The example below targets TI C2000 (e.g. F28379D) using the SCI peripheral
+and DriverLib.  TX is FIFO-buffered; RX polls the SCI RX FIFO each
+`hdlc_port_run()` iteration.  A 1 ms CPUTimer ISR drives the tick counter.
+
+```c
+/* hdlc_platform.c — TI C2000 DriverLib implementation */
+
+#include "hdlc_platform.h"
+#include "driverlib.h"
+#include "device.h"
+
+#define HDLC_SCI_BASE  SCIA_BASE
+
+/* ------------------------------------------------------------------ */
+/*  Millisecond tick (incremented by CPUTimer0 ISR)                   */
+/* ------------------------------------------------------------------ */
+static volatile uint32_t tick_ms = 0;
+
+__interrupt void cpuTimer0ISR(void)
+{
+    tick_ms++;
+    Interrupt_clearACKGroup(INTERRUPT_ACK_GROUP1);
+}
+
+/* Configure CPUTimer0 for a 1 ms period and register the ISR.
+ * Call this once during system init before hdlc_port_init(). */
+void hdlc_platform_timer_init(void)
+{
+    CPUTimer_stopTimer(CPUTIMER0_BASE);
+    CPUTimer_setPeriod(CPUTIMER0_BASE, DEVICE_SYSCLK_FREQ / 1000UL - 1UL);
+    CPUTimer_setPreScaler(CPUTIMER0_BASE, 0);
+    CPUTimer_reloadTimerCounter(CPUTIMER0_BASE);
+    CPUTimer_enableInterrupt(CPUTIMER0_BASE);
+
+    Interrupt_register(INT_TIMER0, &cpuTimer0ISR);
+    Interrupt_enable(INT_TIMER0);
+
+    CPUTimer_startTimer(CPUTIMER0_BASE);
+}
+
+/* ------------------------------------------------------------------ */
+/*  PAL implementation                                                 */
+/* ------------------------------------------------------------------ */
+
+void port_tx_byte(uint8_t byte, bool flush)
+{
+    (void)flush;   /* SCI FIFO drains autonomously — no explicit flush needed */
+    SCI_writeCharBlockingFIFO(HDLC_SCI_BASE, (uint16_t)byte);
+}
+
+uint32_t port_tick_ms(void)
+{
+    return tick_ms;
+}
+
+uint16_t port_rx_read(uint8_t *buf, uint16_t max_len)
+{
+    uint16_t copied = 0;
+
+    while (copied < max_len &&
+           SCI_getRxFIFOStatus(HDLC_SCI_BASE) != SCI_FIFO_RX0)
+    {
+        buf[copied++] = (uint8_t)(SCI_readCharBlockingFIFO(HDLC_SCI_BASE) & 0xFFu);
+    }
+
+    return copied;
+}
+```
+
+### main.c skeleton
+
+```c
+#include "driverlib.h"
+#include "device.h"
+#include "hdlc_mcu_port.h"
+#include "hdlc_platform.h"   /* for hdlc_platform_timer_init() */
+
+int main(void)
+{
+    Device_init();
+    Device_initGPIO();
+    Interrupt_initModule();
+    Interrupt_initVectorTable();
+
+    /* Configure SCIA pins and peripheral (baud rate, 8N1, FIFO) here
+     * using SCI_setConfig() / SCI_enableFIFO() / SCI_enableModule(). */
+    hdlc_platform_sci_init();    /* your SCI setup function */
+    hdlc_platform_timer_init();  /* 1 ms CPUTimer0 */
+
+    EINT;
+    ERTM;
+
+    hdlc_port_config_t cfg = {
+        .local_addr  = 0x02,
+        .peer_addr   = 0x01,
+        .max_retries = 10,
+        .t1_ms       = 500,
+        .t2_ms       = 1,
+    };
+    hdlc_port_init(&cfg);
+
+    while (1)
+        hdlc_port_run();
+}
+```
+
+### C2000-specific notes
+
+- **SCI char width**: DriverLib `SCI_readCharBlockingFIFO` returns `uint16_t`.
+  Mask with `& 0xFF` when copying into `uint8_t` buffers (shown above).
+- **TX blocking**: `SCI_writeCharBlockingFIFO` spins until the TX FIFO has a
+  free slot.  If you need non-blocking TX, replace it with a software ring
+  buffer and a `SCI_TX_INT` ISR — the same pattern as the STM32 DMA example.
+- **RX FIFO depth**: C2000 SCI FIFO is 16 levels deep.  `HDLC_PORT_RX_CHUNK`
+  (default 256) is larger than the FIFO, so `port_rx_read` will drain it
+  completely each call.  Set the RX FIFO interrupt level to `SCI_FIFO_RX1`
+  if you use interrupt-driven RX instead of polling.
+- **Interrupt acknowledge**: always call `Interrupt_clearACKGroup` at the end
+  of every PIE ISR (shown in `cpuTimer0ISR` above).
+
+---
+
 ## Build system notes
 
 Add to your compiler flags to change buffer sizes without editing any file:
