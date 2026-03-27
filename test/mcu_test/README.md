@@ -236,6 +236,34 @@ void hdlc_platform_timer_init(void)
 }
 
 /* ------------------------------------------------------------------ */
+/*  SCI peripheral init (GPIO + baud rate + FIFO)                     */
+/* ------------------------------------------------------------------ */
+
+/* Configure SCIA for 921600 8N1 with TX/RX FIFO enabled.
+ * Adjust GPIO pin numbers and baud rate to match your board. */
+void hdlc_platform_sci_init(void)
+{
+    /* Route SCIA TX/RX to the correct GPIO pins (board-specific) */
+    GPIO_setPinConfig(GPIO_29_SCIA_TX);
+    GPIO_setPinConfig(GPIO_28_SCIA_RX);
+    GPIO_setQualificationMode(GPIO_28, GPIO_QUAL_ASYNC);
+
+    SCI_performSoftwareReset(HDLC_SCI_BASE);
+
+    SCI_setConfig(HDLC_SCI_BASE, DEVICE_LSPCLK_FREQ, 921600U,
+                  (SCI_CONFIG_WLEN_8 |
+                   SCI_CONFIG_STOP_ONE |
+                   SCI_CONFIG_PAR_NONE));
+
+    SCI_enableFIFO(HDLC_SCI_BASE);
+    SCI_resetTxFIFO(HDLC_SCI_BASE);
+    SCI_resetRxFIFO(HDLC_SCI_BASE);
+
+    SCI_enableModule(HDLC_SCI_BASE);
+    SCI_performSoftwareReset(HDLC_SCI_BASE);
+}
+
+/* ------------------------------------------------------------------ */
 /*  PAL implementation                                                 */
 /* ------------------------------------------------------------------ */
 
