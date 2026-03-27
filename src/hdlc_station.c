@@ -147,8 +147,11 @@ void atc_hdlc_t1_expired(atc_hdlc_context_t* ctx) {
 
     case ATC_HDLC_STATE_CONNECTED:
         if (ctx->va != ctx->vs) {
-            LOG_WRN("tx: T1 expired, enquiry RR(P=1) (%u/%u)", ctx->n2, max_retries);
-            send_rr(ctx, 1);
+            LOG_WRN("tx: T1 expired, enquiry (%u/%u)", ctx->n2, max_retries);
+            if (CTX_FLAG(ctx, HDLC_F_LOCAL_BUSY))
+                send_rnr(ctx, 1);
+            else
+                send_rr(ctx, 1);
             t1_start(ctx);
         }
         break;
@@ -168,7 +171,10 @@ void atc_hdlc_t2_expired(atc_hdlc_context_t* ctx) {
     if (!ctx)
         return;
     CTX_CLR(ctx, HDLC_F_T2_ACTIVE);
-    send_rr(ctx, 0);
+    if (CTX_FLAG(ctx, HDLC_F_LOCAL_BUSY))
+        send_rnr(ctx, 0);
+    else
+        send_rr(ctx, 0);
 }
 
 atc_hdlc_state_t atc_hdlc_get_state(const atc_hdlc_context_t* ctx) {
