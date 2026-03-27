@@ -239,10 +239,10 @@ void hdlc_platform_timer_init(void)
 /*  PAL implementation                                                 */
 /* ------------------------------------------------------------------ */
 
-void port_tx_byte(uint8_t byte, bool flush)
+void port_tx_byte(uint16_t byte, bool flush)
 {
     (void)flush;   /* SCI FIFO drains autonomously — no explicit flush needed */
-    SCI_writeCharBlockingFIFO(HDLC_SCI_BASE, (uint16_t)byte);
+    SCI_writeCharBlockingFIFO(HDLC_SCI_BASE, byte);
 }
 
 uint32_t port_tick_ms(void)
@@ -250,14 +250,14 @@ uint32_t port_tick_ms(void)
     return tick_ms;
 }
 
-uint16_t port_rx_read(uint8_t *buf, uint16_t max_len)
+uint16_t port_rx_read(uint16_t *buf, uint16_t max_len)
 {
     uint16_t copied = 0;
 
     while (copied < max_len &&
            SCI_getRxFIFOStatus(HDLC_SCI_BASE) != SCI_FIFO_RX0)
     {
-        buf[copied++] = (uint8_t)(SCI_readCharBlockingFIFO(HDLC_SCI_BASE) & 0xFFu);
+        buf[copied++] = SCI_readCharBlockingFIFO(HDLC_SCI_BASE) & 0xFFu;
     }
 
     return copied;
