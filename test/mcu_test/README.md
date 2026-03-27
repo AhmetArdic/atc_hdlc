@@ -155,44 +155,6 @@ int main(void)
 }
 ```
 
-### Receiving data
-
-Override the weak `hdlc_port_on_data` hook in your application:
-
-```c
-#include "hdlc_mcu_port.h"
-
-/* Called by hdlc_mcu_port.c whenever a complete I-frame is received. */
-void hdlc_port_on_data(const atc_hdlc_u8 *data, atc_hdlc_u16 len)
-{
-    /* process received payload — e.g. copy to an application queue */
-    app_queue_push(data, len);
-}
-```
-
-If you do not define this function the default behaviour is to echo the
-payload back to the peer as a new I-frame.
-
-### Handling link events
-
-```c
-#include "hdlc_mcu_port.h"
-
-void hdlc_port_on_event(atc_hdlc_event_t event)
-{
-    switch (event) {
-    case ATC_HDLC_EVENT_CONNECT_ACCEPTED:
-        LED_On(LED_LINK);
-        break;
-    case ATC_HDLC_EVENT_LINK_FAILURE:
-        LED_Off(LED_LINK);
-        break;
-    default:
-        break;
-    }
-}
-```
-
 ## Build system notes
 
 Add to your compiler flags to change buffer sizes without editing any file:

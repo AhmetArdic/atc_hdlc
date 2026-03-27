@@ -48,13 +48,4 @@ atc_hdlc_error_t hdlc_port_transmit(const atc_hdlc_u8 *data, atc_hdlc_u32 len);
  */
 atc_hdlc_context_t *hdlc_port_ctx(void);
 
-/*
- * Application hooks — define these in your own source file to override the
- * default (no-op / echo) behaviour.  Declaring them weak means you only need
- * to implement the ones you care about.
- *
- *   void hdlc_port_on_data(const atc_hdlc_u8 *data, atc_hdlc_u16 len);
- *   void hdlc_port_on_event(atc_hdlc_event_t event);
- */
-
 #endif /* HDLC_MCU_PORT_H */

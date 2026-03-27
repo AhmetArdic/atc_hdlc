@@ -20,21 +20,6 @@ static volatile uint32_t t1_started_ms;
 static volatile uint_least8_t  t2_active;
 static volatile uint32_t t2_started_ms;
 
-/* ---- Weak application hooks ---- */
-
-__attribute__((weak))
-void hdlc_port_on_data(const atc_hdlc_u8 *data, atc_hdlc_u16 len)
-{
-    /* Default: echo received payload back as a new I-frame. */
-    atc_hdlc_transmit_i(&hdlc_ctx, data, len);
-}
-
-__attribute__((weak))
-void hdlc_port_on_event(atc_hdlc_event_t event)
-{
-    (void)event;
-}
-
 /* ---- Internal HDLC callbacks ---- */
 
 static int on_send(atc_hdlc_u8 byte, bool flush, void *user_ctx)
@@ -47,13 +32,31 @@ static int on_send(atc_hdlc_u8 byte, bool flush, void *user_ctx)
 static void on_data(const atc_hdlc_u8 *data, atc_hdlc_u16 len, void *user_ctx)
 {
     (void)user_ctx;
-    hdlc_port_on_data(data, len);
+    atc_hdlc_transmit_i(&hdlc_ctx, data, len);
 }
+
+/*
+ * Test B self-test: on connection send 5 I-frames with a known pattern so
+ * the host-side run_test_b() can verify reception and payload integrity.
+ * Constants match test_physical_target.c: FRAME_COUNT=5, FRAME_SIZE=16.
+ */
+#define SELF_TEST_FRAME_COUNT  5u
+#define SELF_TEST_FRAME_SIZE   16u
+
+static const atc_hdlc_u8 self_test_payload[SELF_TEST_FRAME_SIZE] = {
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+    0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+};
 
 static void on_event(atc_hdlc_event_t event, void *user_ctx)
 {
     (void)user_ctx;
-    hdlc_port_on_event(event);
+
+    if (event == ATC_HDLC_EVENT_CONNECT_ACCEPTED ||
+        event == ATC_HDLC_EVENT_INCOMING_CONNECT) {
+        for (atc_hdlc_u8 i = 0; i < SELF_TEST_FRAME_COUNT; i++)
+            atc_hdlc_transmit_i(&hdlc_ctx, self_test_payload, SELF_TEST_FRAME_SIZE);
+    }
 }
 
 static void t1_start(atc_hdlc_u32 ms, void *user_ctx)
