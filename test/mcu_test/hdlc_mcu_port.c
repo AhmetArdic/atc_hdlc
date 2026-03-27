@@ -15,9 +15,9 @@ static atc_hdlc_u32 tx_lens[HDLC_PORT_WINDOW];
 
 /* ---- Timer state (written by callbacks, read by hdlc_port_run) ---- */
 
-static volatile uint8_t  t1_active;
+static volatile uint_least8_t  t1_active;
 static volatile uint32_t t1_started_ms;
-static volatile uint8_t  t2_active;
+static volatile uint_least8_t  t2_active;
 static volatile uint32_t t2_started_ms;
 
 /* ---- Weak application hooks ---- */
@@ -40,7 +40,7 @@ void hdlc_port_on_event(atc_hdlc_event_t event)
 static int on_send(atc_hdlc_u8 byte, bool flush, void *user_ctx)
 {
     (void)user_ctx;
-    port_tx_byte((uint8_t)byte, flush);
+    port_tx_byte(byte, flush);
     return 0;
 }
 
@@ -129,7 +129,7 @@ void hdlc_port_init(const hdlc_port_config_t *cfg)
 
 void hdlc_port_run(void)
 {
-    uint8_t  chunk[HDLC_PORT_RX_CHUNK];
+    uint_least8_t  chunk[HDLC_PORT_RX_CHUNK];
     uint16_t n = port_rx_read(chunk, sizeof(chunk));
     if (n > 0)
         atc_hdlc_data_in(&hdlc_ctx, chunk, n);
