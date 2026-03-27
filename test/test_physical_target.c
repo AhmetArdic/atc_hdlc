@@ -1,7 +1,16 @@
 /**
  * @file test_physical_target.c
- * @brief PC-side test: sends a PDF file to an STM32 target via serial (I-frames)
- *        and verifies that every byte is echoed back (as UI frames).
+ * @brief PC-side test suite for HDLC physical link verification.
+ *
+ * Two tests run per window size:
+ *
+ *   Test B — STM32-initiated I-frames: immediately after connection the STM32
+ *             sends a known fixed-pattern burst (TEST_I_FRAME_COUNT frames);
+ *             PC verifies frame count and payload byte-for-byte.
+ *
+ *   Test A — Bidirectional I-frame echo: PC sends a PDF file as I-frames;
+ *             STM32 echoes each frame back as an I-frame (not UI); PC verifies
+ *             byte-for-byte integrity. TX and RTT throughput reported separately.
  *
  * Cross-platform: builds on both Linux and Windows.
  */
@@ -18,7 +27,6 @@
  *  Platform Abstraction
  * ================================================================ */
 #ifdef _WIN32
-/* ---- Windows ---- */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
@@ -33,13 +41,7 @@ typedef CRITICAL_SECTION mutex_t;
 #define mutex_unlock(m)  LeaveCriticalSection(m)
 #define mutex_destroy(m) DeleteCriticalSection(m)
 
-static void sleep_us(unsigned us) {
-    Sleep(us / 1000 > 0 ? us / 1000 : 1);
-}
-static void sleep_ms(unsigned ms) {
-    Sleep(ms);
-}
-
+static void sleep_ms(unsigned ms) { Sleep(ms); }
 #define YIELD_THREAD() Sleep(0)
 
 static double get_time_s(void) {
@@ -50,7 +52,6 @@ static double get_time_s(void) {
 }
 
 #else
-/* ---- POSIX (Linux / macOS) ---- */
 #include <fcntl.h>
 #include <pthread.h>
 #include <sched.h>
@@ -69,13 +70,7 @@ typedef pthread_mutex_t mutex_t;
 #define mutex_unlock(m)  pthread_mutex_unlock(m)
 #define mutex_destroy(m) pthread_mutex_destroy(m)
 
-static void sleep_us(unsigned us) {
-    usleep(us);
-}
-static void sleep_ms(unsigned ms) {
-    usleep(ms * 1000u);
-}
-
+static void sleep_ms(unsigned ms) { usleep(ms * 1000u); }
 #define YIELD_THREAD() sched_yield()
 
 static double get_time_s(void) {
@@ -99,410 +94,298 @@ static double get_time_s(void) {
 #define BUFFER_SIZE 16384
 #define PDF_PATH    TEST_DATA_DIR "/test.pdf"
 
+/* Must match TEST_I_FRAME_COUNT / TEST_I_PAYLOAD_SIZE in STM32 main.c */
+#define STM32_TEST_FRAME_COUNT  5u
+#define STM32_TEST_FRAME_SIZE   16u
+#define STM32_TEST_TOTAL_BYTES  (STM32_TEST_FRAME_COUNT * STM32_TEST_FRAME_SIZE)
+
 /* ================================================================
  *  Physical Node Context
  * ================================================================ */
 typedef struct {
-    serial_handle_t port;
-    mutex_t ctx_lock;
-    atc_hdlc_context_t ctx;
-    atc_hdlc_config_t cfg;
+    serial_handle_t  port;
+    mutex_t          ctx_lock;
+    atc_hdlc_context_t  ctx;
+    atc_hdlc_config_t   cfg;
     atc_hdlc_platform_t plat;
     atc_hdlc_tx_window_t tw;
     atc_hdlc_rx_buffer_t rx;
-    atc_hdlc_u8 input_buffer[BUFFER_SIZE * 2];
-    atc_hdlc_u8 retransmit_slots[7 * 1024];
+    atc_hdlc_u8  input_buffer[BUFFER_SIZE * 2];
+    atc_hdlc_u8  retransmit_slots[7 * 1024];
     atc_hdlc_u32 retransmit_lens[7];
     thread_handle_t rx_thread;
-    volatile bool running;
+    volatile bool   running;
 
-    /* Receive buffer for integrity check */
-    uint8_t* recv_buffer;
-    uint32_t recv_buffer_len;
+    /* Test B: frames sent by STM32 after connection */
+    uint8_t          stm32_test_buf[STM32_TEST_TOTAL_BYTES];
+    volatile uint32_t stm32_test_bytes;
+    volatile uint32_t stm32_test_frames;
+    volatile bool     stm32_test_done; /* set by main thread to stop routing here */
+
+    /* Test A: echo receive buffer */
+    uint8_t*         recv_buf;
+    uint32_t         recv_buf_len;
     volatile uint32_t bytes_received;
     volatile uint32_t frames_received;
 } physical_node_t;
 
 /* ================================================================
- *  Serial Port — Open / Read / Write / Close
+ *  Serial Port
  * ================================================================ */
 #ifdef _WIN32
 
-static serial_handle_t serial_open(const char* port_name) {
-    HANDLE h =
-        CreateFileA(port_name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+static serial_handle_t serial_open(const char* port) {
+    HANDLE h = CreateFileA(port, GENERIC_READ | GENERIC_WRITE, 0, NULL,
+                           OPEN_EXISTING, 0, NULL);
     if (h == INVALID_HANDLE_VALUE) {
-        printf("Error opening serial port %s (err=%lu)\n", port_name, GetLastError());
+        printf("Error opening %s (err=%lu)\n", port, GetLastError());
         return SERIAL_INVALID;
     }
-
-    DCB dcb;
-    memset(&dcb, 0, sizeof(dcb));
+    DCB dcb = {0};
     dcb.DCBlength = sizeof(dcb);
-    if (!GetCommState(h, &dcb)) {
-        printf("Error GetCommState (err=%lu)\n", GetLastError());
-        CloseHandle(h);
-        return SERIAL_INVALID;
-    }
-
-    dcb.BaudRate = BAUD_RATE;
-    dcb.ByteSize = 8;
-    dcb.StopBits = ONESTOPBIT;
-    dcb.Parity = NOPARITY;
-    dcb.fBinary = TRUE;
-    dcb.fParity = FALSE;
-    dcb.fOutxCtsFlow = FALSE;
-    dcb.fOutxDsrFlow = FALSE;
+    GetCommState(h, &dcb);
+    dcb.BaudRate = BAUD_RATE; dcb.ByteSize = 8;
+    dcb.StopBits = ONESTOPBIT; dcb.Parity = NOPARITY;
+    dcb.fBinary = TRUE; dcb.fOutX = FALSE; dcb.fInX = FALSE;
     dcb.fDtrControl = DTR_CONTROL_ENABLE;
     dcb.fRtsControl = RTS_CONTROL_ENABLE;
-    dcb.fOutX = FALSE;
-    dcb.fInX = FALSE;
-
-    if (!SetCommState(h, &dcb)) {
-        printf("Error SetCommState (err=%lu)\n", GetLastError());
-        CloseHandle(h);
-        return SERIAL_INVALID;
-    }
-
-    COMMTIMEOUTS timeouts;
-    memset(&timeouts, 0, sizeof(timeouts));
-    timeouts.ReadIntervalTimeout = MAXDWORD;
-    timeouts.ReadTotalTimeoutMultiplier = 0;
-    timeouts.ReadTotalTimeoutConstant = 1; /* 1 ms read timeout */
-    timeouts.WriteTotalTimeoutMultiplier = 0;
-    timeouts.WriteTotalTimeoutConstant = 1000;
-    SetCommTimeouts(h, &timeouts);
-
+    SetCommState(h, &dcb);
+    COMMTIMEOUTS to = {MAXDWORD, 0, 1, 0, 1000};
+    SetCommTimeouts(h, &to);
     PurgeComm(h, PURGE_RXCLEAR | PURGE_TXCLEAR);
     return h;
 }
-
-static int serial_read(serial_handle_t h, uint8_t* buf, int max_len) {
-    DWORD bytes_read = 0;
-    if (!ReadFile(h, buf, (DWORD)max_len, &bytes_read, NULL))
-        return -1;
-    return (int)bytes_read;
+static int  serial_read (serial_handle_t h, uint8_t* b, int n) {
+    DWORD r = 0; ReadFile(h, b, n, &r, NULL); return (int)r;
 }
-
-static int serial_write(serial_handle_t h, const uint8_t* buf, int len) {
-    DWORD written = 0;
-    if (!WriteFile(h, buf, (DWORD)len, &written, NULL))
-        return -1;
-    return (int)written;
+static int  serial_write(serial_handle_t h, const uint8_t* b, int n) {
+    DWORD w = 0; WriteFile(h, b, n, &w, NULL); return (int)w;
 }
+static void serial_close(serial_handle_t h) { CloseHandle(h); }
 
-static void serial_close(serial_handle_t h) {
-    CloseHandle(h);
-}
+#else
 
-#else /* POSIX */
-
-static serial_handle_t serial_open(const char* port_name) {
-    int fd = open(port_name, O_RDWR | O_NOCTTY | O_SYNC);
-    if (fd < 0) {
-        printf("Error opening serial port %s: %s\n", port_name, strerror(errno));
-        return SERIAL_INVALID;
-    }
-
+static serial_handle_t serial_open(const char* port) {
+    int fd = open(port, O_RDWR | O_NOCTTY | O_SYNC);
+    if (fd < 0) { printf("Error opening %s: %s\n", port, strerror(errno)); return SERIAL_INVALID; }
     struct termios tty;
-    if (tcgetattr(fd, &tty) != 0) {
-        printf("Error from tcgetattr: %s\n", strerror(errno));
-        close(fd);
-        return SERIAL_INVALID;
-    }
-
-    cfsetospeed(&tty, B921600);
-    cfsetispeed(&tty, B921600);
+    tcgetattr(fd, &tty);
+    cfsetospeed(&tty, B921600); cfsetispeed(&tty, B921600);
     cfmakeraw(&tty);
-
-    tty.c_cc[VMIN] = 0;
-    tty.c_cc[VTIME] = 1;
+    tty.c_cc[VMIN] = 0; tty.c_cc[VTIME] = 1;
     tty.c_cflag |= (CLOCAL | CREAD);
     tty.c_cflag &= ~CRTSCTS;
-
-    if (tcsetattr(fd, TCSANOW, &tty) != 0) {
-        printf("Error from tcsetattr: %s\n", strerror(errno));
-        close(fd);
-        return SERIAL_INVALID;
-    }
-
+    tcsetattr(fd, TCSANOW, &tty);
     return fd;
 }
-
-static int serial_read(serial_handle_t fd, uint8_t* buf, int max_len) {
-    return (int)read(fd, buf, (size_t)max_len);
+static int serial_read(serial_handle_t fd, uint8_t* b, int n) {
+    return (int)read(fd, b, (size_t)n);
 }
-
-static int serial_write(serial_handle_t fd, const uint8_t* buf, int len) {
-    int total = 0;
-    while (total < len) {
-        int res = (int)write(fd, buf + total, (size_t)(len - total));
-        if (res > 0)
-            total += res;
-        else if (res < 0 && errno != EAGAIN && errno != EINTR)
-            break;
+static int serial_write(serial_handle_t fd, const uint8_t* b, int n) {
+    int t = 0;
+    while (t < n) {
+        int r = (int)write(fd, b + t, (size_t)(n - t));
+        if (r > 0) t += r;
+        else if (r < 0 && errno != EAGAIN && errno != EINTR) break;
     }
-    return total;
+    return t;
 }
+static void serial_close(serial_handle_t fd) { close(fd); }
 
-static void serial_close(serial_handle_t fd) {
-    close(fd);
-}
-
-#endif /* _WIN32 */
+#endif
 
 /* ================================================================
  *  Thread Abstraction
  * ================================================================ */
 #ifdef _WIN32
-
 static DWORD WINAPI rx_thread_wrapper(LPVOID arg);
-
-static thread_handle_t thread_create(physical_node_t* node) {
-    return CreateThread(NULL, 0, rx_thread_wrapper, node, 0, NULL);
+static thread_handle_t thread_create(physical_node_t* n) {
+    return CreateThread(NULL, 0, rx_thread_wrapper, n, 0, NULL);
 }
-
-static void thread_join(thread_handle_t h) {
-    WaitForSingleObject(h, INFINITE);
-    CloseHandle(h);
-}
-
-#else /* POSIX */
-
+static void thread_join(thread_handle_t h) { WaitForSingleObject(h, INFINITE); CloseHandle(h); }
+#else
 static void* rx_thread_wrapper(void* arg);
-
-static thread_handle_t thread_create(physical_node_t* node) {
-    pthread_t t;
-    pthread_create(&t, NULL, rx_thread_wrapper, node);
-    return t;
+static thread_handle_t thread_create(physical_node_t* n) {
+    pthread_t t; pthread_create(&t, NULL, rx_thread_wrapper, n); return t;
 }
-
-static void thread_join(thread_handle_t t) {
-    pthread_join(t, NULL);
-}
-
-#endif /* _WIN32 */
+static void thread_join(thread_handle_t t) { pthread_join(t, NULL); }
+#endif
 
 /* ================================================================
  *  HDLC Callbacks
  * ================================================================ */
-static uint8_t tx_buffer[BUFFER_SIZE];
-static atc_hdlc_u32 tx_index = 0;
+static uint8_t tx_buf[BUFFER_SIZE];
+static atc_hdlc_u32 tx_idx = 0;
 
-/** @brief Output callback — buffers bytes and writes to serial on flush. */
 static int node_output_cb(atc_hdlc_u8 byte, bool flush, void* user_data) {
     physical_node_t* node = (physical_node_t*)user_data;
-
-    if (tx_index < sizeof(tx_buffer))
-        tx_buffer[tx_index++] = byte;
-
-    if (flush || tx_index >= sizeof(tx_buffer) - 1) {
-        if (tx_index > 0) {
-            serial_write(node->port, tx_buffer, (int)tx_index);
-            tx_index = 0;
-        }
+    if (tx_idx < sizeof(tx_buf))
+        tx_buf[tx_idx++] = byte;
+    if (flush || tx_idx >= sizeof(tx_buf) - 1) {
+        if (tx_idx > 0) { serial_write(node->port, tx_buf, (int)tx_idx); tx_idx = 0; }
     }
     return 0;
 }
 
-/** @brief Data delivery callback — accumulates received payload for integrity check. */
+/**
+ * @brief Routes incoming frames: Test B frames go to stm32_test_buf until
+ *        stm32_test_done is set; after that all frames go to recv_buf (Test A).
+ */
 static void node_on_data_cb(const atc_hdlc_u8* payload, atc_hdlc_u16 len, void* user_data) {
     physical_node_t* node = (physical_node_t*)user_data;
     node->frames_received++;
 
-    if (node->recv_buffer && len > 0) {
-        uint32_t space = node->recv_buffer_len - node->bytes_received;
-        uint32_t copy_len = (len < space) ? len : space;
-        memcpy(node->recv_buffer + node->bytes_received, payload, copy_len);
+    if (!node->stm32_test_done) {
+        uint32_t space = STM32_TEST_TOTAL_BYTES - node->stm32_test_bytes;
+        uint32_t n = len < space ? len : space;
+        memcpy(node->stm32_test_buf + node->stm32_test_bytes, payload, n);
+        node->stm32_test_bytes += len;
+        node->stm32_test_frames++;
+        printf("\r[Test B] frame #%u  len=%-4u  total=%u/%u\n",
+               node->stm32_test_frames, len, node->stm32_test_bytes, STM32_TEST_TOTAL_BYTES);
+    } else {
+        if (node->recv_buf) {
+            uint32_t space = node->recv_buf_len - node->bytes_received;
+            uint32_t n = len < space ? len : space;
+            memcpy(node->recv_buf + node->bytes_received, payload, n);
+        }
+        node->bytes_received += len;
+        printf("\r[Test A] frame #%u  len=%-4u  echo=%u\n",
+               node->frames_received, len, node->bytes_received);
     }
-    node->bytes_received += len;
-    printf("\rReceived frame #%u (len=%u)         \n", node->frames_received, len);
     fflush(stdout);
 }
 
-/** @brief Event callback — prints connection state changes. */
 static void node_event_cb(atc_hdlc_event_t event, void* user_data) {
     (void)user_data;
     if (event == ATC_HDLC_EVENT_CONNECT_ACCEPTED || event == ATC_HDLC_EVENT_INCOMING_CONNECT)
-        printf("\nLogical connection established!\n");
-    else if (event == ATC_HDLC_EVENT_DISCONNECT_COMPLETE ||
-             event == ATC_HDLC_EVENT_PEER_DISCONNECT || event == ATC_HDLC_EVENT_LINK_FAILURE)
-        printf("\n[Error] Logical connection dropped!\n");
+        printf("\nConnected.\n");
+    else if (event == ATC_HDLC_EVENT_LINK_FAILURE || event == ATC_HDLC_EVENT_PEER_DISCONNECT)
+        printf("\n[Error] Link dropped.\n");
 }
 
 /* ================================================================
- *  Timer state (set by platform callbacks, checked by RX thread)
+ *  Timer State + RX Thread
  * ================================================================ */
-static volatile double t1_started_at = 0.0;
-static volatile int t1_pending = 0;
-static volatile double t2_started_at = 0.0;
-static volatile int t2_pending = 0;
+static volatile double t1_at = 0, t2_at = 0;
+static volatile int    t1_pending = 0, t2_pending = 0;
 
-static void phys_t1_start_cb(atc_hdlc_u32 ms, void* user_data) {
-    (void)ms;
-    (void)user_data;
-    t1_started_at = get_time_s();
-    t1_pending = 1;
-}
-static void phys_t1_stop_cb(void* user_data) {
-    (void)user_data;
-    t1_pending = 0;
-}
-static void phys_t2_start_cb(atc_hdlc_u32 ms, void* user_data) {
-    (void)ms;
-    (void)user_data;
-    /* Record start; RX thread will fire t2_expired when elapsed */
-    t2_started_at = get_time_s();
-    t2_pending = 1;
-}
-static void phys_t2_stop_cb(void* user_data) {
-    (void)user_data;
-    t2_pending = 0;
-}
+static void t1_start(atc_hdlc_u32 ms, void* u) { (void)ms; (void)u; t1_at = get_time_s(); t1_pending = 1; }
+static void t1_stop (void* u)                   { (void)u; t1_pending = 0; }
+static void t2_start(atc_hdlc_u32 ms, void* u) { (void)ms; (void)u; t2_at = get_time_s(); t2_pending = 1; }
+static void t2_stop (void* u)                   { (void)u; t2_pending = 0; }
 
-/* ================================================================
- *  RX Thread — reads serial + fires timer expiry notifications
- * ================================================================ */
 static void rx_thread_body(physical_node_t* node) {
     uint8_t buf[8192];
-
     while (node->running) {
         int n = serial_read(node->port, buf, sizeof(buf));
-
         mutex_lock(&node->ctx_lock);
-
-        if (n > 0) {
+        if (n > 0)
             atc_hdlc_data_in(&node->ctx, buf, (atc_hdlc_u32)n);
-        }
-
-        /* T2: fire when t2_ms has elapsed — allows piggybacking on
-         * subsequent I-frames before sending a standalone RR */
         if (t2_pending) {
             double now = get_time_s();
-            if ((now - t2_started_at) * 1000.0 >= (double)node->ctx.config->t2_ms) {
+            if ((now - t2_at) * 1000.0 >= (double)node->ctx.config->t2_ms) {
                 t2_pending = 0;
                 atc_hdlc_t2_expired(&node->ctx);
             }
         }
-
-        /* T1: check wall-clock only when pending */
         if (t1_pending) {
             double now = get_time_s();
-            if ((now - t1_started_at) * 1000.0 >= (double)node->ctx.config->t1_ms) {
+            if ((now - t1_at) * 1000.0 >= (double)node->ctx.config->t1_ms) {
                 t1_pending = 0;
                 atc_hdlc_t1_expired(&node->ctx);
             }
         }
-
         mutex_unlock(&node->ctx_lock);
-
-        if (n <= 0)
-            YIELD_THREAD();
+        if (n <= 0) YIELD_THREAD();
     }
 }
 
 #ifdef _WIN32
-static DWORD WINAPI rx_thread_wrapper(LPVOID arg) {
-    rx_thread_body((physical_node_t*)arg);
-    return 0;
-}
+static DWORD WINAPI rx_thread_wrapper(LPVOID arg) { rx_thread_body((physical_node_t*)arg); return 0; }
 #else
-static void* rx_thread_wrapper(void* arg) {
-    rx_thread_body((physical_node_t*)arg);
-    return NULL;
-}
+static void* rx_thread_wrapper(void* arg) { rx_thread_body((physical_node_t*)arg); return NULL; }
 #endif
 
 /* ================================================================
  *  Helpers
  * ================================================================ */
 
-/** @brief Load a file into a malloc'd buffer. Returns NULL on failure. */
 static uint8_t* load_file(const char* path, uint32_t* out_size) {
     FILE* f = fopen(path, "rb");
-    if (!f) {
-        printf("Error: Cannot open file '%s': %s\n", path, strerror(errno));
-        return NULL;
-    }
-    fseek(f, 0, SEEK_END);
-    long size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (size <= 0) {
-        fclose(f);
-        return NULL;
-    }
-
-    uint8_t* buf = (uint8_t*)malloc((size_t)size);
-    if (!buf) {
-        fclose(f);
-        return NULL;
-    }
-
-    if (fread(buf, 1, (size_t)size, f) != (size_t)size) {
-        free(buf);
-        fclose(f);
-        return NULL;
-    }
+    if (!f) { printf("Cannot open '%s': %s\n", path, strerror(errno)); return NULL; }
+    fseek(f, 0, SEEK_END); long sz = ftell(f); fseek(f, 0, SEEK_SET);
+    if (sz <= 0) { fclose(f); return NULL; }
+    uint8_t* buf = (uint8_t*)malloc((size_t)sz);
+    if (!buf) { fclose(f); return NULL; }
+    if (fread(buf, 1, (size_t)sz, f) != (size_t)sz) { free(buf); fclose(f); return NULL; }
     fclose(f);
-    *out_size = (uint32_t)size;
+    *out_size = (uint32_t)sz;
     return buf;
 }
 
-/** @brief Connect to the target (SABM handshake) with timeout. */
 static bool wait_for_connection(physical_node_t* node, int timeout_ms) {
     mutex_lock(&node->ctx_lock);
     atc_hdlc_link_setup(&node->ctx, node->ctx.peer_address);
     mutex_unlock(&node->ctx_lock);
-
-    int retries = timeout_ms;
-    while (node->ctx.current_state != ATC_HDLC_STATE_CONNECTED && retries > 0) {
+    while (node->ctx.current_state != ATC_HDLC_STATE_CONNECTED && timeout_ms-- > 0)
         sleep_ms(1);
-        /* T1/T2 timers are driven by rx_thread_body — no manual tick needed */
-        retries--;
-    }
     return node->ctx.current_state == ATC_HDLC_STATE_CONNECTED;
 }
 
-/** @brief Send the entire payload as I-frames in CHUNK_SIZE pieces. */
-static uint32_t send_data(physical_node_t* node, const uint8_t* data, uint32_t data_len) {
-    uint32_t sent = 0;
+/** @brief Test B: wait for STM32-initiated I-frames then verify payload. */
+static bool run_test_b(physical_node_t* node) {
+    static const uint8_t expected[STM32_TEST_FRAME_SIZE] = {
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+    };
 
-    while (sent < data_len && node->running) {
-        uint32_t chunk = CHUNK_SIZE;
-        if (data_len - sent < CHUNK_SIZE)
-            chunk = data_len - sent;
+    printf("Waiting for STM32 self-test frames (%u bytes)...\n", STM32_TEST_TOTAL_BYTES);
+    int timeout_ms = 5000;
+    while (node->stm32_test_bytes < STM32_TEST_TOTAL_BYTES && timeout_ms > 0 && node->running) {
+        sleep_ms(10);
+        timeout_ms -= 10;
+    }
 
-        bool sent_ok = false;
-        long stuck_count = 0;
+    printf("\n--- Test B ---\n");
+    printf("Expected: %u bytes (%u x %u)\n",
+           STM32_TEST_TOTAL_BYTES, STM32_TEST_FRAME_COUNT, STM32_TEST_FRAME_SIZE);
+    printf("Received: %u bytes (%u frames)\n", node->stm32_test_bytes, node->stm32_test_frames);
 
-        /* Retry until the I-frame is accepted (window open) */
-        while (!sent_ok && node->running) {
-            mutex_lock(&node->ctx_lock);
-            if (node->ctx.current_state == ATC_HDLC_STATE_CONNECTED) {
-                sent_ok = (atc_hdlc_transmit_i(&node->ctx, data + sent, chunk) == ATC_HDLC_OK);
-            } else {
-                stuck_count++;
-                if (stuck_count % 1000 == 0) {
-                    printf("  [Error] Disconnected while sending.\n");
-                    node->running = false;
-                }
-            }
-            mutex_unlock(&node->ctx_lock);
+    if (node->stm32_test_bytes < STM32_TEST_TOTAL_BYTES) {
+        printf("%s[FAIL] Test B: timeout%s\n", COL_RED, COL_RESET);
+        return false;
+    }
 
-            if (!sent_ok && node->running) {
-                stuck_count++;
-                if (stuck_count % 5000000 == 0) {
-                    printf("\r  [Wait] TX Window full. V(S)=%u, V(R)=%u, V(A)=%u   ", node->ctx.vs,
-                           node->ctx.vr, node->ctx.va);
-                }
-                YIELD_THREAD();
-            }
+    for (uint32_t i = 0; i < STM32_TEST_FRAME_COUNT; i++) {
+        if (memcmp(node->stm32_test_buf + i * STM32_TEST_FRAME_SIZE,
+                   expected, STM32_TEST_FRAME_SIZE) != 0) {
+            printf("%s[FAIL] Test B: payload mismatch in frame %u%s\n", COL_RED, i, COL_RESET);
+            return false;
         }
+    }
+    printf("%s[PASS] Test B: %u STM32-initiated I-frames verified%s\n",
+           COL_GREEN, STM32_TEST_FRAME_COUNT, COL_RESET);
+    return true;
+}
 
+static uint32_t send_data(physical_node_t* node, const uint8_t* data, uint32_t len) {
+    uint32_t sent = 0;
+    while (sent < len && node->running) {
+        uint32_t chunk = (len - sent < CHUNK_SIZE) ? (len - sent) : CHUNK_SIZE;
+        bool ok = false;
+        long spin = 0;
+        while (!ok && node->running) {
+            mutex_lock(&node->ctx_lock);
+            if (node->ctx.current_state == ATC_HDLC_STATE_CONNECTED)
+                ok = (atc_hdlc_transmit_i(&node->ctx, data + sent, chunk) == ATC_HDLC_OK);
+            else if (++spin % 1000 == 0) { printf("  [Error] Disconnected.\n"); node->running = false; }
+            mutex_unlock(&node->ctx_lock);
+            if (!ok && node->running) YIELD_THREAD();
+        }
         sent += chunk;
-
         if (sent % (CHUNK_SIZE * 20) == 0) {
-            printf("\rSent %u bytes, Echoed %u bytes...   ", sent, node->bytes_received);
+            printf("\rSent %u  Echoed %u...   ", sent, node->bytes_received);
             fflush(stdout);
         }
         YIELD_THREAD();
@@ -510,256 +393,188 @@ static uint32_t send_data(physical_node_t* node, const uint8_t* data, uint32_t d
     return sent;
 }
 
-/** @brief Wait for echo replies up to timeout. */
 static void wait_for_echoes(physical_node_t* node, uint32_t expected, int timeout_ms) {
     while (node->bytes_received < expected && timeout_ms > 0 && node->running) {
-        sleep_ms(10);
-        timeout_ms -= 10; /* Fixed from 100 to 10 */
+        sleep_ms(10); timeout_ms -= 10;
     }
-
-    /* Give it an extra moment to finish printing/processing the absolute last frames */
-    if (node->bytes_received == expected) {
-        sleep_ms(100);
-    }
-
-    if (timeout_ms <= 0 && node->bytes_received < expected) {
-        printf("\n[Warning] Timeout waiting for final echoes.\n");
-        printf("  -> Timeout: bytes_received=%u, expected=%u\n", node->bytes_received, expected);
-    }
+    if (timeout_ms <= 0 && node->bytes_received < expected)
+        printf("\n[Warning] Echo timeout: received=%u expected=%u\n",
+               node->bytes_received, expected);
 }
 
-/** @brief Print test results and verify data integrity. Returns true on pass. */
-static bool verify_results(physical_node_t* node, const uint8_t* original, uint32_t data_len,
-                           uint32_t sent_bytes, double duration, double* out_kbps) {
-    /* Calculate physical throughput with HDLC overhead.
-     * For each chunk, HDLC adds:
-     * - 2 bytes Flags (0x7E)
-     * - 1 byte Address
-     * - 1 byte Control
-     * - 2 bytes FCS (CRC16)
-     * = 6 bytes of basic overhead per frame.
-     * *Note: Does not perfectly account for byte-stuffing which varies by payload. */
-    uint32_t num_frames_sent = (data_len + CHUNK_SIZE - 1) / CHUNK_SIZE;
-    uint32_t total_overhead = num_frames_sent * 6; /* 6 bytes generic framing overhead per frame */
+/** @brief Test A: verify byte-for-byte integrity and report TX / RTT throughput. */
+static bool run_test_a(physical_node_t* node, const uint8_t* original, uint32_t data_len,
+                       uint32_t sent, double tx_s, double rtt_s, double* out_kbps) {
+    uint32_t frames     = (data_len + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    uint32_t overhead   = frames * 6; /* flag+addr+ctrl+2×FCS */
+    double   tx_kbps    = ((data_len + overhead) * 8.0) / (tx_s  * 1000.0);
+    double   rtt_kbps   = ((data_len + overhead) * 2.0 * 8.0) / (rtt_s * 1000.0);
+    if (out_kbps) *out_kbps = rtt_kbps;
 
-    /* Since the target echoes the data back, the total bytes physically moving across the wire
-       is (Payload + Overhead) sent * 2 (Tx and Rx). We only calculate the ONE-WAY throughput. */
-    double physical_bytes_sent = data_len + total_overhead;
-    double kbps = (physical_bytes_sent * 8) / (duration * 1000.0);
-    if (out_kbps)
-        *out_kbps = kbps;
+    printf("\n--- Test A (Window %u) ---\n", node->ctx.tx_window->slot_count);
+    printf("Sent     : %u bytes  (%u frames)\n", sent, frames);
+    printf("Received : %u bytes  (%u frames)\n", node->bytes_received, node->frames_received);
+    printf("TX       : %.3f s  %.2f kbps\n", tx_s,  tx_kbps);
+    printf("RTT      : %.3f s  %.2f kbps\n", rtt_s, rtt_kbps);
 
-    printf("\n\n--- Test Results (Window %u) ---\n", node->ctx.tx_window->slot_count);
-    printf("Total Sent    : %u bytes\n", sent_bytes);
-    printf("Total Received: %u bytes\n", node->bytes_received);
-    printf("Frames Rcvd   : %u\n", node->frames_received);
-    printf("Time Taken    : %.2f seconds\n", duration);
-    printf("Throughput    : %.2f kbps\n", kbps);
-
-    if (node->bytes_received == data_len) {
-        bool match = (memcmp(original, node->recv_buffer, data_len) == 0);
-        if (match) {
-            printf("%s[PASS] Window %u: Perfect Match!%s\n", COL_GREEN,
-                   node->ctx.tx_window->slot_count, COL_RESET);
-            return true;
-        } else {
-            uint32_t pos = 0;
-            for (uint32_t i = 0; i < data_len; i++) {
-                if (original[i] != node->recv_buffer[i]) {
-                    pos = i;
-                    break;
-                }
-            }
-            printf("%s[FAIL] Window %u: Data mismatch at byte %u: sent=0x%02X, recv=0x%02X%s\n",
-                   COL_RED, node->ctx.tx_window->slot_count, pos, original[pos],
-                   node->recv_buffer[pos], COL_RESET);
-            return false;
-        }
-    } else if (node->bytes_received > 0) {
-        printf("%s[FAIL] Window %u: Size mismatch: sent=%u, received=%u%s\n", COL_RED,
-               node->ctx.tx_window->slot_count, data_len, node->bytes_received, COL_RESET);
-        return false;
-    } else {
-        printf("%s[FAIL] Window %u: No echo data received%s\n", COL_RED,
-               node->ctx.tx_window->slot_count, COL_RESET);
+    if (node->bytes_received != data_len) {
+        printf("%s[FAIL] Test A Window %u: size mismatch (sent=%u received=%u)%s\n",
+               COL_RED, node->ctx.tx_window->slot_count, data_len, node->bytes_received, COL_RESET);
         return false;
     }
+    if (memcmp(original, node->recv_buf, data_len) != 0) {
+        uint32_t pos = 0;
+        for (uint32_t i = 0; i < data_len; i++) {
+            if (original[i] != node->recv_buf[i]) { pos = i; break; }
+        }
+        printf("%s[FAIL] Test A Window %u: mismatch at byte %u (0x%02X vs 0x%02X)%s\n",
+               COL_RED, node->ctx.tx_window->slot_count, pos,
+               original[pos], node->recv_buf[pos], COL_RESET);
+        return false;
+    }
+    printf("%s[PASS] Test A Window %u: byte-for-byte match%s\n",
+           COL_GREEN, node->ctx.tx_window->slot_count, COL_RESET);
+    return true;
 }
 
 /* ================================================================
  *  Node Init / Cleanup
  * ================================================================ */
-
-/** @brief Initialize node: open serial, init HDLC, start RX thread. */
 static bool node_init(physical_node_t* node, uint32_t recv_len, uint8_t window_size) {
     memset(node, 0, sizeof(*node));
 
-    node->recv_buffer = (uint8_t*)malloc(recv_len);
-    if (!node->recv_buffer)
-        return false;
-    node->recv_buffer_len = recv_len;
-    memset(node->recv_buffer, 0, recv_len);
+    node->recv_buf = (uint8_t*)malloc(recv_len);
+    if (!node->recv_buf) return false;
+    node->recv_buf_len = recv_len;
 
     node->port = serial_open(SERIAL_PORT);
-    if (node->port == SERIAL_INVALID) {
-        free(node->recv_buffer);
-        return false;
-    }
+    if (node->port == SERIAL_INVALID) { free(node->recv_buf); return false; }
 
     mutex_init(&node->ctx_lock);
     node->running = true;
 
-    /* Config stored in node struct — lives as long as the node itself */
-    node->cfg.mode = ATC_HDLC_MODE_ABM;
-    node->cfg.address = 0x01; /* PC is address 0x01 */
+    node->cfg.mode         = ATC_HDLC_MODE_ABM;
+    node->cfg.address      = 0x01;
     node->cfg.max_info_size = 1024;
-    node->cfg.max_retries = 10;
-    node->cfg.t1_ms = ATC_HDLC_DEFAULT_T1_TIMEOUT;
-    node->cfg.t2_ms = 1; /* Minimal ACK delay for high-baud physical link */
+    node->cfg.max_retries  = 10;
+    node->cfg.t1_ms        = ATC_HDLC_DEFAULT_T1_TIMEOUT;
+    node->cfg.t2_ms        = 1;
 
-    node->plat.on_send = node_output_cb;
-    node->plat.on_data = node_on_data_cb;
+    node->plat.on_send  = node_output_cb;
+    node->plat.on_data  = node_on_data_cb;
     node->plat.on_event = node_event_cb;
     node->plat.user_ctx = node;
-    node->plat.t1_start = phys_t1_start_cb;
-    node->plat.t1_stop = phys_t1_stop_cb;
-    node->plat.t2_start = phys_t2_start_cb;
-    node->plat.t2_stop = phys_t2_stop_cb;
+    node->plat.t1_start = t1_start; node->plat.t1_stop = t1_stop;
+    node->plat.t2_start = t2_start; node->plat.t2_stop = t2_stop;
 
-    node->tw.slots = node->retransmit_slots;
-    node->tw.slot_lens = node->retransmit_lens;
+    node->tw.slots        = node->retransmit_slots;
+    node->tw.slot_lens    = node->retransmit_lens;
     node->tw.slot_capacity = 1024;
-    node->tw.slot_count = (atc_hdlc_u8)window_size;
+    node->tw.slot_count   = window_size;
 
-    node->rx.buffer = node->input_buffer;
+    node->rx.buffer   = node->input_buffer;
     node->rx.capacity = sizeof(node->input_buffer);
 
-    atc_hdlc_params_t p = {
-        .config = &node->cfg, .platform = &node->plat, .tx_window = &node->tw, .rx_buf = &node->rx};
+    atc_hdlc_params_t p = { .config = &node->cfg, .platform = &node->plat,
+                             .tx_window = &node->tw, .rx_buf = &node->rx };
     atc_hdlc_init(&node->ctx, p);
-    node->ctx.peer_address = 0x02; /* STM32 is address 0x02 */
+    node->ctx.peer_address = 0x02;
 
     node->rx_thread = thread_create(node);
     return true;
 }
 
-/** @brief Stop RX thread, close serial, free resources. */
 static void node_cleanup(physical_node_t* node) {
     node->running = false;
     thread_join(node->rx_thread);
     mutex_destroy(&node->ctx_lock);
     serial_close(node->port);
-    free(node->recv_buffer);
+    free(node->recv_buf);
 }
 
 /* ================================================================
  *  Main
  * ================================================================ */
 int main(void) {
-    printf("Starting Physical Target Test on %s @ %d baud\n", SERIAL_PORT, BAUD_RATE);
+    printf("Physical target test  port=%s  baud=%d\n", SERIAL_PORT, BAUD_RATE);
 
-    /* 1. Load test data */
     uint32_t pdf_size = 0;
     uint8_t* pdf_data = load_file(PDF_PATH, &pdf_size);
     if (!pdf_data || pdf_size == 0) {
-        test_fail("Physical Target PDF Load", "Cannot load test PDF file.");
-        return 1;
+        test_fail("load PDF", "Cannot open test PDF."); return 1;
     }
-    printf("Loaded %s (%u bytes)\n", PDF_PATH, pdf_size);
+    printf("Loaded %s (%u bytes)\n\n", PDF_PATH, pdf_size);
 
-    struct {
-        uint8_t window;
-        bool pass;
-        double time_s;
-        double kbps;
-    } results[7];
+    struct { uint8_t w; bool a, b; double tx_s, rtt_s, kbps; } results[7];
 
-    /* Test all window sizes 1 through 7 */
     for (uint8_t w = 1; w <= 7; w++) {
-        printf("\n======================================================\n");
-        printf(" TESTING WINDOW SIZE = %u\n", w);
-        printf("======================================================\n");
+        printf("==============================\n");
+        printf(" Window size = %u\n", w);
+        printf("==============================\n");
 
         physical_node_t node;
         if (!node_init(&node, pdf_size, w)) {
-            printf("[FAIL] Cannot initialize serial / buffers for window %u\n", w);
-            results[w - 1].window = w;
-            results[w - 1].pass = false;
-            results[w - 1].time_s = 0.0;
-            results[w - 1].kbps = 0.0;
-
-            // Note: Cannot node_cleanup because node_init failed meaning resources weren't
-            // allocated
-            sleep_ms(500);
-            continue;
+            printf("[FAIL] node_init failed for window %u\n", w);
+            results[w-1] = (typeof(results[0])){ w, false, false, 0, 0, 0 };
+            sleep_ms(500); continue;
         }
 
-        printf("Connecting to target...\n");
+        printf("Connecting...\n");
         if (!wait_for_connection(&node, 10000)) {
-            printf("[FAIL] Failed to establish HDLC connection for window %u\n", w);
-            results[w - 1].window = w;
-            results[w - 1].pass = false;
-            results[w - 1].time_s = 0.0;
-            results[w - 1].kbps = 0.0;
-            node_cleanup(&node);
-            sleep_ms(500);
-            continue;
+            printf("[FAIL] Connection timeout for window %u\n", w);
+            results[w-1] = (typeof(results[0])){ w, false, false, 0, 0, 0 };
+            node_cleanup(&node); sleep_ms(500); continue;
         }
 
-        printf("Connected! Sending %u bytes in %d-byte chunks...\n", pdf_size, CHUNK_SIZE);
+        /* Test B: STM32-initiated I-frames */
+        bool b = run_test_b(&node);
 
-        double t_start = get_time_s();
+        /* Switch routing to Test A */
+        node.stm32_test_done  = true;
+        node.bytes_received   = 0;
+        node.frames_received  = 0;  /* reset so Test A frame count is isolated */
+
+        /* Test A: bidirectional I-frame echo */
+        printf("\nSending %u bytes as I-frames (Test A)...\n", pdf_size);
+        double t0 = get_time_s();
         uint32_t sent = send_data(&node, pdf_data, pdf_size);
+        double tx_s = get_time_s() - t0;
 
         if (node.running) {
-            printf("\nFinished transmitting %u bytes. Waiting for final echoes...\n", sent);
+            printf("\nWaiting for echoes...\n");
             wait_for_echoes(&node, pdf_size, 10000);
-        } else {
-            printf("\nTest aborted due to disconnection.\n");
         }
+        double rtt_s = get_time_s() - t0;
 
-        double t_end = get_time_s();
-        double duration = t_end - t_start;
+        double kbps = 0;
+        bool a = run_test_a(&node, pdf_data, pdf_size, sent, tx_s, rtt_s, &kbps);
 
-        double kbps = 0.0;
-        bool passed = verify_results(&node, pdf_data, pdf_size, sent, duration, &kbps);
-
-        results[w - 1].window = w;
-        results[w - 1].pass = passed;
-        results[w - 1].time_s = duration;
-        results[w - 1].kbps = kbps;
-
+        results[w-1] = (typeof(results[0])){ w, a, b, tx_s, rtt_s, kbps };
         node_cleanup(&node);
-
-        // Wait briefly before starting the next test to ensure target state completes
         sleep_ms(500);
     }
 
     free(pdf_data);
 
-    /* Print Summary Table */
-    printf("\n\n=================================================================\n");
-    printf(" WINDOW SIZE PERFORMANCE SUMMARY (%d baud)\n", BAUD_RATE);
+    printf("\n=================================================================\n");
+    printf(" SUMMARY (%d baud)\n", BAUD_RATE);
     printf("=================================================================\n");
-    printf(" | Window | Result | Time (s) | Throughput (kbps) |\n");
-    printf(" |--------|--------|----------|-------------------|\n");
+    printf(" | Win | Test A | Test B | TX (s) | RTT (s) | kbps    |\n");
+    printf(" |-----|--------|--------|--------|---------|----------|\n");
     for (int i = 0; i < 7; i++) {
-        printf(" |   %2u   |  %s  | %8.2f | %17.2f |\n", results[i].window,
-               results[i].pass ? "PASS" : "FAIL", results[i].time_s, results[i].kbps);
+        printf(" |  %2u |  %s  |  %s  | %6.2f | %7.2f | %8.2f |\n",
+               results[i].w,
+               results[i].a ? " PASS" : " FAIL",
+               results[i].b ? " PASS" : " FAIL",
+               results[i].tx_s, results[i].rtt_s, results[i].kbps);
     }
     printf("=================================================================\n\n");
 
-    int total_fails = 0;
-    for (int i = 0; i < 7; i++) {
-        if (!results[i].pass)
-            total_fails++;
-    }
+    int fails = 0;
+    for (int i = 0; i < 7; i++)
+        if (!results[i].a || !results[i].b) fails++;
 
-    if (total_fails > 0) {
-        printf("\n[ERROR] %d/%d window size tests FAILED.\n", total_fails, 7);
-        return 1;
-    }
-
-    printf("\n[SUCCESS] All %d window size tests PASSED.\n", 7);
+    if (fails) { printf("[ERROR] %d/7 tests FAILED.\n", fails); return 1; }
+    printf("[SUCCESS] All 7 tests PASSED.\n");
     return 0;
 }

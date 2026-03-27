@@ -46,6 +46,10 @@
 #define HDLC_RX_BUF_SIZE     (HDLC_MAX_INFO_SIZE + 4u)        /**< Addr(1)+Ctrl(1)+Payload+FCS(2). */
 #define HDLC_WINDOW_SIZE     7u
 
+/* ---- I-frame self-test ---- */
+#define TEST_I_FRAME_COUNT   5u    /**< Number of I-frames to send and verify. */
+#define TEST_I_PAYLOAD_SIZE  16u   /**< Payload size per test frame (bytes). */
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -88,6 +92,16 @@ static volatile uint8_t  t1_active     = 0;
 static volatile uint32_t t1_started_ms = 0;  /* HAL_GetTick() snapshot */
 static volatile uint8_t  t2_active     = 0;
 static volatile uint32_t t2_started_ms = 0;
+
+/* I-frame self-test state */
+static volatile uint8_t test_running     = 0;
+static volatile uint8_t test_passed      = 0;
+static          uint8_t test_frames_sent = 0;
+
+static const uint8_t test_payload[TEST_I_PAYLOAD_SIZE] = {
+    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+    0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+};
 
 /* USER CODE END PV */
 
@@ -172,15 +186,12 @@ static int hdlc_on_send_cb(atc_hdlc_u8 byte, bool flush, void *user_data)
 
 /**
  * @brief Upper-layer data delivery callback.
- *        Called once per complete, valid I-frame or UI-frame received.
- *        Echoes payload back as a UI frame for demonstration.
+ *        Echoes the received payload back as a reliable I-frame.
  */
 static void hdlc_on_data_cb(const atc_hdlc_u8 *data, atc_hdlc_u16 len, void *user_data)
 {
     (void)user_data;
-
-    /* Echo payload back as UI to the peer */
-    atc_hdlc_transmit_ui(&hdlc_ctx, hdlc_ctx.peer_address, data, len);
+    atc_hdlc_transmit_i(&hdlc_ctx, data, len);
 }
 
 /**
@@ -190,8 +201,19 @@ static void hdlc_on_data_cb(const atc_hdlc_u8 *data, atc_hdlc_u16 len, void *use
 static void hdlc_on_event_cb(atc_hdlc_event_t event, void *user_data)
 {
     (void)user_data;
-    (void)event;
-    /* Example: HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin); */
+    switch (event) {
+    case ATC_HDLC_EVENT_CONNECT_ACCEPTED:
+        /* Link up — kick off the I-frame self-test */
+        test_frames_sent = 0;
+        test_passed      = 0;
+        test_running     = 1;
+        break;
+    case ATC_HDLC_EVENT_LINK_FAILURE:
+        test_running = 0;
+        break;
+    default:
+        break;
+    }
 }
 
 /**
@@ -369,6 +391,18 @@ int main(void)
         if ((now - t1_started_ms) >= hdlc_cfg.t1_ms) {
             t1_active = 0;
             atc_hdlc_t1_expired(&hdlc_ctx);
+        }
+    }
+
+    /* ---- I-frame self-test ---- */
+    if (test_running) {
+        if (test_frames_sent < TEST_I_FRAME_COUNT) {
+            if (atc_hdlc_transmit_i(&hdlc_ctx, test_payload, TEST_I_PAYLOAD_SIZE) == ATC_HDLC_OK)
+                test_frames_sent++;
+        } else if (hdlc_ctx.va == hdlc_ctx.vs) {
+            /* All sent frames acknowledged by peer */
+            test_running = 0;
+            test_passed  = 1;
         }
     }
 
