@@ -11,8 +11,6 @@
 #include "hdlc_frame.h"
 #include <string.h>
 
-static void fire_event(atc_hdlc_context_t* ctx, atc_hdlc_event_t event);
-
 atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t* ctx, atc_hdlc_params_t params) {
     if (!ctx)
         return ATC_HDLC_ERR_INVALID_PARAM;
@@ -193,20 +191,14 @@ void atc_hdlc_abort(atc_hdlc_context_t* ctx) {
     ctx->current_state = ATC_HDLC_STATE_DISCONNECTED;
 }
 
-static void fire_event(atc_hdlc_context_t* ctx, atc_hdlc_event_t event) {
-    if (ctx->platform->on_event)
-        ctx->platform->on_event(event, ctx->platform->user_ctx);
-}
-
 void set_state(atc_hdlc_context_t* ctx, atc_hdlc_state_t new_state, atc_hdlc_event_t event) {
     bool state_changed = (ctx->current_state != new_state);
 
-    /* INCOMING_CONNECT always fires even if state did not change: SABM in CONNECTED
-     * resets the link (vs/vr zeroed) but stays CONNECTED, so state_changed is false
-     * yet the application must be notified that a new session has started. */
+    /* INCOMING_CONNECT fires even when state stays CONNECTED (peer re-sent SABM). */
     if (state_changed || event == ATC_HDLC_EVENT_INCOMING_CONNECT) {
         LOG_INFO("state: %d -> %d (event: %d)", ctx->current_state, new_state, event);
         ctx->current_state = new_state;
-        fire_event(ctx, event);
+        if (ctx->platform->on_event)
+            ctx->platform->on_event(event, ctx->platform->user_ctx);
     }
 }

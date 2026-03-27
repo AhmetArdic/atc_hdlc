@@ -27,12 +27,6 @@ void reset_state(atc_hdlc_context_t* ctx) {
     t2_stop(ctx);
 }
 
-static bool nr_in_range(atc_hdlc_context_t* ctx, atc_hdlc_u8 nr) {
-    atc_hdlc_u8 diff_nr = (atc_hdlc_u8)((nr - ctx->va) & (MOD8 - 1));
-    atc_hdlc_u8 diff_vs = (atc_hdlc_u8)((ctx->vs - ctx->va) & (MOD8 - 1));
-    return diff_nr <= diff_vs;
-}
-
 static void frames_acked(atc_hdlc_context_t* ctx, atc_hdlc_u8 nr) {
     if (nr == ctx->va)
         return;
@@ -55,13 +49,6 @@ static void process_nr(atc_hdlc_context_t* ctx, atc_hdlc_u8 nr) {
     } else if (ctx->va != nr) {
         frames_acked(ctx, nr);
         t1_start(ctx);
-    }
-}
-
-static void send_rr_if_polled(atc_hdlc_context_t* ctx, int cmd, atc_hdlc_u8 pf) {
-    if (cmd && pf) {
-        send_rr_resp(ctx, 1);
-        t2_stop(ctx);
     }
 }
 
@@ -152,7 +139,9 @@ static void state_connecting(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_h
 }
 
 static bool validate_nr(atc_hdlc_context_t* ctx, atc_hdlc_u8 ctrl, atc_hdlc_u8 nr) {
-    if (nr_in_range(ctx, nr))
+    atc_hdlc_u8 diff_nr = (atc_hdlc_u8)((nr - ctx->va) & (MOD8 - 1));
+    atc_hdlc_u8 diff_vs = (atc_hdlc_u8)((ctx->vs - ctx->va) & (MOD8 - 1));
+    if (diff_nr <= diff_vs)
         return true;
     LOG_WRN("rx: Invalid N(R)=%u (V(A)=%u, V(S)=%u) -> FRMR Z", nr, ctx->va, ctx->vs);
     send_frmr(ctx, ctrl, false, false, false, true);
@@ -242,14 +231,16 @@ static void handle_sframe(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc
         CTX_CLR(ctx, HDLC_F_REMOTE_BUSY);
     }
 
-    send_rr_if_polled(ctx, cmd, pf);
+    if (cmd && pf) {
+        send_rr_resp(ctx, 1);
+        t2_stop(ctx);
+    }
     if (!validate_nr(ctx, ctrl, nr))
         return;
 
     if (s == S_REJ) {
         frames_acked(ctx, nr);
         t1_stop(ctx);
-        ctx->n2 = 0;
         if (ctx->va != ctx->vs)
             trigger_retransmit(ctx, nr);
     } else {
