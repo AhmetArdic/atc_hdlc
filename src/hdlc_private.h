@@ -12,8 +12,11 @@
 
 #include "../inc/hdlc_types.h"
 
-#if ATC_HDLC_ENABLE_DEBUG_LOGS
+#if ATC_HDLC_LOG_LEVEL >= ATC_HDLC_LOG_LEVEL_ERR
 #define LOG_ERR(fmt, ...) ATC_HDLC_LOG_IMPL("ERR", fmt, ##__VA_ARGS__)
+#else
+#define LOG_ERR(fmt, ...)
+#endif
 #if ATC_HDLC_LOG_LEVEL >= ATC_HDLC_LOG_LEVEL_WRN
 #define LOG_WRN(fmt, ...) ATC_HDLC_LOG_IMPL("WRN", fmt, ##__VA_ARGS__)
 #else
@@ -27,12 +30,6 @@
 #if ATC_HDLC_LOG_LEVEL >= ATC_HDLC_LOG_LEVEL_DBG
 #define LOG_DBG(fmt, ...) ATC_HDLC_LOG_IMPL("DBG", fmt, ##__VA_ARGS__)
 #else
-#define LOG_DBG(fmt, ...)
-#endif
-#else
-#define LOG_ERR(fmt, ...)
-#define LOG_WRN(fmt, ...)
-#define LOG_INFO(fmt, ...)
 #define LOG_DBG(fmt, ...)
 #endif
 

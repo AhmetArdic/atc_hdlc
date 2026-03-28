@@ -13,9 +13,9 @@
 #include "hdlc_crc.h"
 #include "hdlc_private.h"
 
-#define FLAG     0x7E
-#define ESC      0x7D
-#define XOR_MASK 0x20
+#define FLAG     (0x7E)
+#define ESC      (0x7D)
+#define XOR_MASK (0x20)
 
 #define ADDR_LEN (1)
 #define CTRL_LEN (1)
@@ -34,33 +34,33 @@
     ((atc_hdlc_u8)(0x01 | ((s) & 0x03) << 2 | ((pf) & 0x01) << 4 | ((nr) & 0x07) << 5))
 #define U_CTRL(cmd, pf) ((atc_hdlc_u8)((cmd) | ((pf) ? PF_BIT : 0)))
 
-#define MOD8 8
+#define MOD8 (8)
 
-#define S_RR  0
-#define S_RNR 1
-#define S_REJ 2
+#define S_RR  (0)
+#define S_RNR (1)
+#define S_REJ (2)
 
 /**
  * @note use ctrl & ~PF_BIT to strip the P/F bit
  */
-#define U_SABM  0x2F
-#define U_DISC  0x43
-#define U_UA    0x63
-#define U_DM    0x0F
-#define U_FRMR  0x87
-#define U_UI    0x03
-#define U_TEST  0xE3
-#define U_SNRM  0x83
-#define U_SABME 0x6F
-#define U_SNRME 0xCF
-#define U_SARME 0x4F
-#define PF_BIT  0x10
+#define U_SABM  (0x2F)
+#define U_DISC  (0x43)
+#define U_UA    (0x63)
+#define U_DM    (0x0F)
+#define U_FRMR  (0x87)
+#define U_UI    (0x03)
+#define U_TEST  (0xE3)
+#define U_SNRM  (0x83)
+#define U_SABME (0x6F)
+#define U_SNRME (0xCF)
+#define U_SARME (0x4F)
+#define PF_BIT  (0x10)
 
-#define FRMR_W 0x01
-#define FRMR_X 0x02
-#define FRMR_Y 0x04
-#define FRMR_Z 0x08
-#define FRMR_V 0x10
+#define FRMR_W (0x01)
+#define FRMR_X (0x02)
+#define FRMR_Y (0x04)
+#define FRMR_Z (0x08)
+#define FRMR_V (0x10)
 
 typedef enum { RX_HUNT = 0, RX_ADDR, RX_DATA, RX_ESC } rx_state_t;
 

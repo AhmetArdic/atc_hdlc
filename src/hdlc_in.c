@@ -47,7 +47,7 @@ static void handle_flag(atc_hdlc_context_t* ctx) {
     const atc_hdlc_u8* info = NULL;
     atc_hdlc_u16 info_len = 0;
 
-    LOG_DBG("rx: Valid frame (Addr: 0x%02X, Ctrl: 0x%02X, Len: %lu)", address, ctrl, dlen);
+    LOG_DBG("rx: Valid frame (Addr: 0x%02X, Ctrl: 0x%02X, Len: %u)", address, ctrl, dlen);
 
     if (dlen > ADDR_LEN + CTRL_LEN) {
         info = &ctx->rx_buf->buffer[ADDR_LEN + CTRL_LEN];
@@ -78,8 +78,8 @@ static void rx_byte(atc_hdlc_context_t* ctx, atc_hdlc_u8 byte) {
     }
 
     if (ctx->rx_index >= ctx->rx_buf->capacity) {
-        LOG_WRN("rx: Buffer overflow! Max %lu bytes. Discarding.",
-                (unsigned long)ctx->rx_buf->capacity);
+        LOG_WRN("rx: Buffer overflow! Max %u bytes. Discarding.",
+                ctx->rx_buf->capacity);
         goto discard;
     }
 

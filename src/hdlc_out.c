@@ -65,7 +65,7 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t* ctx, const atc_hdlc_u8*
         memcpy(ctx->tx_window->slots + (slot * ctx->tx_window->slot_capacity), data, len);
     ctx->tx_window->slot_lens[slot] = len;
 
-    LOG_DBG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
+    LOG_DBG("tx: I-Frame V(S)=%u, Len=%u", ctx->vs, len);
 
     frame_send(ctx, ctx->peer_address, I_CTRL(ctx->vs, ctx->vr, 0), data, len);
 

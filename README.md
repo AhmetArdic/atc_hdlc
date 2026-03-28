@@ -321,8 +321,7 @@ Override these macros before including `hdlc.h`:
 | `ATC_HDLC_DEFAULT_T1_TIMEOUT` | `1000` | Default T1 timeout (ms) |
 | `ATC_HDLC_DEFAULT_T2_TIMEOUT` | `10` | Default T2 timeout (ms) |
 | `ATC_HDLC_DEFAULT_N2_RETRY_COUNT` | `3` | Default N2 retry limit |
-| `ATC_HDLC_ENABLE_DEBUG_LOGS` | `0` | Enable debug logging |
-| `ATC_HDLC_LOG_LEVEL` | `WRN` | Verbosity ceiling (`ERR`/`WRN`/`INFO`/`DBG`) |
+| `ATC_HDLC_LOG_LEVEL` | `OFF` | Verbosity ceiling (`OFF`/`ERR`/`WRN`/`INFO`/`DBG`) |
 
 To redirect debug output on bare-metal targets:
 
