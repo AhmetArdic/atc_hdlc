@@ -23,8 +23,8 @@
 #ifndef HDLC_PLATFORM_H
 #define HDLC_PLATFORM_H
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 /*
  * Write one byte to the physical layer (UART, SPI, …).
@@ -44,6 +44,6 @@ uint32_t port_tick_ms(void);
  * Called once per hdlc_port_run() iteration.
  * Return the number of bytes copied; return 0 if nothing is available.
  */
-uint16_t port_rx_read(uint_least8_t *buf, uint16_t max_len);
+uint16_t port_rx_read(uint_least8_t* buf, uint16_t max_len);
 
 #endif /* HDLC_PLATFORM_H */

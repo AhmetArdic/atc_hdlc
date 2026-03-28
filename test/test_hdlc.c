@@ -306,7 +306,7 @@ void test_input_buffer_overflow() {
     atc_hdlc_context_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
-        /* frame tests bypass state machine */ // uses mock_rx_buffer [16384]
+    /* frame tests bypass state machine */ // uses mock_rx_buffer [16384]
 
     // Create a frame larger than buffer? Buffer is huge (16k in test).
     // Real world buffer might be small.

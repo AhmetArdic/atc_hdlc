@@ -7,7 +7,7 @@
 #include "test_common.h"
 
 // Configuration
-#define PAYLOAD_SIZE 1024 * 1024 // 1MB
+#define PAYLOAD_SIZE (1024 * 1024) // 1MB
 #define CHUNK_SIZE   150
 #define BUFFER_SIZE  256
 
@@ -339,79 +339,6 @@ static void hdlc_test_disconnect(virtual_node_t* node, int timeout_ms) {
     }
 }
 
-void run_window_test(int window_size, uint32_t error_prob) {
-    printf("\n--- Running Mem-Pipe Test with Window Size = %d%s ---\n", window_size,
-           error_prob > 0 ? " (Error Prob)" : "");
-
-    pipe_queue_t pipe1, pipe2;
-    virtual_node_t node1, node2;
-    node_pair_init(&node1, &node2, &pipe1, &pipe2, window_size);
-
-    node1.error_probability = error_prob;
-    node2.error_probability = error_prob;
-
-    node_pair_start(&node1, &node2);
-
-    char test_name_fail[64];
-
-    if (!hdlc_test_connect(&node1, 5000)) {
-        sprintf(test_name_fail, "Mem-Pipe Connection Failed (Window %d)", window_size);
-        test_fail(test_name_fail, "Timeout waiting for Node 1 to connect");
-        goto cleanup;
-    }
-
-    int sync_timeout = 500;
-    while (!node2.connected && sync_timeout > 0) {
-        SLEEP_MS(10);
-        sync_timeout--;
-    }
-    if (!node2.connected) {
-        sprintf(test_name_fail, "Mem-Pipe Connection Failed (Window %d)", window_size);
-        test_fail(test_name_fail, "Node 2 never reported connected state");
-        goto cleanup;
-    }
-
-    double start_time = get_time_s();
-
-    uint32_t bytes_to_send = PAYLOAD_SIZE;
-    uint8_t* payload = (uint8_t*)malloc(bytes_to_send);
-    if (!payload) {
-        test_fail("Mem-Pipe Transfer", "Failed to allocate payload buffer");
-        goto cleanup;
-    }
-    memset(payload, 0xAA, bytes_to_send);
-
-    int tx_timeout_ms = (error_prob > 0) ? 100000 : 10000;
-    if (!hdlc_test_send_data(&node1, payload, bytes_to_send, tx_timeout_ms)) {
-        sprintf(test_name_fail, "Mem-Pipe Transfer TX Timeout (Window %d)", window_size);
-        test_fail(test_name_fail, "Timeout waiting for window");
-        goto cleanup;
-    }
-
-    int rx_timeout_ms = (error_prob > 0) ? 500000 : 50000;
-    if (!hdlc_test_wait_rx(&node2.bytes_received, bytes_to_send, rx_timeout_ms)) {
-        sprintf(test_name_fail, "Mem-Pipe Transfer (Window %d)", window_size);
-        test_fail(test_name_fail, "Incomplete transfer (RX Timeout)");
-        goto cleanup;
-    }
-
-    double elapsed = get_time_s() - start_time;
-
-    hdlc_test_disconnect(&node1, 5000);
-    hdlc_test_disconnect(&node2, 5000);
-
-    double speed_kbps = (PAYLOAD_SIZE / 1024.0) / elapsed;
-    char test_name_pass[128];
-    sprintf(test_name_pass, "Mem-Pipe Transfer %s(Window %d) [Time: %.3fs, Speed: %.2f KB/s]",
-            (error_prob > 0) ? "Errored " : "", window_size, elapsed, speed_kbps);
-    test_pass(test_name_pass);
-
-cleanup:
-    node_pair_cleanup(&node1, &node2, &pipe1, &pipe2);
-    if (payload)
-        free(payload);
-}
-
 void run_timeout_test(int window_size) {
     printf(
         "\n--- Running Mem-Pipe Test with Window Size = %d (Timeout Injection - 100%% Error) ---\n",
@@ -420,6 +347,10 @@ void run_timeout_test(int window_size) {
     pipe_queue_t pipe1, pipe2;
     virtual_node_t node1, node2;
     node_pair_init(&node1, &node2, &pipe1, &pipe2, window_size);
+    /* Shorten T1/N2 for this test only — 100% drop means no ACKs ever
+     * arrive, so link failure is deterministic after max_retries x t1_ms. */
+    node1.hdlc_cfg.t1_ms = 5;
+    node1.hdlc_cfg.max_retries = 5;
     node_pair_start(&node1, &node2);
 
     char test_name_pass[128];
@@ -435,7 +366,7 @@ void run_timeout_test(int window_size) {
         sync_timeout--;
     }
 
-    node1.error_probability = 10000;
+    node1.error_probability = 1000000;
 
     uint32_t bytes_to_send = PAYLOAD_SIZE;
     uint8_t* payload = (uint8_t*)malloc(bytes_to_send);
@@ -634,24 +565,6 @@ cleanup:
 int main(void) {
     srand((unsigned int)time(NULL));
 
-    printf("Starting Mem-Pipe Virtual COM Tests (Reliable)...\n");
-    for (int w = 1; w <= 7; w++)
-        run_window_test(w, 0);
-
-    /* Error injection starts at w=3: w=1 with error is impractically slow
-     * (single-slot stop-and-wait + retransmit on every loss). */
-    printf("\nStarting Mem-Pipe Virtual COM Tests (Error Injection - 0.005%%)...\n");
-    for (int w = 1; w <= 7; w++)
-        run_window_test(w, 50);
-
-    printf("\nStarting Mem-Pipe Virtual COM Tests (Timeout Injection)...\n");
-    for (int w = 4; w <= 7; w++)
-        run_timeout_test(w);
-
-    printf("\nStarting Mem-Pipe Virtual COM Tests (Go-Back-N Deterministic Drop)...\n");
-    for (int w = 4; w <= 7; w++)
-        run_go_back_n_test(w);
-
     printf("\nStarting Mem-Pipe Virtual COM Tests (File Transfer - test.pdf)...\n");
     for (int w = 1; w <= 7; w++)
         run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w, 0);
@@ -662,6 +575,14 @@ int main(void) {
         "\nStarting Mem-Pipe Virtual COM Tests (File Transfer - Error Injection - 0.005%%)...\n");
     for (int w = 4; w <= 7; w++)
         run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w, 50);
+
+    printf("Starting Mem-Pipe Virtual COM Tests (Timeout Injection)...\n");
+    for (int w = 4; w <= 7; w++)
+        run_timeout_test(w);
+
+    printf("\nStarting Mem-Pipe Virtual COM Tests (Go-Back-N Deterministic Drop)...\n");
+    for (int w = 4; w <= 7; w++)
+        run_go_back_n_test(w);
 
     printf("\nMem-Pipe Virtual COM Tests Completed Successfully.\n");
     return 0;

@@ -88,13 +88,13 @@ typedef enum {
 } atc_hdlc_link_mode_t;
 
 typedef struct {
-    atc_hdlc_link_mode_t mode;   /**< Operating mode. */
-    atc_hdlc_u8 address;         /**< Local station address. */
+    atc_hdlc_link_mode_t mode;  /**< Operating mode. */
+    atc_hdlc_u8 address;        /**< Local station address. */
     atc_hdlc_u32 max_info_size; /**< Maximum information field size in octets. */
-    atc_hdlc_u8 max_retries;     /**< N2: maximum retransmission attempts before
-                                    link failure. */
-    atc_hdlc_u32 t1_ms;          /**< T1 retransmission timer in ms (typical 200–3000). */
-    atc_hdlc_u32 t2_ms;          /**< T2 acknowledgement delay timer in ms (must be < t1_ms). */
+    atc_hdlc_u8 max_retries;    /**< N2: maximum retransmission attempts before
+                                   link failure. */
+    atc_hdlc_u32 t1_ms;         /**< T1 retransmission timer in ms (typical 200–3000). */
+    atc_hdlc_u32 t2_ms;         /**< T2 acknowledgement delay timer in ms (must be < t1_ms). */
 } atc_hdlc_config_t;
 
 /** @brief Byte output callback.

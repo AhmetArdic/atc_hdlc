@@ -164,7 +164,7 @@ static void on_event(atc_hdlc_event_t event, void* u) {
 /* Static storage — sizes tuned for a small MCU                      */
 /* ================================================================== */
 
-#define WINDOW_SIZE    1
+#define WINDOW_SIZE   1
 #define MAX_INFO_SIZE 64
 
 static atc_hdlc_u8 rx_buf_mem[MAX_INFO_SIZE + 8]; /* +8 for addr/ctrl/FCS */
