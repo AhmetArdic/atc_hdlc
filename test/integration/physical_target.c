@@ -88,15 +88,15 @@ static double get_time_s(void) {
  *  Configuration
  * ================================================================ */
 #ifdef _WIN32
-#define SERIAL_PORT "\\\\.\\COM4"
+#define DEFAULT_SERIAL_PORT "\\\\.\\COM4"
 #else
-#define SERIAL_PORT "/dev/ttyUSB0"
+#define DEFAULT_SERIAL_PORT "/dev/ttyUSB0"
 #endif
 
-#define BAUD_RATE   921600
-#define CHUNK_SIZE  512
-#define BUFFER_SIZE 16384
-#define PDF_PATH    TEST_DATA_DIR "/test.pdf"
+#define DEFAULT_BAUD_RATE 921600
+#define CHUNK_SIZE        512
+#define BUFFER_SIZE       16384
+#define PDF_PATH          TEST_DATA_DIR "/test.pdf"
 
 /* Must match TEST_I_FRAME_COUNT / TEST_I_PAYLOAD_SIZE in MCU main.c */
 #define MCU_TEST_FRAME_COUNT 5u
@@ -138,7 +138,7 @@ typedef struct {
  * ================================================================ */
 #ifdef _WIN32
 
-static serial_handle_t serial_open(const char* port) {
+static serial_handle_t serial_open(const char* port, int baud) {
     HANDLE h = CreateFileA(port, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
     if (h == INVALID_HANDLE_VALUE) {
         printf("Error opening %s (err=%lu)\n", port, GetLastError());
@@ -147,7 +147,7 @@ static serial_handle_t serial_open(const char* port) {
     DCB dcb = {0};
     dcb.DCBlength = sizeof(dcb);
     GetCommState(h, &dcb);
-    dcb.BaudRate = BAUD_RATE;
+    dcb.BaudRate = (DWORD)baud;
     dcb.ByteSize = 8;
     dcb.StopBits = ONESTOPBIT;
     dcb.Parity = NOPARITY;
@@ -178,16 +178,45 @@ static void serial_close(serial_handle_t h) {
 
 #else
 
-static serial_handle_t serial_open(const char* port) {
+static speed_t baud_to_speed(int baud) {
+    switch (baud) {
+    case 9600:
+        return B9600;
+    case 19200:
+        return B19200;
+    case 38400:
+        return B38400;
+    case 57600:
+        return B57600;
+    case 115200:
+        return B115200;
+    case 230400:
+        return B230400;
+    case 460800:
+        return B460800;
+    case 921600:
+        return B921600;
+    default:
+        return (speed_t)-1;
+    }
+}
+
+static serial_handle_t serial_open(const char* port, int baud) {
     int fd = open(port, O_RDWR | O_NOCTTY | O_SYNC);
     if (fd < 0) {
         printf("Error opening %s: %s\n", port, strerror(errno));
         return SERIAL_INVALID;
     }
+    speed_t speed = baud_to_speed(baud);
+    if (speed == (speed_t)-1) {
+        printf("Unsupported baud rate: %d\n", baud);
+        close(fd);
+        return SERIAL_INVALID;
+    }
     struct termios tty;
     tcgetattr(fd, &tty);
-    cfsetospeed(&tty, B921600);
-    cfsetispeed(&tty, B921600);
+    cfsetospeed(&tty, speed);
+    cfsetispeed(&tty, speed);
     cfmakeraw(&tty);
     tty.c_cc[VMIN] = 0;
     tty.c_cc[VTIME] = 1;
@@ -521,7 +550,8 @@ static bool run_test_a(physical_node_t* node, const uint8_t* original, uint32_t 
 /* ================================================================
  *  Node Init / Cleanup
  * ================================================================ */
-static bool node_init(physical_node_t* node, uint32_t recv_len, uint8_t window_size) {
+static bool node_init(physical_node_t* node, uint32_t recv_len, uint8_t window_size,
+                      const char* serial_port, int baud_rate) {
     memset(node, 0, sizeof(*node));
 
     node->recv_buf = (uint8_t*)malloc(recv_len);
@@ -529,7 +559,7 @@ static bool node_init(physical_node_t* node, uint32_t recv_len, uint8_t window_s
         return false;
     node->recv_buf_len = recv_len;
 
-    node->port = serial_open(SERIAL_PORT);
+    node->port = serial_open(serial_port, baud_rate);
     if (node->port == SERIAL_INVALID) {
         free(node->recv_buf);
         return false;
@@ -582,19 +612,27 @@ static void node_cleanup(physical_node_t* node) {
 /* ================================================================
  *  Main
  * ================================================================ */
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     uint8_t w_min = 1, w_max = 7;
+    const char* serial_port = DEFAULT_SERIAL_PORT;
+    int baud_rate = DEFAULT_BAUD_RATE;
 
-    if (argc > 1) {
-        int w = 0;
-        if (sscanf(argv[1], "w%d", &w) != 1 || w < 1 || w > 7) {
-            fprintf(stderr, "Unknown test: %s\n", argv[1]);
-            return 1;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
+            serial_port = argv[++i];
+        } else if (strcmp(argv[i], "--baud") == 0 && i + 1 < argc) {
+            baud_rate = atoi(argv[++i]);
+        } else {
+            int w = 0;
+            if (sscanf(argv[i], "w%d", &w) != 1 || w < 1 || w > 7) {
+                fprintf(stderr, "Usage: %s [--port <dev>] [--baud <rate>] [w<1-7>]\n", argv[0]);
+                return 1;
+            }
+            w_min = w_max = (uint8_t)w;
         }
-        w_min = w_max = (uint8_t)w;
     }
 
-    printf("Physical target test  port=%s  baud=%d\n", SERIAL_PORT, BAUD_RATE);
+    printf("Physical target test  port=%s  baud=%d\n", serial_port, baud_rate);
 
     uint32_t pdf_size = 0;
     uint8_t* pdf_data = load_file(PDF_PATH, &pdf_size);
@@ -616,7 +654,7 @@ int main(int argc, char *argv[]) {
         printf("==============================\n");
 
         physical_node_t node;
-        if (!node_init(&node, pdf_size, w)) {
+        if (!node_init(&node, pdf_size, w, serial_port, baud_rate)) {
             printf("[FAIL] node_init failed for window %u\n", w);
             results[w - 1] = (typeof(results[0])){w, false, false, 0, 0, 0, 0};
             sleep_ms(500);
@@ -663,7 +701,7 @@ int main(int argc, char *argv[]) {
     free(pdf_data);
 
     printf("\n============================================================================\n");
-    printf(" SUMMARY (%d baud)\n", BAUD_RATE);
+    printf(" SUMMARY (%d baud)\n", baud_rate);
     printf("============================================================================\n");
     printf(" | Win | Test A  | Test B  | TX (s) | RTT (s) | TX kbps  | RTT kbps |\n");
     printf(" |-----|---------|---------|--------|---------|----------|----------|\n");

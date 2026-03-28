@@ -24,8 +24,5 @@ endforeach()
 add_executable(physical_target physical_target.c ${HELPERS_DIR}/common.c)
 target_link_libraries(physical_target PRIVATE hdlc Threads::Threads)
 target_compile_definitions(physical_target PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-
-foreach(w 1 2 3 4 5 6 7)
-    add_test(NAME physical_target.w${w} COMMAND physical_target w${w})
-    set_tests_properties(physical_target.w${w} PROPERTIES LABELS "integration")
-endforeach()
+# physical_target requires a real MCU connected via serial port — not registered as a ctest entry.
+# Run manually: physical_target [--port <dev>] [--baud <rate>] [w<1-7>]

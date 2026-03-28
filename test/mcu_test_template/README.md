@@ -196,7 +196,7 @@ src/hdlc_in.c
 src/hdlc_out.c
 src/hdlc_dispatch.c
 src/hdlc_crc.c
-test/mcu_test/hdlc_mcu_port.c
+test/mcu_test_template/hdlc_mcu_port.c
 <your>/hdlc_platform.c
 ```
 
@@ -204,5 +204,5 @@ Include paths needed:
 
 ```
 inc/
-test/mcu_test/
+test/mcu_test_template/
 ```

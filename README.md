@@ -61,11 +61,11 @@ This library implements a highly capable subset of the ISO/IEC 13239 HDLC standa
 │   ├── helpers/            # Shared test utilities
 │   │   ├── common.c / common.h
 │   │   └── virtual_pipe.c / virtual_pipe.h
-│   └── mcu_test/           # Generic bare-metal port layer for MCU integration testing
+│   └── mcu_test_template/  # MCU port layer template — copy to MCU project before use
 │       ├── hdlc_platform.h     # PAL contract (3 functions to implement)
 │       ├── hdlc_mcu_port.h     # Public API (init, run, transmit)
 │       ├── hdlc_mcu_port.c     # Generic implementation (add to MCU build)
-│       └── README.md           # Integration guide (STM32 HAL+DMA, C2000 DriverLib)
+│       └── README.md           # Integration guide (STM32 HAL+DMA example)
 ├── CMakeLists.txt
 └── README.md
 ```
