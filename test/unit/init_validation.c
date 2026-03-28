@@ -35,8 +35,8 @@ static atc_hdlc_config_t make_valid_cfg(void) {
     return c;
 }
 
-static atc_hdlc_platform_t make_valid_plat(void) {
-    atc_hdlc_platform_t p;
+static atc_hdlc_platform_ops_t make_valid_plat(void) {
+    atc_hdlc_platform_ops_t p;
     memset(&p, 0, sizeof(p));
     p.on_send = mock_send_cb;
     p.on_data = NULL;
@@ -74,7 +74,7 @@ void test_init_null_params(void) {
 
     atc_hdlc_context_t ctx;
     atc_hdlc_config_t cfg = make_valid_cfg();
-    atc_hdlc_platform_t plat = make_valid_plat();
+    atc_hdlc_platform_ops_t plat = make_valid_plat();
     atc_hdlc_tx_window_t tw = make_valid_tw();
     atc_hdlc_rx_buffer_t rx = make_valid_rx();
     atc_hdlc_params_t p = {.config = &cfg, .platform = &plat, .tx_window = &tw, .rx_buf = &rx};
@@ -102,7 +102,7 @@ void test_init_null_params(void) {
     p.rx_buf = &rx;
 
     /* NULL on_send */
-    atc_hdlc_platform_t bad_plat = plat;
+    atc_hdlc_platform_ops_t bad_plat = plat;
     bad_plat.on_send = NULL;
     p.platform = &bad_plat;
     if (atc_hdlc_init(&ctx, p) != ATC_HDLC_ERR_INVALID_PARAM)
@@ -130,7 +130,7 @@ void test_init_unsupported_mode(void) {
 
     atc_hdlc_context_t ctx;
     atc_hdlc_config_t cfg = make_valid_cfg();
-    atc_hdlc_platform_t plat = make_valid_plat();
+    atc_hdlc_platform_ops_t plat = make_valid_plat();
     atc_hdlc_rx_buffer_t rx = make_valid_rx();
     atc_hdlc_params_t p = {.config = &cfg, .platform = &plat, .tx_window = NULL, .rx_buf = &rx};
 
@@ -151,7 +151,7 @@ void test_init_invalid_slot_count(void) {
 
     atc_hdlc_context_t ctx;
     atc_hdlc_config_t cfg = make_valid_cfg();
-    atc_hdlc_platform_t plat = make_valid_plat();
+    atc_hdlc_platform_ops_t plat = make_valid_plat();
     atc_hdlc_rx_buffer_t rx = make_valid_rx();
     atc_hdlc_tx_window_t tw = make_valid_tw();
     atc_hdlc_params_t p = {.config = &cfg, .platform = &plat, .tx_window = &tw, .rx_buf = &rx};
@@ -184,7 +184,7 @@ void test_init_inconsistent_rx_buffer(void) {
 
     atc_hdlc_context_t ctx;
     atc_hdlc_config_t cfg = make_valid_cfg();
-    atc_hdlc_platform_t plat = make_valid_plat();
+    atc_hdlc_platform_ops_t plat = make_valid_plat();
     atc_hdlc_params_t p = {.config = &cfg, .platform = &plat, .tx_window = NULL, .rx_buf = NULL};
 
     /* Buffer exactly max_info_size — NOT enough (needs +4 for header/FCS) */
@@ -214,7 +214,7 @@ void test_init_inconsistent_tx_window(void) {
 
     atc_hdlc_context_t ctx;
     atc_hdlc_config_t cfg = make_valid_cfg();
-    atc_hdlc_platform_t plat = make_valid_plat();
+    atc_hdlc_platform_ops_t plat = make_valid_plat();
     atc_hdlc_rx_buffer_t rx = make_valid_rx();
     atc_hdlc_tx_window_t tw = make_valid_tw();
     atc_hdlc_params_t p = {.config = &cfg, .platform = &plat, .tx_window = NULL, .rx_buf = &rx};
@@ -254,7 +254,7 @@ void test_init_success_sets_state(void) {
 
     atc_hdlc_context_t ctx;
     atc_hdlc_config_t cfg = make_valid_cfg();
-    atc_hdlc_platform_t plat = make_valid_plat();
+    atc_hdlc_platform_ops_t plat = make_valid_plat();
     atc_hdlc_tx_window_t tw = make_valid_tw();
     atc_hdlc_rx_buffer_t rx = make_valid_rx();
     atc_hdlc_params_t p = {.config = &cfg, .platform = &plat, .tx_window = &tw, .rx_buf = &rx};
@@ -287,18 +287,20 @@ void test_init_success_sets_state(void) {
 /* ================================================================
  *  main
  * ================================================================ */
-typedef struct { const char *name; void (*fn)(void); } test_entry_t;
+typedef struct {
+    const char* name;
+    void (*fn)(void);
+} test_entry_t;
 static const test_entry_t s_tests[] = {
-    {"test_init_null_params",             test_init_null_params},
-    {"test_init_unsupported_mode",        test_init_unsupported_mode},
-    {"test_init_invalid_slot_count",      test_init_invalid_slot_count},
-    {"test_init_inconsistent_rx_buffer",  test_init_inconsistent_rx_buffer},
-    {"test_init_inconsistent_tx_window",  test_init_inconsistent_tx_window},
-    {"test_init_success_sets_state",      test_init_success_sets_state},
-    {NULL, NULL}
-};
+    {"test_init_null_params", test_init_null_params},
+    {"test_init_unsupported_mode", test_init_unsupported_mode},
+    {"test_init_invalid_slot_count", test_init_invalid_slot_count},
+    {"test_init_inconsistent_rx_buffer", test_init_inconsistent_rx_buffer},
+    {"test_init_inconsistent_tx_window", test_init_inconsistent_tx_window},
+    {"test_init_success_sets_state", test_init_success_sets_state},
+    {NULL, NULL}};
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     if (argc > 1) {
         for (int i = 0; s_tests[i].name; i++) {
             if (strcmp(s_tests[i].name, argv[1]) == 0) {

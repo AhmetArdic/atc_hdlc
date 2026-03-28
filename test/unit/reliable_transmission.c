@@ -24,7 +24,7 @@ static atc_hdlc_config_t s_make_ctx_cfg;
 static atc_hdlc_tx_window_t s_make_ctx_tw;
 static atc_hdlc_rx_buffer_t s_make_ctx_rx;
 
-static const atc_hdlc_platform_t s_make_ctx_plat = {
+static const atc_hdlc_platform_ops_t s_make_ctx_plat = {
     .on_send = mock_send_cb,
     .on_data = mock_on_data_cb,
     .on_event = NULL,
@@ -990,29 +990,31 @@ void test_t2_timer_callbacks(void) {
     test_pass("T2 Timer Callbacks");
 }
 
-typedef struct { const char *name; void (*fn)(void); } test_entry_t;
+typedef struct {
+    const char* name;
+    void (*fn)(void);
+} test_entry_t;
 static const test_entry_t s_tests[] = {
-    {"test_reliable_transmission",    test_reliable_transmission},
-    {"test_sequence_rollover",        test_sequence_rollover},
-    {"test_duplicate_ack_ignored",    test_duplicate_ack_ignored},
-    {"test_piggyback_ack",            test_piggyback_ack},
-    {"test_window_size_2_basic",      test_window_size_2_basic},
-    {"test_gobackn_retransmit",       test_gobackn_retransmit},
-    {"test_window7_mid_rej",          test_window7_mid_rej},
-    {"test_throughput_benchmark",     test_throughput_benchmark},
-    {"test_nr_modulo_validation",     test_nr_modulo_validation},
-    {"test_nr_edge_cases",            test_nr_edge_cases},
-    {"test_state_initialization",     test_state_initialization},
-    {"test_public_query_api",         test_public_query_api},
-    {"test_set_local_busy",           test_set_local_busy},
-    {"test_local_busy_rnr_response",  test_local_busy_rnr_response},
-    {"test_rnr_reception",            test_rnr_reception},
-    {"test_t2_timer_callbacks",       test_t2_timer_callbacks},
-    {"test_n2_retry_connected",       test_n2_retry_connected},
-    {NULL, NULL}
-};
+    {"test_reliable_transmission", test_reliable_transmission},
+    {"test_sequence_rollover", test_sequence_rollover},
+    {"test_duplicate_ack_ignored", test_duplicate_ack_ignored},
+    {"test_piggyback_ack", test_piggyback_ack},
+    {"test_window_size_2_basic", test_window_size_2_basic},
+    {"test_gobackn_retransmit", test_gobackn_retransmit},
+    {"test_window7_mid_rej", test_window7_mid_rej},
+    {"test_throughput_benchmark", test_throughput_benchmark},
+    {"test_nr_modulo_validation", test_nr_modulo_validation},
+    {"test_nr_edge_cases", test_nr_edge_cases},
+    {"test_state_initialization", test_state_initialization},
+    {"test_public_query_api", test_public_query_api},
+    {"test_set_local_busy", test_set_local_busy},
+    {"test_local_busy_rnr_response", test_local_busy_rnr_response},
+    {"test_rnr_reception", test_rnr_reception},
+    {"test_t2_timer_callbacks", test_t2_timer_callbacks},
+    {"test_n2_retry_connected", test_n2_retry_connected},
+    {NULL, NULL}};
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     if (argc > 1) {
         for (int i = 0; s_tests[i].name; i++) {
             if (strcmp(s_tests[i].name, argv[1]) == 0) {

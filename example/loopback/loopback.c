@@ -147,7 +147,7 @@ static const atc_hdlc_config_t cfg_b = {
     .t2_ms = 10,
 };
 
-static const atc_hdlc_platform_t plat_a = {
+static const atc_hdlc_platform_ops_t plat_a = {
     .on_send = send_cb,
     .on_event = on_event_a,
     .t1_start = t_start,
@@ -156,7 +156,7 @@ static const atc_hdlc_platform_t plat_a = {
     .t2_stop = t_stop,
     .user_ctx = &wire_ab,
 };
-static const atc_hdlc_platform_t plat_b = {
+static const atc_hdlc_platform_ops_t plat_b = {
     .on_send = send_cb,
     .on_data = on_data_b,
     .on_event = on_event_b,

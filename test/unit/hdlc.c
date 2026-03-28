@@ -324,7 +324,7 @@ void test_input_buffer_overflow() {
         .t1_ms = 1000,
         .t2_ms = 10,
     };
-    static const atc_hdlc_platform_t small_plat = {
+    static const atc_hdlc_platform_ops_t small_plat = {
         .on_send = mock_send_cb,
         .on_data = mock_on_data_cb,
         .on_event = NULL,
@@ -568,27 +568,29 @@ void test_test_frame(void) {
     }
 }
 
-typedef struct { const char *name; void (*fn)(void); } test_entry_t;
+typedef struct {
+    const char* name;
+    void (*fn)(void);
+} test_entry_t;
 static const test_entry_t s_tests[] = {
-    {"test_basic_frame",            test_basic_frame},
-    {"test_empty_information",      test_empty_information},
-    {"test_byte_stuffing_heavy",    test_byte_stuffing_heavy},
-    {"test_garbage_noise",          test_garbage_noise},
-    {"test_consecutive_flags",      test_consecutive_flags},
-    {"test_min_size_rejection",     test_min_size_rejection},
-    {"test_aborted_frame",          test_aborted_frame},
-    {"test_crc_error_injection",    test_crc_error_injection},
-    {"test_input_buffer_overflow",  test_input_buffer_overflow},
-    {"test_streaming_large_payload",test_streaming_large_payload},
-    {"test_control_field_i",        test_control_field_i},
-    {"test_control_field_s",        test_control_field_s},
-    {"test_ui_frame_transmission",  test_ui_frame_transmission},
-    {"test_ui_frame_reception",     test_ui_frame_reception},
-    {"test_test_frame",             test_test_frame},
-    {NULL, NULL}
-};
+    {"test_basic_frame", test_basic_frame},
+    {"test_empty_information", test_empty_information},
+    {"test_byte_stuffing_heavy", test_byte_stuffing_heavy},
+    {"test_garbage_noise", test_garbage_noise},
+    {"test_consecutive_flags", test_consecutive_flags},
+    {"test_min_size_rejection", test_min_size_rejection},
+    {"test_aborted_frame", test_aborted_frame},
+    {"test_crc_error_injection", test_crc_error_injection},
+    {"test_input_buffer_overflow", test_input_buffer_overflow},
+    {"test_streaming_large_payload", test_streaming_large_payload},
+    {"test_control_field_i", test_control_field_i},
+    {"test_control_field_s", test_control_field_s},
+    {"test_ui_frame_transmission", test_ui_frame_transmission},
+    {"test_ui_frame_reception", test_ui_frame_reception},
+    {"test_test_frame", test_test_frame},
+    {NULL, NULL}};
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     if (argc > 1) {
         for (int i = 0; s_tests[i].name; i++) {
             if (strcmp(s_tests[i].name, argv[1]) == 0) {

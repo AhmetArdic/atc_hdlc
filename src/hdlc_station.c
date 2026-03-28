@@ -16,7 +16,7 @@ atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t* ctx, atc_hdlc_params_t params
         return ATC_HDLC_ERR_INVALID_PARAM;
 
     const atc_hdlc_config_t* config = params.config;
-    const atc_hdlc_platform_t* platform = params.platform;
+    const atc_hdlc_platform_ops_t* platform = params.platform;
     atc_hdlc_tx_window_t* tx_window = params.tx_window;
     atc_hdlc_rx_buffer_t* rx_buf = params.rx_buf;
 

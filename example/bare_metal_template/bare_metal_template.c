@@ -180,7 +180,7 @@ static const atc_hdlc_config_t cfg = {
     .t2_ms = 20,
 };
 
-static const atc_hdlc_platform_t platform = {
+static const atc_hdlc_platform_ops_t platform = {
     .on_send = uart_send,
     .on_data = on_data,
     .on_event = on_event,

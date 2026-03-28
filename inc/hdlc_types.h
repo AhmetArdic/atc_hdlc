@@ -138,7 +138,7 @@ typedef struct {
     atc_hdlc_timer_start_fn t2_start; /**< T2 (delayed-ACK) start */
     atc_hdlc_timer_stop_fn t2_stop;   /**< T2 stop */
     void* user_ctx;                   /**< User context */
-} atc_hdlc_platform_t;
+} atc_hdlc_platform_ops_t;
 
 typedef struct {
     atc_hdlc_u8* slots;         /**< Flat buffer for frame payloads: slot_count *
@@ -160,19 +160,19 @@ typedef struct {
 extern const atc_hdlc_crc_ops_t atc_hdlc_crc_ops_default;
 
 typedef struct {
-    const atc_hdlc_config_t* config;     /**< Protocol settings (must stay valid). */
-    const atc_hdlc_platform_t* platform; /**< Callbacks (on_send required). */
-    atc_hdlc_tx_window_t* tx_window;     /**< TX buffer for reliable TX (NULL = disable). */
-    atc_hdlc_rx_buffer_t* rx_buf;        /**< RX buffer (required). */
-    const atc_hdlc_crc_ops_t* crc_ops;   /**< CRC driver (NULL = software default). */
+    const atc_hdlc_config_t* config;         /**< Protocol settings (must stay valid). */
+    const atc_hdlc_platform_ops_t* platform; /**< Callbacks (on_send required). */
+    atc_hdlc_tx_window_t* tx_window;         /**< TX buffer for reliable TX (NULL = disable). */
+    atc_hdlc_rx_buffer_t* rx_buf;            /**< RX buffer (required). */
+    const atc_hdlc_crc_ops_t* crc_ops;       /**< CRC driver (NULL = software default). */
 } atc_hdlc_params_t;
 
 typedef struct {
-    const atc_hdlc_config_t* config;     /**< Protocol configuration (must outlive ctx). */
-    const atc_hdlc_platform_t* platform; /**< Platform callbacks (must outlive ctx). */
-    const atc_hdlc_crc_ops_t* crc_ops;   /**< CRC driver. */
-    atc_hdlc_tx_window_t* tx_window;     /**< TX retransmit window descriptor (must outlive ctx). */
-    atc_hdlc_rx_buffer_t* rx_buf;        /**< RX buffer descriptor (must outlive ctx). */
+    const atc_hdlc_config_t* config;         /**< Protocol configuration (must outlive ctx). */
+    const atc_hdlc_platform_ops_t* platform; /**< Platform callbacks (must outlive ctx). */
+    const atc_hdlc_crc_ops_t* crc_ops;       /**< CRC driver. */
+    atc_hdlc_tx_window_t* tx_window; /**< TX retransmit window descriptor (must outlive ctx). */
+    atc_hdlc_rx_buffer_t* rx_buf;    /**< RX buffer descriptor (must outlive ctx). */
 
     volatile atc_hdlc_u8 current_state;
     atc_hdlc_u32 rx_index;

@@ -89,7 +89,7 @@ static const atc_hdlc_config_t s_default_config = {
 };
 
 /** Full platform with all mock callbacks wired (including timers). */
-static const atc_hdlc_platform_t s_default_platform = {
+static const atc_hdlc_platform_ops_t s_default_platform = {
     .on_send = mock_send_cb,
     .on_data = mock_on_data_cb,
     .on_event = mock_on_event_cb,

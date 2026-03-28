@@ -165,7 +165,7 @@ atc_hdlc_config_t config = {
 };
 
 // Platform callbacks
-atc_hdlc_platform_t platform = {
+atc_hdlc_platform_ops_t platform = {
     .on_send = my_on_send,
     .on_data = my_on_data,
     .on_event = my_on_event,

@@ -25,7 +25,7 @@ typedef struct {
     atc_hdlc_u32 retransmit_lens[7];
     /* Descriptors stored per-node so they outlive node_pair_init() */
     atc_hdlc_config_t hdlc_cfg;
-    atc_hdlc_platform_t hdlc_plat;
+    atc_hdlc_platform_ops_t hdlc_plat;
     atc_hdlc_tx_window_t hdlc_tw;
     atc_hdlc_rx_buffer_t hdlc_rx;
     thread_t thread;
@@ -562,11 +562,11 @@ cleanup:
     free(rx_buffer);
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     srand((unsigned int)time(NULL));
 
     if (argc > 1) {
-        const char *name = argv[1];
+        const char* name = argv[1];
         char buf[32];
 
         for (int w = 1; w <= 7; w++) {

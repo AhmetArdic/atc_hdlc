@@ -5,7 +5,7 @@
 
 static atc_hdlc_context_t hdlc_ctx;
 static atc_hdlc_config_t hdlc_cfg;
-static atc_hdlc_platform_t hdlc_plat;
+static atc_hdlc_platform_ops_t hdlc_plat;
 static atc_hdlc_tx_window_t hdlc_tw;
 static atc_hdlc_rx_buffer_t hdlc_rx_desc;
 

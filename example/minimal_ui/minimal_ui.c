@@ -56,7 +56,7 @@ static const atc_hdlc_config_t cfg = {
     .max_info_size = 16,
 };
 
-static const atc_hdlc_platform_t platform = {
+static const atc_hdlc_platform_ops_t platform = {
     .on_send = send_cb,
     .on_data = on_data,
     /* All timer callbacks NULL — UI frames never start T1 or T2. */

@@ -68,7 +68,7 @@ void setup_context(void) {
         .t1_ms = ATC_HDLC_DEFAULT_T1_TIMEOUT,
         .t2_ms = ATC_HDLC_DEFAULT_T2_TIMEOUT,
     };
-    static const atc_hdlc_platform_t plat = {
+    static const atc_hdlc_platform_ops_t plat = {
         .on_send = mock_send_cb,
         .on_data = mock_on_data_cb,
         .on_event = on_state_change,
@@ -701,28 +701,30 @@ void test_duplicate_rej_guard(void) {
     test_pass("Duplicate REJ guard");
 }
 
-typedef struct { const char *name; void (*fn)(void); } test_entry_t;
+typedef struct {
+    const char* name;
+    void (*fn)(void);
+} test_entry_t;
 static const test_entry_t s_tests[] = {
-    {"test_init_state",                   test_init_state},
-    {"test_connect_sends_sabm",           test_connect_sends_sabm},
-    {"test_connect_complete_on_ua",       test_connect_complete_on_ua},
-    {"test_disconnect_flow",              test_disconnect_flow},
-    {"test_passive_open",                 test_passive_open},
-    {"test_frmr_reception",               test_frmr_reception},
-    {"test_extended_mode_rejection",      test_extended_mode_rejection},
+    {"test_init_state", test_init_state},
+    {"test_connect_sends_sabm", test_connect_sends_sabm},
+    {"test_connect_complete_on_ua", test_connect_complete_on_ua},
+    {"test_disconnect_flow", test_disconnect_flow},
+    {"test_passive_open", test_passive_open},
+    {"test_frmr_reception", test_frmr_reception},
+    {"test_extended_mode_rejection", test_extended_mode_rejection},
     {"test_contention_resolution_winner", test_contention_resolution_winner},
-    {"test_link_reset",                   test_link_reset},
-    {"test_peer_disconnect",              test_peer_disconnect},
-    {"test_event_callbacks",              test_event_callbacks},
-    {"test_t1_timer_callbacks",           test_t1_timer_callbacks},
-    {"test_frmr_send_invalid_nr",         test_frmr_send_invalid_nr},
-    {"test_frmr_error_lockdown",          test_frmr_error_lockdown},
-    {"test_dm_on_connecting",             test_dm_on_connecting},
-    {"test_duplicate_rej_guard",          test_duplicate_rej_guard},
-    {NULL, NULL}
-};
+    {"test_link_reset", test_link_reset},
+    {"test_peer_disconnect", test_peer_disconnect},
+    {"test_event_callbacks", test_event_callbacks},
+    {"test_t1_timer_callbacks", test_t1_timer_callbacks},
+    {"test_frmr_send_invalid_nr", test_frmr_send_invalid_nr},
+    {"test_frmr_error_lockdown", test_frmr_error_lockdown},
+    {"test_dm_on_connecting", test_dm_on_connecting},
+    {"test_duplicate_rej_guard", test_duplicate_rej_guard},
+    {NULL, NULL}};
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     if (argc > 1) {
         for (int i = 0; s_tests[i].name; i++) {
             if (strcmp(s_tests[i].name, argv[1]) == 0) {
