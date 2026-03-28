@@ -263,6 +263,7 @@ static void handle_uframe(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc
         LOG_INFO("S3 RX SABM -> reset + UA");
         reset_state(ctx);
         send_ua(ctx, pf);
+        set_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_INCOMING_CONNECT);
         break;
 
     case U_DISC:
