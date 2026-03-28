@@ -51,12 +51,9 @@ static void on_data(const atc_hdlc_u8* data, atc_hdlc_u16 len, void* u) {
 static atc_hdlc_u8 rx_buf_mem[32];
 
 static const atc_hdlc_config_t cfg = {
-    .mode = ATC_HDLC_MODE_ABM,
-    .address = 0x01,
+    .mode          = ATC_HDLC_MODE_ABM,
+    .address       = 0x01,   /* needed to receive non-broadcast UI frames */
     .max_info_size = 16,
-    .max_retries = 0,
-    .t1_ms = 0,
-    .t2_ms = 0,
 };
 
 static const atc_hdlc_platform_t platform = {
