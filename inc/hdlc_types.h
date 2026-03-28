@@ -164,13 +164,13 @@ typedef struct {
     const atc_hdlc_platform_ops_t* platform; /**< Callbacks (on_send required). */
     atc_hdlc_tx_window_t* tx_window;         /**< TX buffer for reliable TX (NULL = disable). */
     atc_hdlc_rx_buffer_t* rx_buf;            /**< RX buffer (required). */
-    const atc_hdlc_crc_ops_t* crc_ops;       /**< CRC driver (NULL = software default). */
+    const atc_hdlc_crc_ops_t* crc;           /**< CRC driver (NULL = software default). */
 } atc_hdlc_params_t;
 
 typedef struct {
     const atc_hdlc_config_t* config;         /**< Protocol configuration (must outlive ctx). */
     const atc_hdlc_platform_ops_t* platform; /**< Platform callbacks (must outlive ctx). */
-    const atc_hdlc_crc_ops_t* crc_ops;       /**< CRC driver. */
+    const atc_hdlc_crc_ops_t* crc;           /**< CRC driver. */
     atc_hdlc_tx_window_t* tx_window; /**< TX retransmit window descriptor (must outlive ctx). */
     atc_hdlc_rx_buffer_t* rx_buf;    /**< RX buffer descriptor (must outlive ctx). */
 

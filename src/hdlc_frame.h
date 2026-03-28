@@ -93,7 +93,7 @@ static inline void put_escaped(atc_hdlc_context_t* ctx, atc_hdlc_u8 byte) {
 }
 
 static inline void emit(atc_hdlc_context_t* ctx, atc_hdlc_u8 byte) {
-    ctx->tx_crc = ctx->crc_ops->compute(ctx->tx_crc, &byte, 1);
+    ctx->tx_crc = ctx->crc->compute(ctx->tx_crc, &byte, 1);
     put_escaped(ctx, byte);
 }
 

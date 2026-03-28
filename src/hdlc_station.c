@@ -47,7 +47,7 @@ atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t* ctx, atc_hdlc_params_t params
 
     ctx->config = config;
     ctx->platform = platform;
-    ctx->crc_ops = params.crc_ops ? params.crc_ops : &atc_hdlc_crc_ops_default;
+    ctx->crc = params.crc ? params.crc : &atc_hdlc_crc_ops_default;
     ctx->tx_window = tx_window;
     ctx->rx_buf = rx_buf;
 
