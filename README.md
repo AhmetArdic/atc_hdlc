@@ -48,22 +48,24 @@ This library implements a highly capable subset of the ISO/IEC 13239 HDLC standa
 │   ├── minimal_ui/         # Minimal UI-frame send/receive example
 │   └── bare_metal_template/ # Bare-metal integration template
 ├── test/
-│   ├── mcu_test/           # Generic bare-metal port layer for MCU integration testing
-│   │   ├── hdlc_platform.h     # PAL contract (3 functions to implement)
-│   │   ├── hdlc_mcu_port.h     # Public API (init, run, transmit)
-│   │   ├── hdlc_mcu_port.c     # Generic implementation (add to MCU build)
-│   │   └── README.md           # Integration guide (STM32 HAL+DMA, C2000 DriverLib)
-│   ├── test_hdlc.c
-│   ├── test_reliable_transmission.c
-│   ├── test_connection_management.c
-│   ├── test_init_validation.c
-│   ├── test_error_codes.c
-│   ├── test_virtual_com.c
-│   ├── test_virtual_pipe.c
-│   ├── test_virtual_pipe.h
-│   ├── test_physical_target.c
-│   ├── test_common.c
-│   └── test_common.h
+│   ├── README.md           # Test execution guide (ctest labels, filtering)
+│   ├── unit/               # Fast unit tests (no I/O, no threads)
+│   │   ├── hdlc.c
+│   │   ├── reliable_transmission.c
+│   │   ├── connection_management.c
+│   │   ├── init_validation.c
+│   │   └── error_codes.c
+│   ├── integration/        # Virtual pipe and serial port tests
+│   │   ├── virtual_com.c
+│   │   └── physical_target.c
+│   ├── helpers/            # Shared test utilities
+│   │   ├── common.c / common.h
+│   │   └── virtual_pipe.c / virtual_pipe.h
+│   └── mcu_test/           # Generic bare-metal port layer for MCU integration testing
+│       ├── hdlc_platform.h     # PAL contract (3 functions to implement)
+│       ├── hdlc_mcu_port.h     # Public API (init, run, transmit)
+│       ├── hdlc_mcu_port.c     # Generic implementation (add to MCU build)
+│       └── README.md           # Integration guide (STM32 HAL+DMA, C2000 DriverLib)
 ├── CMakeLists.txt
 └── README.md
 ```
@@ -97,12 +99,17 @@ Timers: User calls atc_hdlc_t1_expired() / atc_hdlc_t2_expired() from timer ISR
 ## Build & Run
 
 ```bash
-mkdir build && cd build
-cmake ..
-make
+cmake -B build
+cmake --build build
 
-# Run tests
-ctest --verbose
+# Run all tests
+ctest --test-dir build
+
+# Run only unit tests (fast, no I/O)
+ctest --test-dir build -L unit
+
+# Run only integration tests
+ctest --test-dir build -L integration
 ```
 
 ## Integration
@@ -289,8 +296,6 @@ void T2_TIMER_IRQ(void) {  // Delayed ACK timeout
 | Function | Description |
 |---|---|
 | `atc_hdlc_set_local_busy()` | Set local RNR (tell peer to pause) |
-
-> **Note**: When local busy is active, T1 enquiries and T2 delayed ACKs correctly send `RNR` instead of `RR`, so the peer is never falsely signalled as ready.
 
 ## Configuration
 
