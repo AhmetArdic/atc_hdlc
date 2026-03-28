@@ -48,6 +48,11 @@ This library implements a highly capable subset of the ISO/IEC 13239 HDLC standa
 │   ├── minimal_ui/         # Minimal UI-frame send/receive example
 │   └── bare_metal_template/ # Bare-metal integration template
 ├── test/
+│   ├── mcu_test/           # Generic bare-metal port layer for MCU integration testing
+│   │   ├── hdlc_platform.h     # PAL contract (3 functions to implement)
+│   │   ├── hdlc_mcu_port.h     # Public API (init, run, transmit)
+│   │   ├── hdlc_mcu_port.c     # Generic implementation (add to MCU build)
+│   │   └── README.md           # Integration guide (STM32 HAL+DMA, C2000 DriverLib)
 │   ├── test_hdlc.c
 │   ├── test_reliable_transmission.c
 │   ├── test_connection_management.c
@@ -284,6 +289,8 @@ void T2_TIMER_IRQ(void) {  // Delayed ACK timeout
 | Function | Description |
 |---|---|
 | `atc_hdlc_set_local_busy()` | Set local RNR (tell peer to pause) |
+
+> **Note**: When local busy is active, T1 enquiries and T2 delayed ACKs correctly send `RNR` instead of `RR`, so the peer is never falsely signalled as ready.
 
 ## Configuration
 
