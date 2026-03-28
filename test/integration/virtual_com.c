@@ -562,15 +562,49 @@ cleanup:
     free(rx_buffer);
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
     srand((unsigned int)time(NULL));
+
+    if (argc > 1) {
+        const char *name = argv[1];
+        char buf[32];
+
+        for (int w = 1; w <= 7; w++) {
+            sprintf(buf, "file_transfer_w%d", w);
+            if (strcmp(name, buf) == 0) {
+                run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w, 0);
+                return 0;
+            }
+        }
+        for (int w = 4; w <= 7; w++) {
+            sprintf(buf, "file_transfer_error_w%d", w);
+            if (strcmp(name, buf) == 0) {
+                run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w, 50);
+                return 0;
+            }
+        }
+        for (int w = 4; w <= 7; w++) {
+            sprintf(buf, "timeout_w%d", w);
+            if (strcmp(name, buf) == 0) {
+                run_timeout_test(w);
+                return 0;
+            }
+        }
+        for (int w = 4; w <= 7; w++) {
+            sprintf(buf, "go_back_n_w%d", w);
+            if (strcmp(name, buf) == 0) {
+                run_go_back_n_test(w);
+                return 0;
+            }
+        }
+        fprintf(stderr, "Unknown test: %s\n", argv[1]);
+        return 1;
+    }
 
     printf("\nStarting Mem-Pipe Virtual COM Tests (File Transfer - test.pdf)...\n");
     for (int w = 1; w <= 7; w++)
         run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w, 0);
 
-    /* Error injection + large file is slow for small windows (stop-and-wait).
-     * Only run for w>=4 where pipeline effect keeps throughput reasonable. */
     printf(
         "\nStarting Mem-Pipe Virtual COM Tests (File Transfer - Error Injection - 0.005%%)...\n");
     for (int w = 4; w <= 7; w++)

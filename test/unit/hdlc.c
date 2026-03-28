@@ -568,26 +568,42 @@ void test_test_frame(void) {
     }
 }
 
-int main(void) {
+typedef struct { const char *name; void (*fn)(void); } test_entry_t;
+static const test_entry_t s_tests[] = {
+    {"test_basic_frame",            test_basic_frame},
+    {"test_empty_information",      test_empty_information},
+    {"test_byte_stuffing_heavy",    test_byte_stuffing_heavy},
+    {"test_garbage_noise",          test_garbage_noise},
+    {"test_consecutive_flags",      test_consecutive_flags},
+    {"test_min_size_rejection",     test_min_size_rejection},
+    {"test_aborted_frame",          test_aborted_frame},
+    {"test_crc_error_injection",    test_crc_error_injection},
+    {"test_input_buffer_overflow",  test_input_buffer_overflow},
+    {"test_streaming_large_payload",test_streaming_large_payload},
+    {"test_control_field_i",        test_control_field_i},
+    {"test_control_field_s",        test_control_field_s},
+    {"test_ui_frame_transmission",  test_ui_frame_transmission},
+    {"test_ui_frame_reception",     test_ui_frame_reception},
+    {"test_test_frame",             test_test_frame},
+    {NULL, NULL}
+};
+
+int main(int argc, char *argv[]) {
+    if (argc > 1) {
+        for (int i = 0; s_tests[i].name; i++) {
+            if (strcmp(s_tests[i].name, argv[1]) == 0) {
+                s_tests[i].fn();
+                return 0;
+            }
+        }
+        fprintf(stderr, "Unknown test: %s\n", argv[1]);
+        return 1;
+    }
+
     printf("\n%sSTARTING HDLC CORE SUITE%s\n", COL_YELLOW, COL_RESET);
     printf("----------------------------------------\n\n");
-
-    test_basic_frame();
-    test_empty_information();
-    test_byte_stuffing_heavy();
-    test_garbage_noise();
-    test_consecutive_flags();
-    test_min_size_rejection();
-    test_aborted_frame();
-    test_crc_error_injection();
-    test_input_buffer_overflow();
-    test_streaming_large_payload();
-    test_control_field_i();
-    test_control_field_s();
-    test_ui_frame_transmission();
-    test_ui_frame_reception();
-    test_test_frame();
-
+    for (int i = 0; s_tests[i].name; i++)
+        s_tests[i].fn();
     printf("\n%sALL HDLC CORE TESTS PASSED!%s\n", COL_GREEN, COL_RESET);
     return 0;
 }

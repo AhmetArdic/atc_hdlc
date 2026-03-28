@@ -222,18 +222,34 @@ void test_err_max_retry(void) {
 /* ================================================================
  *  main
  * ================================================================ */
-int main(void) {
+typedef struct { const char *name; void (*fn)(void); } test_entry_t;
+static const test_entry_t s_tests[] = {
+    {"test_err_invalid_state",  test_err_invalid_state},
+    {"test_err_invalid_param",  test_err_invalid_param},
+    {"test_err_no_buffer",      test_err_no_buffer},
+    {"test_err_window_full",    test_err_window_full},
+    {"test_err_frame_too_large",test_err_frame_too_large},
+    {"test_err_remote_busy",    test_err_remote_busy},
+    {"test_err_max_retry",      test_err_max_retry},
+    {NULL, NULL}
+};
+
+int main(int argc, char *argv[]) {
+    if (argc > 1) {
+        for (int i = 0; s_tests[i].name; i++) {
+            if (strcmp(s_tests[i].name, argv[1]) == 0) {
+                s_tests[i].fn();
+                return 0;
+            }
+        }
+        fprintf(stderr, "Unknown test: %s\n", argv[1]);
+        return 1;
+    }
+
     printf("\n%sSTARTING ERROR CODE TEST SUITE%s\n", COL_YELLOW, COL_RESET);
     printf("----------------------------------------\n\n");
-
-    test_err_invalid_state();
-    test_err_invalid_param();
-    test_err_no_buffer();
-    test_err_window_full();
-    test_err_frame_too_large();
-    test_err_remote_busy();
-    test_err_max_retry();
-
+    for (int i = 0; s_tests[i].name; i++)
+        s_tests[i].fn();
     printf("\n%sALL ERROR CODE TESTS PASSED!%s\n", COL_GREEN, COL_RESET);
     return 0;
 }

@@ -287,17 +287,33 @@ void test_init_success_sets_state(void) {
 /* ================================================================
  *  main
  * ================================================================ */
-int main(void) {
+typedef struct { const char *name; void (*fn)(void); } test_entry_t;
+static const test_entry_t s_tests[] = {
+    {"test_init_null_params",             test_init_null_params},
+    {"test_init_unsupported_mode",        test_init_unsupported_mode},
+    {"test_init_invalid_slot_count",      test_init_invalid_slot_count},
+    {"test_init_inconsistent_rx_buffer",  test_init_inconsistent_rx_buffer},
+    {"test_init_inconsistent_tx_window",  test_init_inconsistent_tx_window},
+    {"test_init_success_sets_state",      test_init_success_sets_state},
+    {NULL, NULL}
+};
+
+int main(int argc, char *argv[]) {
+    if (argc > 1) {
+        for (int i = 0; s_tests[i].name; i++) {
+            if (strcmp(s_tests[i].name, argv[1]) == 0) {
+                s_tests[i].fn();
+                return 0;
+            }
+        }
+        fprintf(stderr, "Unknown test: %s\n", argv[1]);
+        return 1;
+    }
+
     printf("\n%sSTARTING INIT VALIDATION TEST SUITE%s\n", COL_YELLOW, COL_RESET);
     printf("----------------------------------------\n\n");
-
-    test_init_null_params();
-    test_init_unsupported_mode();
-    test_init_invalid_slot_count();
-    test_init_inconsistent_rx_buffer();
-    test_init_inconsistent_tx_window();
-    test_init_success_sets_state();
-
+    for (int i = 0; s_tests[i].name; i++)
+        s_tests[i].fn();
     printf("\n%sALL INIT VALIDATION TESTS PASSED!%s\n", COL_GREEN, COL_RESET);
     return 0;
 }

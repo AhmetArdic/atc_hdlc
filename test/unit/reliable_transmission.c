@@ -990,28 +990,44 @@ void test_t2_timer_callbacks(void) {
     test_pass("T2 Timer Callbacks");
 }
 
-int main(void) {
+typedef struct { const char *name; void (*fn)(void); } test_entry_t;
+static const test_entry_t s_tests[] = {
+    {"test_reliable_transmission",    test_reliable_transmission},
+    {"test_sequence_rollover",        test_sequence_rollover},
+    {"test_duplicate_ack_ignored",    test_duplicate_ack_ignored},
+    {"test_piggyback_ack",            test_piggyback_ack},
+    {"test_window_size_2_basic",      test_window_size_2_basic},
+    {"test_gobackn_retransmit",       test_gobackn_retransmit},
+    {"test_window7_mid_rej",          test_window7_mid_rej},
+    {"test_throughput_benchmark",     test_throughput_benchmark},
+    {"test_nr_modulo_validation",     test_nr_modulo_validation},
+    {"test_nr_edge_cases",            test_nr_edge_cases},
+    {"test_state_initialization",     test_state_initialization},
+    {"test_public_query_api",         test_public_query_api},
+    {"test_set_local_busy",           test_set_local_busy},
+    {"test_local_busy_rnr_response",  test_local_busy_rnr_response},
+    {"test_rnr_reception",            test_rnr_reception},
+    {"test_t2_timer_callbacks",       test_t2_timer_callbacks},
+    {"test_n2_retry_connected",       test_n2_retry_connected},
+    {NULL, NULL}
+};
+
+int main(int argc, char *argv[]) {
+    if (argc > 1) {
+        for (int i = 0; s_tests[i].name; i++) {
+            if (strcmp(s_tests[i].name, argv[1]) == 0) {
+                s_tests[i].fn();
+                return 0;
+            }
+        }
+        fprintf(stderr, "Unknown test: %s\n", argv[1]);
+        return 1;
+    }
+
     printf("\n%sSTARTING RELIABLE TRANSMISSION TEST SUITE%s\n", COL_YELLOW, COL_RESET);
     printf("----------------------------------------\n\n");
-
-    test_reliable_transmission();
-    test_sequence_rollover();
-    test_duplicate_ack_ignored();
-    test_piggyback_ack();
-    test_window_size_2_basic();
-    test_gobackn_retransmit();
-    test_window7_mid_rej();
-    test_throughput_benchmark();
-    test_nr_modulo_validation();
-    test_nr_edge_cases();
-    test_state_initialization();
-    test_public_query_api();
-    test_set_local_busy();
-    test_local_busy_rnr_response();
-    test_rnr_reception();
-    test_t2_timer_callbacks();
-    test_n2_retry_connected();
-
+    for (int i = 0; s_tests[i].name; i++)
+        s_tests[i].fn();
     printf("\n%sALL RELIABLE TRANSMISSION TESTS PASSED SUCCESSFULLY!%s\n", COL_GREEN, COL_RESET);
     return 0;
 }

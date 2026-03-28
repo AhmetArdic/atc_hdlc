@@ -582,7 +582,18 @@ static void node_cleanup(physical_node_t* node) {
 /* ================================================================
  *  Main
  * ================================================================ */
-int main(void) {
+int main(int argc, char *argv[]) {
+    uint8_t w_min = 1, w_max = 7;
+
+    if (argc > 1) {
+        int w = 0;
+        if (sscanf(argv[1], "w%d", &w) != 1 || w < 1 || w > 7) {
+            fprintf(stderr, "Unknown test: %s\n", argv[1]);
+            return 1;
+        }
+        w_min = w_max = (uint8_t)w;
+    }
+
     printf("Physical target test  port=%s  baud=%d\n", SERIAL_PORT, BAUD_RATE);
 
     uint32_t pdf_size = 0;
@@ -599,7 +610,7 @@ int main(void) {
         double tx_s, rtt_s, tx_kbps, rtt_kbps;
     } results[7];
 
-    for (uint8_t w = 1; w <= 7; w++) {
+    for (uint8_t w = w_min; w <= w_max; w++) {
         printf("==============================\n");
         printf(" Window size = %u\n", w);
         printf("==============================\n");
