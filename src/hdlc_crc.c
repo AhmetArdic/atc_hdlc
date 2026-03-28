@@ -36,3 +36,11 @@ static const atc_hdlc_u16 fcstab[256] = {
 atc_hdlc_u16 atc_hdlc_crc_ccitt_update(atc_hdlc_u16 fcs, atc_hdlc_u8 data) {
     return (fcs >> 8) ^ fcstab[(fcs ^ data) & 0xff];
 }
+
+static atc_hdlc_u16 soft_compute(atc_hdlc_u16 crc, const atc_hdlc_u8* buf, atc_hdlc_u32 len) {
+    for (atc_hdlc_u32 i = 0; i < len; i++)
+        crc = atc_hdlc_crc_ccitt_update(crc, buf[i]);
+    return crc;
+}
+
+const atc_hdlc_crc_ops_t atc_hdlc_crc_ops_default = {soft_compute};

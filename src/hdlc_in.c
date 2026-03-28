@@ -86,7 +86,7 @@ static void rx_byte(atc_hdlc_context_t* ctx, atc_hdlc_u8 byte) {
     ctx->rx_buf->buffer[ctx->rx_index] = byte;
     if (ctx->rx_index >= FCS_LEN)
         ctx->rx_crc =
-            atc_hdlc_crc_ccitt_update(ctx->rx_crc, ctx->rx_buf->buffer[ctx->rx_index - FCS_LEN]);
+            ctx->crc_ops->compute(ctx->rx_crc, &ctx->rx_buf->buffer[ctx->rx_index - FCS_LEN], 1);
     ctx->rx_index++;
 
     if (ctx->rx_index == 1) {
