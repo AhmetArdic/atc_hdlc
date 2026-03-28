@@ -21,7 +21,7 @@
 #include <string.h>
 
 #include "../inc/hdlc.h"
-#include "test_common.h"
+#include "helpers/common.h"
 
 /* ================================================================
  *  Platform Abstraction

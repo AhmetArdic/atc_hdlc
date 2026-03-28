@@ -1,6 +1,6 @@
 #include "../inc/hdlc.h"
 #include "../src/hdlc_frame.h"
-#include "test_common.h"
+#include "helpers/common.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>

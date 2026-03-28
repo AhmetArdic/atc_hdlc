@@ -1,10 +1,10 @@
-#include "test_virtual_pipe.h"
+#include "helpers/virtual_pipe.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "../inc/hdlc.h"
-#include "test_common.h"
+#include "helpers/common.h"
 
 // Configuration
 #define PAYLOAD_SIZE (1024 * 1024) // 1MB

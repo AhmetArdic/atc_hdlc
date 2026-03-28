@@ -1,4 +1,4 @@
-#include "test_virtual_pipe.h"
+#include "virtual_pipe.h"
 #include <stdlib.h>
 
 #ifdef _WIN32

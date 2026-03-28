@@ -1,4 +1,4 @@
-#include "test_common.h"
+#include "common.h"
 #include "../src/hdlc_crc.h"
 #include <ctype.h>
 #include <stdio.h>
