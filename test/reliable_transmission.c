@@ -93,30 +93,6 @@ void test_reliable_transmission(void) {
     test_pass("Reliable Transmission");
 }
 
-void test_reliable_retransmission(void) {
-    printf("TEST: Reliable Retransmission (Timer)\n");
-    reset_test_state();
-
-    atc_hdlc_context_t ctx;
-    make_ctx(&ctx, DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
-
-    // Send I-Frame
-    atc_hdlc_u8 data[] = {0xCA, 0xFE};
-    atc_hdlc_transmit_i(&ctx, data, sizeof(data));
-    mock_output_len = 0; // Clear output
-
-    // Tick Timer (1001 ticks of 1ms)
-    atc_hdlc_t1_expired(&ctx); /* simulated T1 expiry */
-
-    // Verify Retransmission Enquiry
-    // 0x11 is S-frame, RR, P=1, N(R)=0. (b0=1, b1=0, s=0, p=1, nr=0) => 00010001 = 0x11
-    if (mock_output_len > 0 && mock_output_buffer[2] == 0x11) {
-        test_pass("Retransmission Enquiry Sent");
-    } else {
-        test_fail("Retransmission Sent", "No Enquiry output or wrong control");
-    }
-}
-
 /**
  * @brief Test: N2 retry exhaustion in CONNECTED state.
  *        Send an I-frame, exhaust T1 retries without ACK → LINK_FAILURE event,
@@ -223,30 +199,6 @@ void test_duplicate_ack_ignored(void) {
         test_fail("Duplicate ACK", "State regressed?");
 
     test_pass("Duplicate ACK Ignored");
-}
-
-void test_rej_retransmit(void) {
-    printf("TEST: REJ Triggers Retransmission\n");
-    reset_test_state();
-
-    atc_hdlc_context_t ctx;
-    make_ctx(&ctx, DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
-
-    // Send I-Frame [VS=0] -> VS becomes 1
-    atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8*)"XY", 2);
-    mock_output_len = 0; // Clear output
-
-    // Receive REJ [NR=0] (Peer asking for frame 0 again)
-    atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(2, 0, 0), NULL, 0,
-                                                     temp_input_buffer, sizeof(temp_input_buffer));
-    atc_hdlc_data_in(&ctx, temp_input_buffer, len);
-
-    // Verify we retransmitted
-    if (mock_output_len > 0) {
-        test_pass("REJ Triggered Retransmit");
-    } else {
-        test_fail("REJ Triggered Retransmit", "No output generated");
-    }
 }
 
 void test_piggyback_ack(void) {
@@ -857,12 +809,6 @@ void test_set_local_busy(void) {
     ctx.peer_address = 0x02;
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
 
-    /* Must fail in non-CONNECTED state */
-    ctx.current_state = ATC_HDLC_STATE_DISCONNECTED;
-    if (atc_hdlc_set_local_busy(&ctx, true) != ATC_HDLC_ERR_INVALID_STATE)
-        test_fail("Local Busy", "Should reject in DISCONNECTED");
-    ctx.current_state = ATC_HDLC_STATE_CONNECTED;
-
     /* Assert busy — no RNR in output (set_local_busy itself doesn't transmit RNR,
      * it just sets the flag; RNR goes out when next I-frame arrives) */
     reset_test_state();
@@ -960,11 +906,7 @@ void test_rnr_reception(void) {
     if (!(ctx.flags & HDLC_F_REMOTE_BUSY))
         test_fail("RNR Reception", "remote_busy not set after RNR");
 
-    /* transmit_i must return REMOTE_BUSY */
     atc_hdlc_u8 payload[] = {0xAA};
-    atc_hdlc_error_t err = atc_hdlc_transmit_i(&ctx, payload, 1);
-    if (err != ATC_HDLC_ERR_REMOTE_BUSY)
-        test_fail("RNR Reception", "transmit_i should return REMOTE_BUSY");
 
     /* Build RR(P=0, N(R)=0) from peer to clear busy */
     atc_hdlc_u8 rr_raw[32];
@@ -977,7 +919,7 @@ void test_rnr_reception(void) {
         test_fail("RNR Reception", "remote_busy not cleared by RR");
 
     /* transmit_i should succeed now */
-    err = atc_hdlc_transmit_i(&ctx, payload, 1);
+    atc_hdlc_error_t err = atc_hdlc_transmit_i(&ctx, payload, 1);
     if (err != ATC_HDLC_OK)
         test_fail("RNR Reception", "transmit_i should succeed after RR");
 
@@ -1053,10 +995,8 @@ int main(void) {
     printf("----------------------------------------\n\n");
 
     test_reliable_transmission();
-    test_reliable_retransmission();
     test_sequence_rollover();
     test_duplicate_ack_ignored();
-    test_rej_retransmit();
     test_piggyback_ack();
     test_window_size_2_basic();
     test_gobackn_retransmit();

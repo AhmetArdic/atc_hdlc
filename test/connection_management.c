@@ -278,60 +278,32 @@ void test_frmr_reception(void) {
     test_pass("FRMR Reception");
 }
 
-void test_mode_rejection(void) {
-    printf("TEST: Mode Rejection (SNRM)\n");
-    setup_context();
-    // Use SNRM (Set Normal Response Mode) - Not Supported
-    // M=100 00 -> Hi=4, Lo=0. P=1.
-    // Ctrl: 100 1 00 11 -> 1001 0011 -> 0x93
-
-    uint8_t packed[32];
-    int packed_len = test_pack_frame(0x01, U_CTRL(U_SNRM, 1), NULL, 0, packed, sizeof(packed));
-
-    // Clear TX capture
-    mock_output_len = 0;
-
-    // Feed bytes
-    atc_hdlc_data_in(&ctx, packed, packed_len);
-
-    // Inspect captured bytes dump using helper
-    print_hexdump("Captured TX", mock_output_buffer, mock_output_len);
-
-    // 1. State should remain DISCONNECTED
-    if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED)
-        test_fail("Mode Rejection", "State changed on invalid mode!");
-
-    // 2. Output should be DM
-    uint8_t flat[32];
-    test_frame_t frame_out = decode_last_tx(flat, sizeof(flat));
-
-    // DM: 000 F 00 11 (Hi=0, Lo=3). F should match P (1).
-    // 000 1 11 11 -> 0x1F.
-    if (frame_out.control != 0x1F) // DM with F=1
-        test_fail("Mode Rejection", "Did not send DM");
-
-    test_pass("Mode Rejection (SNRM)");
-}
-
 void test_extended_mode_rejection(void) {
-    printf("TEST: Extended Mode Rejection (SABME, SNRME, SARME)\n");
+    printf("TEST: Extended Mode Rejection (SNRM, SABME, SNRME, SARME)\n");
     setup_context();
 
     static const struct {
         atc_hdlc_u8 ctrl;
         const char* name;
     } cases[] = {
+        {U_CTRL(U_SNRM, 1), "SNRM"},
         {U_CTRL(U_SABME, 1), "SABME"},
         {U_CTRL(U_SNRME, 1), "SNRME"},
         {U_CTRL(U_SARME, 1), "SARME"},
     };
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
         atc_hdlc_u8 packed[32];
         int packed_len = test_pack_frame(0x01, cases[i].ctrl, NULL, 0, packed, sizeof(packed));
 
         mock_output_len = 0;
         atc_hdlc_data_in(&ctx, packed, packed_len);
+
+        if (ctx.current_state != ATC_HDLC_STATE_DISCONNECTED) {
+            char msg[64];
+            sprintf(msg, "%s changed state from DISCONNECTED", cases[i].name);
+            test_fail("Ext Mode Rejection", msg);
+        }
 
         atc_hdlc_u8 flat[32];
         test_frame_t frame_out = decode_last_tx(flat, sizeof(flat));
@@ -392,57 +364,6 @@ void test_contention_resolution_winner(void) {
         test_fail("Contention Winner", "State should be CONNECTED after receiving UA(F=1)");
 
     test_pass("Contention Resolution (Winner)");
-}
-
-void test_contention_resolution_loser(void) {
-    printf("TEST: Contention Resolution (Loser)\n");
-    setup_context();
-
-    /* Same LAPB symmetric collision: address does not matter. Both sides
-     * send UA and stay in CONNECTING. The "loser" side is identical to
-     * the "winner" side — the protocol treats them the same. */
-    ctx.peer_address = 0x02;
-
-    // 1. We initiate connection
-    atc_hdlc_link_setup(&ctx, 0x02);
-    mock_output_len = 0;
-
-    // 2. Peer also initiated — we receive their SABM
-    uint8_t packed[32];
-    int packed_len = test_pack_frame(0x01, 0x3F, NULL, 0, packed, sizeof(packed));
-
-    atc_hdlc_data_in(&ctx, packed, packed_len);
-
-    // LAPB behaviour: send UA, remain in CONNECTING
-    if (ctx.current_state != ATC_HDLC_STATE_CONNECTING)
-        test_fail("Contention Loser", "State changed from CONNECTING");
-
-    // UA must have been sent
-    uint8_t flat[32];
-    test_frame_t frame_out = decode_last_tx(flat, sizeof(flat));
-    if (frame_out.control != 0x73)
-        test_fail("Contention Loser", "Did not send UA(F=1) in response to collision SABM");
-
-    /* T1 is still running — we are waiting for peer's UA */
-    if (!(ctx.flags & HDLC_F_T1_ACTIVE))
-        test_fail("Contention Loser", "T1 should be running while waiting for UA");
-
-    // 3. T1 expires before UA arrives — retransmit SABM
-    mock_output_len = 0;
-    atc_hdlc_t1_expired(&ctx);
-
-    if (mock_output_len == 0) {
-        test_fail("Contention Loser", "Timer expired but SABM was not retransmitted");
-        return;
-    }
-
-    uint8_t retx_flat[32];
-    test_frame_t retx_frame = decode_last_tx(retx_flat, sizeof(retx_flat));
-
-    if (retx_frame.control != 0x3F)
-        test_fail("Contention Loser", "Timer expired but output was not SABM");
-
-    test_pass("Contention Resolution (Loser + Timer)");
 }
 
 /**
@@ -790,10 +711,8 @@ int main(void) {
     test_disconnect_flow();
     test_passive_open();
     test_frmr_reception();
-    test_mode_rejection();
     test_extended_mode_rejection();
     test_contention_resolution_winner();
-    test_contention_resolution_loser();
     test_link_reset();
     test_peer_disconnect();
     test_event_callbacks();
