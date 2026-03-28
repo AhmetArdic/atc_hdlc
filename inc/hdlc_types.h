@@ -176,8 +176,7 @@ typedef struct {
 
     volatile atc_hdlc_u8 current_state;
     atc_hdlc_u32 rx_index;
-    atc_hdlc_u16 rx_crc;
-    atc_hdlc_u16 tx_crc;
+    atc_hdlc_u16 rx_crc, tx_crc;
     atc_hdlc_u8 rx_state;
     atc_hdlc_u8 retransmit_from;
     atc_hdlc_u8 tx_next_slot;
