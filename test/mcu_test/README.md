@@ -17,14 +17,14 @@ You only need to implement three platform functions declared in `hdlc_platform.h
 2. Create a `hdlc_platform.c` file in your project and implement the three functions below.
 3. Call `hdlc_port_init()` once, then `hdlc_port_run()` from your main loop.
 
-## STM32 HAL + DMA example
+## MCU HAL + DMA example
 
-The example below targets STM32 with USART + circular DMA on both RX and TX,
+The example below targets MCU with USART + circular DMA on both RX and TX,
 which is the most common bare-metal setup.  Adapt peripheral names and buffer
 sizes to your board.
 
 ```c
-/* hdlc_platform.c — STM32 HAL + DMA implementation */
+/* hdlc_platform.c — MCU HAL + DMA implementation */
 
 #include "hdlc_platform.h"
 #include "main.h"          /* UART/DMA handles from CubeMX */
@@ -32,13 +32,13 @@ sizes to your board.
 /* ------------------------------------------------------------------ */
 /*  TX ring buffer (written by HDLC, drained by DMA)                  */
 /* ------------------------------------------------------------------ */
-#define TX_RING_SIZE  4096u          /* must be a power of 2 */
+#define TX_RING_SIZE  8192u          /* must be a power of 2 */
 #define TX_RING_MASK  (TX_RING_SIZE - 1u)
 
-static uint8_t          tx_ring[TX_RING_SIZE];
-static volatile uint16_t tx_head    = 0;
-static volatile uint16_t tx_tail    = 0;
-static volatile uint8_t  tx_dma_busy = 0;
+static uint_least8_t     tx_ring[TX_RING_SIZE];
+static volatile uint16_t tx_head     = 0;
+static volatile uint16_t tx_tail     = 0;
+static volatile uint_least8_t tx_dma_busy = 0;
 
 /* Kick a DMA transfer from tx_tail toward tx_head (IRQ-safe). */
 static void tx_flush_dma(void)
@@ -74,10 +74,11 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 /* ------------------------------------------------------------------ */
 /*  RX ring buffer (written by circular DMA, read by port_rx_read)    */
 /* ------------------------------------------------------------------ */
-#define RX_RING_SIZE  4096u
+#define RX_RING_SIZE  8192u
+#define RX_RING_MASK  (RX_RING_SIZE - 1u)
 
-static uint8_t          rx_ring[RX_RING_SIZE];
-static uint16_t         rx_tail = 0;
+static uint_least8_t rx_ring[RX_RING_SIZE];
+static uint16_t      rx_tail = 0;
 
 /* Start circular DMA once during system init. */
 void hdlc_platform_uart_init(void)
@@ -89,7 +90,7 @@ void hdlc_platform_uart_init(void)
 /*  PAL implementation                                                 */
 /* ------------------------------------------------------------------ */
 
-void port_tx_byte(uint8_t byte, bool flush)
+void port_tx_byte(uint_least8_t byte, bool flush)
 {
     uint16_t next = (tx_head + 1u) & TX_RING_MASK;
     while (next == tx_tail)         /* spin if ring is full */
@@ -107,7 +108,7 @@ uint32_t port_tick_ms(void)
     return HAL_GetTick();           /* 1 ms resolution from SysTick */
 }
 
-uint16_t port_rx_read(uint8_t *buf, uint16_t max_len)
+uint16_t port_rx_read(uint_least8_t *buf, uint16_t max_len)
 {
     uint16_t dma_head = (uint16_t)(RX_RING_SIZE
                         - __HAL_DMA_GET_COUNTER(huart2.hdmarx));
@@ -116,9 +117,27 @@ uint16_t port_rx_read(uint8_t *buf, uint16_t max_len)
 
     uint16_t copied = 0;
 
-    while (rx_tail != dma_head && copied < max_len) {
-        buf[copied++] = rx_ring[rx_tail];
-        rx_tail = (rx_tail + 1u) % RX_RING_SIZE;
+    if (dma_head > rx_tail) {
+        uint16_t n = dma_head - rx_tail;
+        if (n > max_len) n = max_len;
+        memcpy(buf, &rx_ring[rx_tail], n);
+        copied  = n;
+        rx_tail = (rx_tail + n) & RX_RING_MASK;
+    } else if (dma_head < rx_tail) {
+        /* Wrap-around: two segments */
+        uint16_t n1 = RX_RING_SIZE - rx_tail;
+        if (n1 > max_len) n1 = max_len;
+        memcpy(buf, &rx_ring[rx_tail], n1);
+        copied  = n1;
+        rx_tail = 0;
+
+        uint16_t n2 = dma_head;
+        if (n2 > (uint16_t)(max_len - copied)) n2 = max_len - copied;
+        if (n2 > 0) {
+            memcpy(buf + copied, &rx_ring[0], n2);
+            copied += n2;
+            rx_tail = n2;
+        }
     }
 
     return copied;
@@ -138,6 +157,10 @@ int main(void)
     MX_GPIO_Init();
     MX_DMA_Init();
     MX_USART2_UART_Init();
+
+    __HAL_FLASH_INSTRUCTION_CACHE_ENABLE();
+    __HAL_FLASH_DATA_CACHE_ENABLE();
+    __HAL_FLASH_PREFETCH_BUFFER_ENABLE();
 
     hdlc_platform_uart_init();   /* start circular RX DMA */
 

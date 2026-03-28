@@ -4,7 +4,7 @@
  * Implement these three functions for your MCU/RTOS, then add
  * hdlc_mcu_port.c to your build system.
  *
- * Example (STM32 HAL + DMA):
+ * Example (MCU HAL + DMA):
  *
  *   void port_tx_byte(uint_least8_t byte, bool flush) {
  *       tx_ring[tx_head] = byte;

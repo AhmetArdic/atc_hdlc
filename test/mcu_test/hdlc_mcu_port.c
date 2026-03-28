@@ -76,7 +76,7 @@ static void t1_stop(void *user_ctx)
  * T2 is fired with t2_started_ms = 0 so that the expiry check in
  * hdlc_port_run() triggers on the very next iteration regardless of
  * the configured t2_ms value.  This matches the bare-metal trick from
- * the STM32 reference: sending the RR on the same DMA burst as the last
+ * the MCU reference: sending the RR on the same DMA burst as the last
  * received byte maximises pipeline throughput.
  */
 static void t2_start(atc_hdlc_u32 ms, void *user_ctx)

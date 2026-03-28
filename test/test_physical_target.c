@@ -4,12 +4,12 @@
  *
  * Two tests run per window size:
  *
- *   Test B — STM32-initiated I-frames: immediately after connection the STM32
+ *   Test B — MCU-initiated I-frames: immediately after connection the MCU
  *             sends a known fixed-pattern burst (TEST_I_FRAME_COUNT frames);
  *             PC verifies frame count and payload byte-for-byte.
  *
  *   Test A — Bidirectional I-frame echo: PC sends a PDF file as I-frames;
- *             STM32 echoes each frame back as an I-frame (not UI); PC verifies
+ *             MCU echoes each frame back as an I-frame (not UI); PC verifies
  *             byte-for-byte integrity. TX and RTT throughput reported separately.
  *
  * Cross-platform: builds on both Linux and Windows.
@@ -94,10 +94,10 @@ static double get_time_s(void) {
 #define BUFFER_SIZE 16384
 #define PDF_PATH    TEST_DATA_DIR "/test.pdf"
 
-/* Must match TEST_I_FRAME_COUNT / TEST_I_PAYLOAD_SIZE in STM32 main.c */
-#define STM32_TEST_FRAME_COUNT  5u
-#define STM32_TEST_FRAME_SIZE   16u
-#define STM32_TEST_TOTAL_BYTES  (STM32_TEST_FRAME_COUNT * STM32_TEST_FRAME_SIZE)
+/* Must match TEST_I_FRAME_COUNT / TEST_I_PAYLOAD_SIZE in MCU main.c */
+#define MCU_TEST_FRAME_COUNT  5u
+#define MCU_TEST_FRAME_SIZE   16u
+#define MCU_TEST_TOTAL_BYTES  (MCU_TEST_FRAME_COUNT * MCU_TEST_FRAME_SIZE)
 
 /* ================================================================
  *  Physical Node Context
@@ -116,11 +116,11 @@ typedef struct {
     thread_handle_t rx_thread;
     volatile bool   running;
 
-    /* Test B: frames sent by STM32 after connection */
-    uint8_t          stm32_test_buf[STM32_TEST_TOTAL_BYTES];
-    volatile uint32_t stm32_test_bytes;
-    volatile uint32_t stm32_test_frames;
-    volatile bool     stm32_test_done; /* set by main thread to stop routing here */
+    /* Test B: frames sent by MCU after connection */
+    uint8_t          mcu_test_buf[MCU_TEST_TOTAL_BYTES];
+    volatile uint32_t mcu_test_bytes;
+    volatile uint32_t mcu_test_frames;
+    volatile bool     mcu_test_done; /* set by main thread to stop routing here */
 
     /* Test A: echo receive buffer */
     uint8_t*         recv_buf;
@@ -228,21 +228,21 @@ static int node_output_cb(atc_hdlc_u8 byte, bool flush, void* user_data) {
 }
 
 /**
- * @brief Routes incoming frames: Test B frames go to stm32_test_buf until
- *        stm32_test_done is set; after that all frames go to recv_buf (Test A).
+ * @brief Routes incoming frames: Test B frames go to mcu_test_buf until
+ *        mcu_test_done is set; after that all frames go to recv_buf (Test A).
  */
 static void node_on_data_cb(const atc_hdlc_u8* payload, atc_hdlc_u16 len, void* user_data) {
     physical_node_t* node = (physical_node_t*)user_data;
     node->frames_received++;
 
-    if (!node->stm32_test_done) {
-        uint32_t space = STM32_TEST_TOTAL_BYTES - node->stm32_test_bytes;
+    if (!node->mcu_test_done) {
+        uint32_t space = MCU_TEST_TOTAL_BYTES - node->mcu_test_bytes;
         uint32_t n = len < space ? len : space;
-        memcpy(node->stm32_test_buf + node->stm32_test_bytes, payload, n);
-        node->stm32_test_bytes += len;
-        node->stm32_test_frames++;
+        memcpy(node->mcu_test_buf + node->mcu_test_bytes, payload, n);
+        node->mcu_test_bytes += len;
+        node->mcu_test_frames++;
         printf("\r[Test B] frame #%u  len=%-4u  total=%u/%u\n",
-               node->stm32_test_frames, len, node->stm32_test_bytes, STM32_TEST_TOTAL_BYTES);
+               node->mcu_test_frames, len, node->mcu_test_bytes, MCU_TEST_TOTAL_BYTES);
     } else {
         if (node->recv_buf) {
             uint32_t space = node->recv_buf_len - node->bytes_received;
@@ -333,39 +333,39 @@ static bool wait_for_connection(physical_node_t* node, int timeout_ms) {
     return node->ctx.current_state == ATC_HDLC_STATE_CONNECTED;
 }
 
-/** @brief Test B: wait for STM32-initiated I-frames then verify payload. */
+/** @brief Test B: wait for MCU-initiated I-frames then verify payload. */
 static bool run_test_b(physical_node_t* node) {
-    static const uint8_t expected[STM32_TEST_FRAME_SIZE] = {
+    static const uint8_t expected[MCU_TEST_FRAME_SIZE] = {
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
         0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
     };
 
-    printf("Waiting for STM32 self-test frames (%u bytes)...\n", STM32_TEST_TOTAL_BYTES);
+    printf("Waiting for MCU self-test frames (%u bytes)...\n", MCU_TEST_TOTAL_BYTES);
     int timeout_ms = 5000;
-    while (node->stm32_test_bytes < STM32_TEST_TOTAL_BYTES && timeout_ms > 0 && node->running) {
+    while (node->mcu_test_bytes < MCU_TEST_TOTAL_BYTES && timeout_ms > 0 && node->running) {
         sleep_ms(10);
         timeout_ms -= 10;
     }
 
     printf("\n--- Test B ---\n");
     printf("Expected: %u bytes (%u x %u)\n",
-           STM32_TEST_TOTAL_BYTES, STM32_TEST_FRAME_COUNT, STM32_TEST_FRAME_SIZE);
-    printf("Received: %u bytes (%u frames)\n", node->stm32_test_bytes, node->stm32_test_frames);
+           MCU_TEST_TOTAL_BYTES, MCU_TEST_FRAME_COUNT, MCU_TEST_FRAME_SIZE);
+    printf("Received: %u bytes (%u frames)\n", node->mcu_test_bytes, node->mcu_test_frames);
 
-    if (node->stm32_test_bytes < STM32_TEST_TOTAL_BYTES) {
+    if (node->mcu_test_bytes < MCU_TEST_TOTAL_BYTES) {
         printf("%s[FAIL] Test B: timeout%s\n", COL_RED, COL_RESET);
         return false;
     }
 
-    for (uint32_t i = 0; i < STM32_TEST_FRAME_COUNT; i++) {
-        if (memcmp(node->stm32_test_buf + i * STM32_TEST_FRAME_SIZE,
-                   expected, STM32_TEST_FRAME_SIZE) != 0) {
+    for (uint32_t i = 0; i < MCU_TEST_FRAME_COUNT; i++) {
+        if (memcmp(node->mcu_test_buf + i * MCU_TEST_FRAME_SIZE,
+                   expected, MCU_TEST_FRAME_SIZE) != 0) {
             printf("%s[FAIL] Test B: payload mismatch in frame %u%s\n", COL_RED, i, COL_RESET);
             return false;
         }
     }
-    printf("%s[PASS] Test B: %u STM32-initiated I-frames verified%s\n",
-           COL_GREEN, STM32_TEST_FRAME_COUNT, COL_RESET);
+    printf("%s[PASS] Test B: %u MCU-initiated I-frames verified%s\n",
+           COL_GREEN, MCU_TEST_FRAME_COUNT, COL_RESET);
     return true;
 }
 
@@ -404,12 +404,14 @@ static void wait_for_echoes(physical_node_t* node, uint32_t expected, int timeou
 
 /** @brief Test A: verify byte-for-byte integrity and report TX / RTT throughput. */
 static bool run_test_a(physical_node_t* node, const uint8_t* original, uint32_t data_len,
-                       uint32_t sent, double tx_s, double rtt_s, double* out_kbps) {
+                       uint32_t sent, double tx_s, double rtt_s,
+                       double* out_tx_kbps, double* out_rtt_kbps) {
     uint32_t frames     = (data_len + CHUNK_SIZE - 1) / CHUNK_SIZE;
     uint32_t overhead   = frames * 6; /* flag+addr+ctrl+2×FCS */
     double   tx_kbps    = ((data_len + overhead) * 8.0) / (tx_s  * 1000.0);
     double   rtt_kbps   = ((data_len + overhead) * 2.0 * 8.0) / (rtt_s * 1000.0);
-    if (out_kbps) *out_kbps = rtt_kbps;
+    if (out_tx_kbps)  *out_tx_kbps  = tx_kbps;
+    if (out_rtt_kbps) *out_rtt_kbps = rtt_kbps;
 
     printf("\n--- Test A (Window %u) ---\n", node->ctx.tx_window->slot_count);
     printf("Sent     : %u bytes  (%u frames)\n", sent, frames);
@@ -505,7 +507,7 @@ int main(void) {
     }
     printf("Loaded %s (%u bytes)\n\n", PDF_PATH, pdf_size);
 
-    struct { uint8_t w; bool a, b; double tx_s, rtt_s, kbps; } results[7];
+    struct { uint8_t w; bool a, b; double tx_s, rtt_s, tx_kbps, rtt_kbps; } results[7];
 
     for (uint8_t w = 1; w <= 7; w++) {
         printf("==============================\n");
@@ -515,22 +517,22 @@ int main(void) {
         physical_node_t node;
         if (!node_init(&node, pdf_size, w)) {
             printf("[FAIL] node_init failed for window %u\n", w);
-            results[w-1] = (typeof(results[0])){ w, false, false, 0, 0, 0 };
+            results[w-1] = (typeof(results[0])){ w, false, false, 0, 0, 0, 0 };
             sleep_ms(500); continue;
         }
 
         printf("Connecting...\n");
         if (!wait_for_connection(&node, 10000)) {
             printf("[FAIL] Connection timeout for window %u\n", w);
-            results[w-1] = (typeof(results[0])){ w, false, false, 0, 0, 0 };
+            results[w-1] = (typeof(results[0])){ w, false, false, 0, 0, 0, 0 };
             node_cleanup(&node); sleep_ms(500); continue;
         }
 
-        /* Test B: STM32-initiated I-frames */
+        /* Test B: MCU-initiated I-frames */
         bool b = run_test_b(&node);
 
         /* Switch routing to Test A */
-        node.stm32_test_done  = true;
+        node.mcu_test_done  = true;
         node.bytes_received   = 0;
         node.frames_received  = 0;  /* reset so Test A frame count is isolated */
 
@@ -546,29 +548,30 @@ int main(void) {
         }
         double rtt_s = get_time_s() - t0;
 
-        double kbps = 0;
-        bool a = run_test_a(&node, pdf_data, pdf_size, sent, tx_s, rtt_s, &kbps);
+        double tx_kbps = 0, rtt_kbps = 0;
+        bool a = run_test_a(&node, pdf_data, pdf_size, sent, tx_s, rtt_s, &tx_kbps, &rtt_kbps);
 
-        results[w-1] = (typeof(results[0])){ w, a, b, tx_s, rtt_s, kbps };
+        results[w-1] = (typeof(results[0])){ w, a, b, tx_s, rtt_s, tx_kbps, rtt_kbps };
         node_cleanup(&node);
         sleep_ms(500);
     }
 
     free(pdf_data);
 
-    printf("\n=================================================================\n");
+    printf("\n============================================================================\n");
     printf(" SUMMARY (%d baud)\n", BAUD_RATE);
-    printf("=================================================================\n");
-    printf(" | Win | Test A  | Test B  | TX (s) | RTT (s) | kbps     |\n");
-    printf(" |-----|---------|---------|--------|---------|----------|\n");
+    printf("============================================================================\n");
+    printf(" | Win | Test A  | Test B  | TX (s) | RTT (s) | TX kbps  | RTT kbps |\n");
+    printf(" |-----|---------|---------|--------|---------|----------|----------|\n");
     for (int i = 0; i < 7; i++) {
-        printf(" |  %2u |  %s  |  %s  | %6.2f | %7.2f | %8.2f |\n",
+        printf(" |  %2u |  %s  |  %s  | %6.2f | %7.2f | %8.2f | %8.2f |\n",
                results[i].w,
                results[i].a ? " PASS" : " FAIL",
                results[i].b ? " PASS" : " FAIL",
-               results[i].tx_s, results[i].rtt_s, results[i].kbps);
+               results[i].tx_s, results[i].rtt_s,
+               results[i].tx_kbps, results[i].rtt_kbps);
     }
-    printf("=================================================================\n\n");
+    printf("============================================================================\n\n");
 
     int fails = 0;
     for (int i = 0; i < 7; i++)
