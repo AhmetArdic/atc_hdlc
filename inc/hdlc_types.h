@@ -171,10 +171,10 @@ typedef struct {
     const atc_hdlc_config_t* config;         /**< Protocol configuration (must outlive ctx). */
     const atc_hdlc_platform_ops_t* platform; /**< Platform callbacks (must outlive ctx). */
     const atc_hdlc_crc_ops_t* crc;           /**< CRC driver. */
-    atc_hdlc_tx_window_t* tx_window; /**< TX retransmit window descriptor (must outlive ctx). */
-    atc_hdlc_rx_buffer_t* rx_buf;    /**< RX buffer descriptor (must outlive ctx). */
+    const atc_hdlc_tx_window_t* tx_window; /**< TX retransmit window descriptor (must outlive ctx). */
+    const atc_hdlc_rx_buffer_t* rx_buf;    /**< RX buffer descriptor (must outlive ctx). */
 
-    volatile atc_hdlc_u8 current_state;
+    atc_hdlc_u8 current_state;
     atc_hdlc_u32 rx_index;
     atc_hdlc_u16 rx_crc, tx_crc;
     atc_hdlc_u8 rx_state;
@@ -182,12 +182,12 @@ typedef struct {
     atc_hdlc_u8 tx_next_slot;
 
     atc_hdlc_u8 my_address, peer_address;
-    volatile atc_hdlc_u8 vs, vr, va;
-    volatile atc_hdlc_u8 n2;
+    atc_hdlc_u8 vs, vr, va;
+    atc_hdlc_u8 n2;
     atc_hdlc_u8 frmr_ctrl, frmr_flags;
 
-    volatile atc_hdlc_u8 flags;
-} atc_hdlc_context_t;
+    atc_hdlc_u8 flags;
+} atc_hdlc_ctx_t;
 
 #define HDLC_F_T1_ACTIVE          ((atc_hdlc_u8)0x01u)
 #define HDLC_F_T2_ACTIVE          ((atc_hdlc_u8)0x02u)

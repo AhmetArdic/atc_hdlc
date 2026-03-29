@@ -31,7 +31,7 @@ static const atc_hdlc_platform_ops_t s_make_ctx_plat = {
     .user_ctx = NULL,
 };
 
-static void make_ctx(atc_hdlc_context_t* ctx, atc_hdlc_u8 window_size, atc_hdlc_u32 t1_ms) {
+static void make_ctx(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 window_size, atc_hdlc_u32 t1_ms) {
     s_make_ctx_cfg.mode = ATC_HDLC_MODE_ABM;
     s_make_ctx_cfg.address = 0x01;
     s_make_ctx_cfg.max_info_size = 1024;
@@ -66,7 +66,7 @@ void test_reliable_transmission(void) {
     printf("TEST: Reliable Transmission (I-Frame + ACK)\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     make_ctx(&ctx, DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // Send I-Frame
@@ -101,7 +101,7 @@ void test_reliable_transmission(void) {
 void test_n2_retry_connected(void) {
     printf("TEST: N2 Retry Exhaustion in CONNECTED State\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx); /* max_retries = 3, on_event = mock_on_event_cb */
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
     ctx.peer_address = 0x02;
@@ -143,7 +143,7 @@ void test_sequence_rollover(void) {
     printf("TEST: Sequence Number Rollover (0->7->0)\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     make_ctx(&ctx, DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     atc_hdlc_u8 data[] = {0x00};
@@ -177,7 +177,7 @@ void test_duplicate_ack_ignored(void) {
     printf("TEST: Duplicate ACK Ignored\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     make_ctx(&ctx, DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // Send I-Frame (VS becomes 1)
@@ -205,7 +205,7 @@ void test_piggyback_ack(void) {
     printf("TEST: Piggyback ACK via I-Frame N(R)\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     make_ctx(&ctx, DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // --- Phase 1: Outgoing Piggyback ---
@@ -257,7 +257,7 @@ void test_window_size_2_basic(void) {
     printf("\nTEST: Window Size 2 — Basic\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     make_ctx(&ctx, 2, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     atc_hdlc_u8 data1[] = "FRAME1";
@@ -315,7 +315,7 @@ void test_gobackn_retransmit(void) {
     printf("\nTEST: Go-Back-N Retransmission (Timeout)\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     make_ctx(&ctx, 3, 500);
 
     // Send 3 I-frames
@@ -370,7 +370,7 @@ void test_window7_mid_rej(void) {
     printf("\nTEST: Window Size 7 — Mid-Window REJ\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     make_ctx(&ctx, 7, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     /* Phase 1: Fill window with 7 I-frames */
@@ -460,7 +460,7 @@ static bench_result_t run_throughput_bench(int window_size) {
 
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     make_ctx(&ctx, (atc_hdlc_u8)window_size, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // Prepare chunk payload (repeating pattern)
@@ -587,7 +587,7 @@ void test_nr_modulo_validation(void) {
     printf("\nTEST: N(R) Modulo Validation Bug\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     make_ctx(&ctx, 7, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // 1. Send 6 frames (0 to 5)
@@ -638,7 +638,7 @@ void test_nr_edge_cases(void) {
     printf("\nTEST: N(R) Edge Cases\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     make_ctx(&ctx, 7, 1000);
 
     typedef struct {
@@ -723,7 +723,7 @@ void test_state_initialization(void) {
     printf("\nTEST: SABM/UA State Initialization\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     make_ctx(&ctx, DEFAULT_WINDOW_SIZE, ATC_HDLC_DEFAULT_T1_TIMEOUT);
 
     // 1. Send an I-frame so that V(S) increments to 1
@@ -768,7 +768,7 @@ void test_state_initialization(void) {
 void test_public_query_api(void) {
     printf("\nTEST: Public Query API\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.peer_address = 0x02;
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
@@ -804,7 +804,7 @@ void test_public_query_api(void) {
 void test_set_local_busy(void) {
     printf("\nTEST: Local Busy (set_local_busy)\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.peer_address = 0x02;
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
@@ -852,7 +852,7 @@ void test_set_local_busy(void) {
 void test_local_busy_rnr_response(void) {
     printf("\nTEST: Local Busy — RNR response to incoming I-frame\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.peer_address = 0x02;
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
@@ -890,7 +890,7 @@ void test_local_busy_rnr_response(void) {
 void test_rnr_reception(void) {
     printf("\nTEST: RNR Reception (remote_busy)\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.peer_address = 0x02;
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
@@ -933,7 +933,7 @@ void test_rnr_reception(void) {
 void test_t2_timer_callbacks(void) {
     printf("\nTEST: T2 Timer Callbacks\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.peer_address = 0x02;
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;

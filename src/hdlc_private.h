@@ -33,32 +33,32 @@
 #define LOG_DBG(fmt, ...)
 #endif
 
-void set_state(atc_hdlc_context_t* ctx, atc_hdlc_state_t new_state, atc_hdlc_event_t event);
+void set_state(atc_hdlc_ctx_t* ctx, atc_hdlc_state_t new_state, atc_hdlc_event_t event);
 
-void reset_state(atc_hdlc_context_t* ctx);
+void reset_state(atc_hdlc_ctx_t* ctx);
 
-void dispatch_frame(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
+void dispatch_frame(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
                     const atc_hdlc_u8* info, atc_hdlc_u16 info_len);
 
-static inline void t1_start(atc_hdlc_context_t* ctx) {
+static inline void t1_start(atc_hdlc_ctx_t* ctx) {
     if (ctx->platform->t1_start && ctx->config)
         ctx->platform->t1_start(ctx->config->t1_ms, ctx->platform->user_ctx);
     CTX_SET(ctx, HDLC_F_T1_ACTIVE);
 }
 
-static inline void t1_stop(atc_hdlc_context_t* ctx) {
+static inline void t1_stop(atc_hdlc_ctx_t* ctx) {
     if (CTX_FLAG(ctx, HDLC_F_T1_ACTIVE) && ctx->platform->t1_stop)
         ctx->platform->t1_stop(ctx->platform->user_ctx);
     CTX_CLR(ctx, HDLC_F_T1_ACTIVE);
 }
 
-static inline void t2_start(atc_hdlc_context_t* ctx) {
+static inline void t2_start(atc_hdlc_ctx_t* ctx) {
     if (ctx->platform->t2_start && ctx->config)
         ctx->platform->t2_start(ctx->config->t2_ms, ctx->platform->user_ctx);
     CTX_SET(ctx, HDLC_F_T2_ACTIVE);
 }
 
-static inline void t2_stop(atc_hdlc_context_t* ctx) {
+static inline void t2_stop(atc_hdlc_ctx_t* ctx) {
     if (CTX_FLAG(ctx, HDLC_F_T2_ACTIVE) && ctx->platform->t2_stop)
         ctx->platform->t2_stop(ctx->platform->user_ctx);
     CTX_CLR(ctx, HDLC_F_T2_ACTIVE);

@@ -124,7 +124,7 @@ static atc_hdlc_u32 s_tw_lens[7];
  *  Context setup helpers
  * ================================================================ */
 
-void setup_test_context(atc_hdlc_context_t* ctx) {
+void setup_test_context(atc_hdlc_ctx_t* ctx) {
     reset_test_state();
     if (!ctx)
         return;
@@ -136,7 +136,7 @@ void setup_test_context(atc_hdlc_context_t* ctx) {
     ctx->peer_address = 0x02;
 }
 
-void setup_test_context_w(atc_hdlc_context_t* ctx, atc_hdlc_u8 window_size) {
+void setup_test_context_w(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 window_size) {
     reset_test_state();
     if (!ctx)
         return;
@@ -156,7 +156,7 @@ void setup_test_context_w(atc_hdlc_context_t* ctx, atc_hdlc_u8 window_size) {
     ctx->peer_address = 0x02;
 }
 
-void setup_test_context_no_tw(atc_hdlc_context_t* ctx) {
+void setup_test_context_no_tw(atc_hdlc_ctx_t* ctx) {
     reset_test_state();
     if (!ctx)
         return;

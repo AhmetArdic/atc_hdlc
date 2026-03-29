@@ -3,7 +3,7 @@
 
 /* ---- Static storage ---- */
 
-static atc_hdlc_context_t hdlc_ctx;
+static atc_hdlc_ctx_t hdlc_ctx;
 static atc_hdlc_config_t hdlc_cfg;
 static atc_hdlc_platform_ops_t hdlc_plat;
 static atc_hdlc_tx_window_t hdlc_tw;
@@ -143,6 +143,6 @@ atc_hdlc_error_t hdlc_port_transmit(const atc_hdlc_u8* data, atc_hdlc_u32 len) {
     return atc_hdlc_transmit_i(&hdlc_ctx, data, len);
 }
 
-atc_hdlc_context_t* hdlc_port_ctx(void) {
+atc_hdlc_ctx_t* hdlc_port_ctx(void) {
     return &hdlc_ctx;
 }

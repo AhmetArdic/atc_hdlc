@@ -19,7 +19,7 @@ typedef struct {
 
     mutex_t ctx_lock;
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     atc_hdlc_u8 input_buffer[BUFFER_SIZE * 2];
     atc_hdlc_u8 retransmit_slots[7 * 1024]; /* 7 slots x 1024 B */
     atc_hdlc_u32 retransmit_lens[7];

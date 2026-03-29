@@ -24,7 +24,7 @@
 /* ------------------------------------------------------------------ */
 
 typedef struct {
-    atc_hdlc_context_t* peer;
+    atc_hdlc_ctx_t* peer;
     atc_hdlc_u8 txbuf[256]; /* frame being assembled   */
     int txlen;
     atc_hdlc_u8 queued[256]; /* frame ready to deliver  */
@@ -32,7 +32,7 @@ typedef struct {
     bool ready;
 } wire_t;
 
-static atc_hdlc_context_t ctx_a, ctx_b;
+static atc_hdlc_ctx_t ctx_a, ctx_b;
 static wire_t wire_ab = {.peer = &ctx_b}; /* A → B */
 static wire_t wire_ba = {.peer = &ctx_a}; /* B → A */
 

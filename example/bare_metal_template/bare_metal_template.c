@@ -71,7 +71,7 @@ static void uart_rx_isr(atc_hdlc_u8 byte) {
 
 /* Drain the ring buffer and feed bytes into the HDLC engine.
  * Must be called from main loop context (not from ISR). */
-static void rx_drain(atc_hdlc_context_t* ctx) {
+static void rx_drain(atc_hdlc_ctx_t* ctx) {
     while (rx_tail != rx_head) {
         atc_hdlc_u8 b = rx_ring[rx_tail];
         rx_tail = (rx_tail + 1) % RX_RING_SIZE;
@@ -192,7 +192,7 @@ static const atc_hdlc_platform_ops_t platform = {
 
 static atc_hdlc_tx_window_t tx_win = {tx_slots, tx_lens, MAX_INFO_SIZE, WINDOW_SIZE};
 static atc_hdlc_rx_buffer_t rx_buf = {rx_buf_mem, sizeof(rx_buf_mem)};
-static atc_hdlc_context_t ctx;
+static atc_hdlc_ctx_t ctx;
 
 /* ================================================================== */
 /* Main / application loop                                           */

@@ -109,7 +109,7 @@ static double get_time_s(void) {
 typedef struct {
     serial_handle_t port;
     mutex_t ctx_lock;
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     atc_hdlc_config_t cfg;
     atc_hdlc_platform_ops_t plat;
     atc_hdlc_tx_window_t tw;

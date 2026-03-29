@@ -19,7 +19,7 @@
 /* ================================================================
  *  Helpers — connect a context to CONNECTED state
  * ================================================================ */
-static void force_connected(atc_hdlc_context_t* ctx) {
+static void force_connected(atc_hdlc_ctx_t* ctx) {
     ctx->current_state = ATC_HDLC_STATE_CONNECTED;
     ctx->vs = 0;
     ctx->vr = 0;
@@ -36,7 +36,7 @@ static void force_connected(atc_hdlc_context_t* ctx) {
 void test_err_invalid_state(void) {
     printf("TEST: ATC_HDLC_ERR_INVALID_STATE\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
 
     /* transmit_i in DISCONNECTED */
@@ -102,7 +102,7 @@ void test_err_invalid_param(void) {
 void test_err_no_buffer(void) {
     printf("TEST: ATC_HDLC_ERR_NO_BUFFER\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context_no_tw(&ctx);
     force_connected(&ctx);
 
@@ -120,7 +120,7 @@ void test_err_no_buffer(void) {
 void test_err_window_full(void) {
     printf("TEST: ATC_HDLC_ERR_WINDOW_FULL\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx); /* slot_count = 1 */
     force_connected(&ctx);
 
@@ -144,7 +144,7 @@ void test_err_window_full(void) {
 void test_err_frame_too_large(void) {
     printf("TEST: ATC_HDLC_ERR_FRAME_TOO_LARGE\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx); /* max_info_size = 1024 */
     force_connected(&ctx);
 
@@ -177,7 +177,7 @@ void test_err_frame_too_large(void) {
 void test_err_remote_busy(void) {
     printf("TEST: ATC_HDLC_ERR_REMOTE_BUSY\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     force_connected(&ctx);
 
@@ -197,7 +197,7 @@ void test_err_remote_busy(void) {
 void test_err_max_retry(void) {
     printf("TEST: ATC_HDLC_ERR_MAX_RETRY (link failure via T1)\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx); /* max_retries = 3 */
     ctx.peer_address = 0x02;
 

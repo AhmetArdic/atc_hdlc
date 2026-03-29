@@ -54,9 +54,9 @@ void mock_t2_stop_cb(void* user_ctx);
  * setup_test_context_w()       — configurable window size, timers=mock
  * setup_test_context_no_tw()   — no TX window (tests ATC_HDLC_ERR_NO_BUFFER path)
  */
-void setup_test_context(atc_hdlc_context_t* ctx);
-void setup_test_context_w(atc_hdlc_context_t* ctx, atc_hdlc_u8 window_size);
-void setup_test_context_no_tw(atc_hdlc_context_t* ctx);
+void setup_test_context(atc_hdlc_ctx_t* ctx);
+void setup_test_context_w(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 window_size);
+void setup_test_context_no_tw(atc_hdlc_ctx_t* ctx);
 
 /* --- State reset --- */
 void reset_test_state(void);

@@ -23,7 +23,7 @@
 /* Simulates a shared bus where the sender also sees its own frames. */
 /* ------------------------------------------------------------------ */
 
-static atc_hdlc_context_t ctx;
+static atc_hdlc_ctx_t ctx;
 
 static atc_hdlc_u8 loopback_buf[64];
 static int loopback_len = 0;

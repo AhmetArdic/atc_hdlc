@@ -11,7 +11,7 @@
 #include "hdlc_crc.h"
 #include "hdlc_frame.h"
 
-static void retransmit_outstanding(atc_hdlc_context_t* ctx) {
+static void retransmit_outstanding(atc_hdlc_ctx_t* ctx) {
     CTX_CLR(ctx, HDLC_F_RETRANSMIT_PENDING);
     atc_hdlc_u8 end_vs = ctx->vs;
     atc_hdlc_u8 w = ctx->tx_window->slot_count;
@@ -29,7 +29,7 @@ static void retransmit_outstanding(atc_hdlc_context_t* ctx) {
     t1_start(ctx);
 }
 
-static void handle_flag(atc_hdlc_context_t* ctx) {
+static void handle_flag(atc_hdlc_ctx_t* ctx) {
     if (ctx->rx_state == RX_HUNT || ctx->rx_index < MIN_FRAME_LEN)
         goto reset;
 
@@ -61,7 +61,7 @@ reset:
     ctx->rx_crc = ATC_HDLC_FCS_INIT_VALUE;
 }
 
-static void rx_byte(atc_hdlc_context_t* ctx, atc_hdlc_u8 byte) {
+static void rx_byte(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 byte) {
     if (byte == FLAG) {
         handle_flag(ctx);
         return;
@@ -105,7 +105,7 @@ discard:
     ctx->rx_crc = ATC_HDLC_FCS_INIT_VALUE;
 }
 
-void atc_hdlc_data_in(atc_hdlc_context_t* ctx, const atc_hdlc_u8* data, atc_hdlc_u32 len) {
+void atc_hdlc_data_in(atc_hdlc_ctx_t* ctx, const atc_hdlc_u8* data, atc_hdlc_u32 len) {
     if (!ctx || !data)
         return;
     for (atc_hdlc_u32 i = 0; i < len; i++)

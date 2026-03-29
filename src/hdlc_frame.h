@@ -74,16 +74,16 @@ static inline int is_uframe(atc_hdlc_u8 ctrl) {
     return (ctrl & 0x03) == 0x03;
 }
 
-static inline int is_cmd(const atc_hdlc_context_t* ctx, atc_hdlc_u8 address) {
+static inline int is_cmd(const atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address) {
     return address == ctx->my_address;
 }
 
-static inline void put_raw(atc_hdlc_context_t* ctx, atc_hdlc_u8 byte, bool flush) {
+static inline void put_raw(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 byte, bool flush) {
     if (ctx->platform->on_send)
         ctx->platform->on_send(byte, flush, ctx->platform->user_ctx);
 }
 
-static inline void put_escaped(atc_hdlc_context_t* ctx, atc_hdlc_u8 byte) {
+static inline void put_escaped(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 byte) {
     if (byte == FLAG || byte == ESC) {
         put_raw(ctx, ESC, false);
         put_raw(ctx, (atc_hdlc_u8)(byte ^ XOR_MASK), false);
@@ -92,12 +92,12 @@ static inline void put_escaped(atc_hdlc_context_t* ctx, atc_hdlc_u8 byte) {
     }
 }
 
-static inline void emit(atc_hdlc_context_t* ctx, atc_hdlc_u8 byte) {
+static inline void emit(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 byte) {
     ctx->tx_crc = ctx->crc->compute(ctx->tx_crc, &byte, 1);
     put_escaped(ctx, byte);
 }
 
-static inline void frame_begin(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 control) {
+static inline void frame_begin(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 control) {
     if (!ctx)
         return;
     ctx->tx_crc = ATC_HDLC_FCS_INIT_VALUE;
@@ -107,13 +107,13 @@ static inline void frame_begin(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc
     LOG_DBG("tx: Frame start (Addr: 0x%02X, Ctrl: 0x%02X)", address, control);
 }
 
-static inline void frame_end(atc_hdlc_context_t* ctx) {
+static inline void frame_end(atc_hdlc_ctx_t* ctx) {
     put_escaped(ctx, (atc_hdlc_u8)(ctx->tx_crc & 0xFF));
     put_escaped(ctx, (atc_hdlc_u8)(ctx->tx_crc >> 8));
     put_raw(ctx, FLAG, true);
 }
 
-static inline void frame_send(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
+static inline void frame_send(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
                               const atc_hdlc_u8* data, atc_hdlc_u32 len) {
     frame_begin(ctx, address, ctrl);
     for (atc_hdlc_u32 i = 0; i < len; i++)
@@ -121,42 +121,42 @@ static inline void frame_send(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_
     frame_end(ctx);
 }
 
-static inline void send_u(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl) {
+static inline void send_u(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl) {
     frame_begin(ctx, address, ctrl);
     frame_end(ctx);
 }
 
-static inline void send_ua(atc_hdlc_context_t* ctx, atc_hdlc_u8 pf) {
+static inline void send_ua(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 pf) {
     send_u(ctx, ctx->my_address, U_CTRL(U_UA, pf));
 }
 
-static inline void send_dm(atc_hdlc_context_t* ctx, atc_hdlc_u8 pf) {
+static inline void send_dm(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 pf) {
     send_u(ctx, ctx->my_address, U_CTRL(U_DM, pf));
 }
 
-static inline void send_s(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 s,
+static inline void send_s(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 s,
                           atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
     frame_begin(ctx, address, S_CTRL(s, nr, pf));
     frame_end(ctx);
 }
 
-static inline void send_rr(atc_hdlc_context_t* ctx, atc_hdlc_u8 pf) {
+static inline void send_rr(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 pf) {
     send_s(ctx, ctx->peer_address, S_RR, ctx->vr, pf);
 }
 
-static inline void send_rr_resp(atc_hdlc_context_t* ctx, atc_hdlc_u8 pf) {
+static inline void send_rr_resp(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 pf) {
     send_s(ctx, ctx->my_address, S_RR, ctx->vr, pf);
 }
 
-static inline void send_rnr(atc_hdlc_context_t* ctx, atc_hdlc_u8 pf) {
+static inline void send_rnr(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 pf) {
     send_s(ctx, ctx->my_address, S_RNR, ctx->vr, pf);
 }
 
-static inline void send_rej(atc_hdlc_context_t* ctx, atc_hdlc_u8 pf) {
+static inline void send_rej(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 pf) {
     send_s(ctx, ctx->peer_address, S_REJ, ctx->vr, pf);
 }
 
-static inline void retransmit_frmr(atc_hdlc_context_t* ctx) {
+static inline void retransmit_frmr(atc_hdlc_ctx_t* ctx) {
     atc_hdlc_u8 status = (atc_hdlc_u8)(((ctx->vr & 0x07) << 5) | ((ctx->vs & 0x07) << 1));
     frame_begin(ctx, ctx->my_address, U_CTRL(U_FRMR, 0));
     emit(ctx, ctx->frmr_ctrl);
@@ -165,7 +165,7 @@ static inline void retransmit_frmr(atc_hdlc_context_t* ctx) {
     frame_end(ctx);
 }
 
-static inline void send_frmr(atc_hdlc_context_t* ctx, atc_hdlc_u8 rejected_ctrl, bool w, bool x,
+static inline void send_frmr(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 rejected_ctrl, bool w, bool x,
                              bool y, bool z) {
     ctx->frmr_ctrl = rejected_ctrl;
     ctx->frmr_flags =

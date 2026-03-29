@@ -72,7 +72,7 @@ static atc_hdlc_rx_buffer_t make_valid_rx(void) {
 void test_init_null_params(void) {
     printf("TEST: init — NULL parameter checks\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     atc_hdlc_config_t cfg = make_valid_cfg();
     atc_hdlc_platform_ops_t plat = make_valid_plat();
     atc_hdlc_tx_window_t tw = make_valid_tw();
@@ -128,7 +128,7 @@ void test_init_null_params(void) {
 void test_init_unsupported_mode(void) {
     printf("TEST: init — unsupported mode\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     atc_hdlc_config_t cfg = make_valid_cfg();
     atc_hdlc_platform_ops_t plat = make_valid_plat();
     atc_hdlc_rx_buffer_t rx = make_valid_rx();
@@ -149,7 +149,7 @@ void test_init_unsupported_mode(void) {
 void test_init_invalid_slot_count(void) {
     printf("TEST: init — invalid slot count\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     atc_hdlc_config_t cfg = make_valid_cfg();
     atc_hdlc_platform_ops_t plat = make_valid_plat();
     atc_hdlc_rx_buffer_t rx = make_valid_rx();
@@ -182,7 +182,7 @@ void test_init_invalid_slot_count(void) {
 void test_init_inconsistent_rx_buffer(void) {
     printf("TEST: init — rx buffer too small\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     atc_hdlc_config_t cfg = make_valid_cfg();
     atc_hdlc_platform_ops_t plat = make_valid_plat();
     atc_hdlc_params_t p = {.config = &cfg, .platform = &plat, .tx_window = NULL, .rx_buf = NULL};
@@ -212,7 +212,7 @@ void test_init_inconsistent_rx_buffer(void) {
 void test_init_inconsistent_tx_window(void) {
     printf("TEST: init — tx window inconsistencies\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     atc_hdlc_config_t cfg = make_valid_cfg();
     atc_hdlc_platform_ops_t plat = make_valid_plat();
     atc_hdlc_rx_buffer_t rx = make_valid_rx();
@@ -252,7 +252,7 @@ void test_init_inconsistent_tx_window(void) {
 void test_init_success_sets_state(void) {
     printf("TEST: init — successful init sets DISCONNECTED state\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     atc_hdlc_config_t cfg = make_valid_cfg();
     atc_hdlc_platform_ops_t plat = make_valid_plat();
     atc_hdlc_tx_window_t tw = make_valid_tw();

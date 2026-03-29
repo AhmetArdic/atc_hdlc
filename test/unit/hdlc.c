@@ -21,7 +21,7 @@ void test_basic_frame() {
     printf("TEST: Basic Frame (I-Frame)\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
@@ -63,7 +63,7 @@ void test_empty_information() {
     printf("TEST: Empty Information Field\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
@@ -91,7 +91,7 @@ void test_byte_stuffing_heavy() {
     printf("TEST: Heavy Byte Stuffing (Flags/Escapes)\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
@@ -139,7 +139,7 @@ void test_garbage_noise() {
     printf("TEST: Garbage / Noise Rejection\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
@@ -179,7 +179,7 @@ void test_consecutive_flags() {
     printf("TEST: Consecutive Flags (Idle Line)\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
@@ -215,7 +215,7 @@ void test_min_size_rejection() {
     printf("TEST: Minimum Frame Size Rejection\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
@@ -241,7 +241,7 @@ void test_aborted_frame() {
     printf("TEST: Aborted/Interrupted Frame\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
@@ -268,7 +268,7 @@ void test_crc_error_injection() {
     printf("TEST: CRC Error Injection\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
@@ -303,7 +303,7 @@ void test_input_buffer_overflow() {
     printf("TEST: Input Buffer Overflow\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
     /* frame tests bypass state machine */ // uses mock_rx_buffer [16384]
@@ -315,7 +315,7 @@ void test_input_buffer_overflow() {
 
     /* RX buffer must hold: max_info_size(8) + addr(1)+ctrl(1)+fcs(2) = 12 bytes minimum */
     atc_hdlc_u8 small_rx_buf[12];
-    atc_hdlc_context_t small_ctx;
+    atc_hdlc_ctx_t small_ctx;
     static const atc_hdlc_config_t small_cfg = {
         .mode = ATC_HDLC_MODE_ABM,
         .address = 0x01,
@@ -361,7 +361,7 @@ void test_streaming_large_payload(void) {
     printf("TEST: Streaming Large Payload\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
@@ -410,7 +410,7 @@ void test_control_field_i(void) {
     printf("TEST: Control Field Parsing (I-Frame)\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
@@ -445,7 +445,7 @@ void test_control_field_s(void) {
     printf("TEST: Control Field Parsing (S-Frame)\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
 
@@ -473,7 +473,7 @@ void test_ui_frame_transmission(void) {
     printf("TEST: UI Frame Transmission\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
     ctx.peer_address = 0x02;                      /* peer address set directly for test */
@@ -500,7 +500,7 @@ void test_ui_frame_reception(void) {
     printf("TEST: UI Frame Reception\n");
     reset_test_state();
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
     ctx.peer_address = 0x02;                      /* peer address set directly for test */
@@ -528,7 +528,7 @@ void test_test_frame(void) {
     printf("TEST: TEST Frame (Link Loopback)\n");
 
     reset_test_state();
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED; /* frame tests bypass state machine */
     ctx.peer_address = 0x02;                      /* peer address set directly for test */

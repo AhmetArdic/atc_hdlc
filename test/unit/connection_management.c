@@ -12,7 +12,7 @@
 // -----------------------------------------------------------------------------
 // Mocks & Helpers
 // -----------------------------------------------------------------------------
-static atc_hdlc_context_t ctx;
+static atc_hdlc_ctx_t ctx;
 
 static atc_hdlc_state_t last_state_change = (atc_hdlc_state_t)-1;
 static int state_change_call_count = 0;
@@ -371,7 +371,7 @@ void test_contention_resolution_winner(void) {
  */
 void test_link_reset(void) {
     printf("TEST: Link Reset\n");
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
 
     /* Force CONNECTED state */
@@ -417,7 +417,7 @@ void test_link_reset(void) {
  */
 void test_peer_disconnect(void) {
     printf("TEST: Peer Disconnect (receive DISC)\n");
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
     ctx.peer_address = 0x02;
@@ -460,7 +460,7 @@ void test_peer_disconnect(void) {
  */
 void test_event_callbacks(void) {
     printf("TEST: Event Callback Sequence\n");
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.peer_address = 0x02;
 
@@ -502,7 +502,7 @@ void test_event_callbacks(void) {
  */
 void test_t1_timer_callbacks(void) {
     printf("TEST: T1 Timer Callbacks\n");
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.peer_address = 0x02;
 
@@ -541,7 +541,7 @@ void test_t1_timer_callbacks(void) {
 void test_frmr_send_invalid_nr(void) {
     printf("TEST: FRMR sent on invalid N(R)\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
     ctx.peer_address = 0x02;
@@ -591,7 +591,7 @@ void test_frmr_send_invalid_nr(void) {
 void test_frmr_error_lockdown(void) {
     printf("TEST: FRMR_ERROR lock-down\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_FRMR_ERROR;
     ctx.peer_address = 0x02;
@@ -634,7 +634,7 @@ void test_frmr_error_lockdown(void) {
  */
 void test_dm_on_connecting(void) {
     printf("TEST: DM received in CONNECTING state\n");
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.peer_address = 0x02;
 
@@ -662,7 +662,7 @@ void test_dm_on_connecting(void) {
 void test_duplicate_rej_guard(void) {
     printf("TEST: Duplicate REJ guard\n");
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     setup_test_context(&ctx);
     ctx.current_state = ATC_HDLC_STATE_CONNECTED;
     ctx.peer_address = 0x02;

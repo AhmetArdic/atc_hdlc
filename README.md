@@ -152,7 +152,7 @@ void my_t2_stop(void *ctx) { stop_timer(); }
 ### 2. Initialize Context
 
 ```c
-atc_hdlc_context_t ctx;
+atc_hdlc_ctx_t ctx;
 
 // Configuration
 atc_hdlc_config_t config = {
