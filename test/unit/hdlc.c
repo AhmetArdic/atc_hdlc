@@ -123,8 +123,7 @@ void test_byte_stuffing_heavy() {
         test_fail("Stuffing", "Frame decode failed");
     }
 
-    if (last_data_len != sizeof(special) ||
-        memcmp(last_data_payload, special, sizeof(special)) != 0) {
+    if (last_data_len != sizeof(special) || memcmp(last_data_payload, special, sizeof(special)) != 0) {
         test_fail("Stuffing", "Decoded payload mismatch");
     }
 
@@ -324,15 +323,14 @@ void test_input_buffer_overflow() {
         .t1_ms = 1000,
         .t2_ms = 10,
     };
-    static const atc_hdlc_platform_ops_t small_plat = {
+    static const atc_hdlc_plat_ops_t small_plat = {
         .on_send = mock_send_cb,
         .on_data = mock_on_data_cb,
         .on_event = NULL,
         .user_ctx = NULL,
     };
-    atc_hdlc_rx_buffer_t small_rx = {.buffer = small_rx_buf, .capacity = sizeof(small_rx_buf)};
-    atc_hdlc_params_t small_p = {
-        .config = &small_cfg, .platform = &small_plat, .tx_window = NULL, .rx_buf = &small_rx};
+    atc_hdlc_rxbuf_t small_rx = {.buffer = small_rx_buf, .capacity = sizeof(small_rx_buf)};
+    atc_hdlc_params_t small_p = {.config = &small_cfg, .platform = &small_plat, .tx_window = NULL, .rx_buf = &small_rx};
     atc_hdlc_error_t init_err = atc_hdlc_init(&small_ctx, small_p);
     if (init_err != ATC_HDLC_OK)
         test_fail("Buffer Overflow", "small_ctx init failed unexpectedly");
@@ -427,8 +425,7 @@ void test_control_field_i(void) {
     atc_hdlc_transmit_ui_end(&ctx);
 
     atc_hdlc_u8 info_buf[256];
-    test_frame_t parsed_frame =
-        test_unpack_frame(mock_output_buffer, mock_output_len, info_buf, sizeof(info_buf));
+    test_frame_t parsed_frame = test_unpack_frame(mock_output_buffer, mock_output_len, info_buf, sizeof(info_buf));
     if (parsed_frame.valid) {
         if (is_iframe(parsed_frame.control) && CTRL_NS(parsed_frame.control) == 3 &&
             CTRL_PF(parsed_frame.control) == 1 && CTRL_NR(parsed_frame.control) == 5) {
@@ -454,8 +451,7 @@ void test_control_field_s(void) {
     atc_hdlc_transmit_ui_end(&ctx);
 
     atc_hdlc_u8 info_buf[256];
-    test_frame_t parsed_frame =
-        test_unpack_frame(mock_output_buffer, mock_output_len, info_buf, sizeof(info_buf));
+    test_frame_t parsed_frame = test_unpack_frame(mock_output_buffer, mock_output_len, info_buf, sizeof(info_buf));
     if (parsed_frame.valid) {
         if (is_sframe(parsed_frame.control) && CTRL_S(parsed_frame.control) == 0x02 && // REJ
             CTRL_NR(parsed_frame.control) == 7 && CTRL_PF(parsed_frame.control) == 0 &&
@@ -479,14 +475,12 @@ void test_ui_frame_transmission(void) {
     ctx.peer_address = 0x02;                      /* peer address set directly for test */
 
     const char* payload = "HELLO";
-    atc_hdlc_error_t res =
-        atc_hdlc_transmit_ui(&ctx, ATC_HDLC_BROADCAST_ADDRESS, (const atc_hdlc_u8*)payload, 5);
+    atc_hdlc_error_t res = atc_hdlc_transmit_ui(&ctx, ATC_HDLC_BROADCAST_ADDRESS, (const atc_hdlc_u8*)payload, 5);
 
     if (res == ATC_HDLC_OK && mock_output_len >= 11) {
         // Check Control Field for UI (0x03 or 0x13)
         // Addr=0xFF (Broadcast)
-        if (mock_output_buffer[1] == ATC_HDLC_BROADCAST_ADDRESS &&
-            (mock_output_buffer[2] & 0xEF) == 0x03) {
+        if (mock_output_buffer[1] == ATC_HDLC_BROADCAST_ADDRESS && (mock_output_buffer[2] & 0xEF) == 0x03) {
             test_pass("UI Frame Transmission");
         } else {
             test_fail("UI Frame Transmission", "Header mismatch");
@@ -516,8 +510,7 @@ void test_ui_frame_reception(void) {
     atc_hdlc_data_in(&ctx, mock_output_buffer, loop_len);
 
     /* UI frame: payload should be delivered via on_data */
-    if (on_data_call_count == 1 && last_data_len == 5 &&
-        memcmp(last_data_payload, "WORLD", 5) == 0) {
+    if (on_data_call_count == 1 && last_data_len == 5 && memcmp(last_data_payload, "WORLD", 5) == 0) {
         test_pass("UI Frame Reception");
     } else {
         test_fail("UI Frame Reception", "Frame mismatch or not received");
@@ -544,8 +537,7 @@ void test_test_frame(void) {
     /* Feed a TEST command addressed to me — expect echo response */
     // We need to pack it first
     atc_hdlc_u8 packed[256];
-    int packed_len =
-        test_pack_frame(0x01, U_CTRL(U_TEST, 1), (atc_hdlc_u8*)"PING", 4, packed, sizeof(packed));
+    int packed_len = test_pack_frame(0x01, U_CTRL(U_TEST, 1), (atc_hdlc_u8*)"PING", 4, packed, sizeof(packed));
 
     // Feed to input
     atc_hdlc_data_in(&ctx, packed, packed_len);
@@ -572,23 +564,22 @@ typedef struct {
     const char* name;
     void (*fn)(void);
 } test_entry_t;
-static const test_entry_t s_tests[] = {
-    {"test_basic_frame", test_basic_frame},
-    {"test_empty_information", test_empty_information},
-    {"test_byte_stuffing_heavy", test_byte_stuffing_heavy},
-    {"test_garbage_noise", test_garbage_noise},
-    {"test_consecutive_flags", test_consecutive_flags},
-    {"test_min_size_rejection", test_min_size_rejection},
-    {"test_aborted_frame", test_aborted_frame},
-    {"test_crc_error_injection", test_crc_error_injection},
-    {"test_input_buffer_overflow", test_input_buffer_overflow},
-    {"test_streaming_large_payload", test_streaming_large_payload},
-    {"test_control_field_i", test_control_field_i},
-    {"test_control_field_s", test_control_field_s},
-    {"test_ui_frame_transmission", test_ui_frame_transmission},
-    {"test_ui_frame_reception", test_ui_frame_reception},
-    {"test_test_frame", test_test_frame},
-    {NULL, NULL}};
+static const test_entry_t s_tests[] = {{"test_basic_frame", test_basic_frame},
+                                       {"test_empty_information", test_empty_information},
+                                       {"test_byte_stuffing_heavy", test_byte_stuffing_heavy},
+                                       {"test_garbage_noise", test_garbage_noise},
+                                       {"test_consecutive_flags", test_consecutive_flags},
+                                       {"test_min_size_rejection", test_min_size_rejection},
+                                       {"test_aborted_frame", test_aborted_frame},
+                                       {"test_crc_error_injection", test_crc_error_injection},
+                                       {"test_input_buffer_overflow", test_input_buffer_overflow},
+                                       {"test_streaming_large_payload", test_streaming_large_payload},
+                                       {"test_control_field_i", test_control_field_i},
+                                       {"test_control_field_s", test_control_field_s},
+                                       {"test_ui_frame_transmission", test_ui_frame_transmission},
+                                       {"test_ui_frame_reception", test_ui_frame_reception},
+                                       {"test_test_frame", test_test_frame},
+                                       {NULL, NULL}};
 
 int main(int argc, char* argv[]) {
     if (argc > 1) {

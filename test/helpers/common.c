@@ -44,8 +44,7 @@ void mock_on_data_cb(const atc_hdlc_u8* payload, atc_hdlc_u16 len, void* user_ct
     on_data_call_count++;
     last_data_len = len;
     if (len > 0 && payload != NULL)
-        memcpy(last_data_payload, payload,
-               len < sizeof(last_data_payload) ? len : sizeof(last_data_payload));
+        memcpy(last_data_payload, payload, len < sizeof(last_data_payload) ? len : sizeof(last_data_payload));
     printf("   %s[ON DATA] %u bytes received%s\n", COL_GREEN, len, COL_RESET);
 }
 
@@ -89,7 +88,7 @@ static const atc_hdlc_config_t s_default_config = {
 };
 
 /** Full platform with all mock callbacks wired (including timers). */
-static const atc_hdlc_platform_ops_t s_default_platform = {
+static const atc_hdlc_plat_ops_t s_default_platform = {
     .on_send = mock_send_cb,
     .on_data = mock_on_data_cb,
     .on_event = mock_on_event_cb,
@@ -104,14 +103,14 @@ static const atc_hdlc_platform_ops_t s_default_platform = {
 static atc_hdlc_u8 s_tx_slots[1 * 1024];
 static atc_hdlc_u32 s_tx_slot_lens[1];
 
-static atc_hdlc_tx_window_t s_tx_window = {
+static atc_hdlc_txwin_t s_tx_window = {
     .slots = s_tx_slots,
     .slot_lens = s_tx_slot_lens,
     .slot_capacity = 1024,
     .slot_count = 1,
 };
 
-static atc_hdlc_rx_buffer_t s_rx_buf = {
+static atc_hdlc_rxbuf_t s_rx_buf = {
     .buffer = mock_rx_buffer,
     .capacity = sizeof(mock_rx_buffer),
 };
@@ -128,10 +127,8 @@ void setup_test_context(atc_hdlc_ctx_t* ctx) {
     reset_test_state();
     if (!ctx)
         return;
-    atc_hdlc_params_t p = {.config = &s_default_config,
-                           .platform = &s_default_platform,
-                           .tx_window = &s_tx_window,
-                           .rx_buf = &s_rx_buf};
+    atc_hdlc_params_t p = {
+        .config = &s_default_config, .platform = &s_default_platform, .tx_window = &s_tx_window, .rx_buf = &s_rx_buf};
     atc_hdlc_init(ctx, p);
     ctx->peer_address = 0x02;
 }
@@ -144,14 +141,13 @@ void setup_test_context_w(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 window_size) {
     static atc_hdlc_config_t cfg;
     cfg = s_default_config;
 
-    static atc_hdlc_tx_window_t tw;
+    static atc_hdlc_txwin_t tw;
     tw.slots = s_tw_slots;
     tw.slot_lens = s_tw_lens;
     tw.slot_capacity = 1024;
     tw.slot_count = window_size;
 
-    atc_hdlc_params_t p = {
-        .config = &cfg, .platform = &s_default_platform, .tx_window = &tw, .rx_buf = &s_rx_buf};
+    atc_hdlc_params_t p = {.config = &cfg, .platform = &s_default_platform, .tx_window = &tw, .rx_buf = &s_rx_buf};
     atc_hdlc_init(ctx, p);
     ctx->peer_address = 0x02;
 }
@@ -161,10 +157,8 @@ void setup_test_context_no_tw(atc_hdlc_ctx_t* ctx) {
     if (!ctx)
         return;
     /* Pass NULL tx_window — tests ATC_HDLC_ERR_NO_BUFFER path */
-    atc_hdlc_params_t p = {.config = &s_default_config,
-                           .platform = &s_default_platform,
-                           .tx_window = NULL,
-                           .rx_buf = &s_rx_buf};
+    atc_hdlc_params_t p = {
+        .config = &s_default_config, .platform = &s_default_platform, .tx_window = NULL, .rx_buf = &s_rx_buf};
     atc_hdlc_init(ctx, p);
     ctx->peer_address = 0x02;
 }
@@ -214,31 +208,31 @@ void test_fail(const char* test_name, const char* reason) {
     exit(1);
 }
 
-int test_pack_frame(atc_hdlc_u8 addr, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info,
-                    atc_hdlc_u16 info_len, atc_hdlc_u8* out, int out_cap) {
+int test_pack_frame(atc_hdlc_u8 addr, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info, atc_hdlc_u16 info_len,
+                    atc_hdlc_u8* out, int out_cap) {
     atc_hdlc_u16 crc = ATC_HDLC_FCS_INIT_VALUE;
     int n = 0;
-#define _RAW(b)                                                                                    \
-    do {                                                                                           \
-        if (n >= out_cap)                                                                          \
-            return 0;                                                                              \
-        out[n++] = (atc_hdlc_u8)(b);                                                               \
+#define _RAW(b)                                                                                                        \
+    do {                                                                                                               \
+        if (n >= out_cap)                                                                                              \
+            return 0;                                                                                                  \
+        out[n++] = (atc_hdlc_u8)(b);                                                                                   \
     } while (0)
-#define _ESC(b)                                                                                    \
-    do {                                                                                           \
-        atc_hdlc_u8 _b = (atc_hdlc_u8)(b);                                                         \
-        if (_b == 0x7E || _b == 0x7D) {                                                            \
-            _RAW(0x7D);                                                                            \
-            _RAW(_b ^ 0x20);                                                                       \
-        } else {                                                                                   \
-            _RAW(_b);                                                                              \
-        }                                                                                          \
+#define _ESC(b)                                                                                                        \
+    do {                                                                                                               \
+        atc_hdlc_u8 _b = (atc_hdlc_u8)(b);                                                                             \
+        if (_b == 0x7E || _b == 0x7D) {                                                                                \
+            _RAW(0x7D);                                                                                                \
+            _RAW(_b ^ 0x20);                                                                                           \
+        } else {                                                                                                       \
+            _RAW(_b);                                                                                                  \
+        }                                                                                                              \
     } while (0)
-#define _ESCC(b)                                                                                   \
-    do {                                                                                           \
-        atc_hdlc_u8 _c = (atc_hdlc_u8)(b);                                                         \
-        crc = atc_hdlc_crc_ccitt_update(crc, _c);                                                  \
-        _ESC(_c);                                                                                  \
+#define _ESCC(b)                                                                                                       \
+    do {                                                                                                               \
+        atc_hdlc_u8 _c = (atc_hdlc_u8)(b);                                                                             \
+        crc = atc_hdlc_crc_ccitt_update(crc, _c);                                                                      \
+        _ESC(_c);                                                                                                      \
     } while (0)
     _RAW(0x7E);
     _ESCC(addr);
@@ -254,8 +248,7 @@ int test_pack_frame(atc_hdlc_u8 addr, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info,
     return n;
 }
 
-test_frame_t test_unpack_frame(const atc_hdlc_u8* buf, int buf_len, atc_hdlc_u8* flat,
-                               int flat_cap) {
+test_frame_t test_unpack_frame(const atc_hdlc_u8* buf, int buf_len, atc_hdlc_u8* flat, int flat_cap) {
     test_frame_t r = {0};
     if (!buf || !flat || buf_len < 4)
         return r;

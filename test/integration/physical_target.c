@@ -111,9 +111,9 @@ typedef struct {
     mutex_t ctx_lock;
     atc_hdlc_ctx_t ctx;
     atc_hdlc_config_t cfg;
-    atc_hdlc_platform_ops_t plat;
-    atc_hdlc_tx_window_t tw;
-    atc_hdlc_rx_buffer_t rx;
+    atc_hdlc_plat_ops_t plat;
+    atc_hdlc_txwin_t tw;
+    atc_hdlc_rxbuf_t rx;
     atc_hdlc_u8 input_buffer[BUFFER_SIZE * 2];
     atc_hdlc_u8 retransmit_slots[7 * 1024];
     atc_hdlc_u32 retransmit_lens[7];
@@ -302,8 +302,8 @@ static void node_on_data_cb(const atc_hdlc_u8* payload, atc_hdlc_u16 len, void* 
         memcpy(node->mcu_test_buf + node->mcu_test_bytes, payload, n);
         node->mcu_test_bytes += len;
         node->mcu_test_frames++;
-        printf("\r[Test B] frame #%u  len=%-4u  total=%u/%u\n", node->mcu_test_frames, len,
-               node->mcu_test_bytes, MCU_TEST_TOTAL_BYTES);
+        printf("\r[Test B] frame #%u  len=%-4u  total=%u/%u\n", node->mcu_test_frames, len, node->mcu_test_bytes,
+               MCU_TEST_TOTAL_BYTES);
     } else {
         if (node->recv_buf) {
             uint32_t space = node->recv_buf_len - node->bytes_received;
@@ -311,17 +311,16 @@ static void node_on_data_cb(const atc_hdlc_u8* payload, atc_hdlc_u16 len, void* 
             memcpy(node->recv_buf + node->bytes_received, payload, n);
         }
         node->bytes_received += len;
-        printf("\r[Test A] frame #%u  len=%-4u  echo=%u\n", node->frames_received, len,
-               node->bytes_received);
+        printf("\r[Test A] frame #%u  len=%-4u  echo=%u\n", node->frames_received, len, node->bytes_received);
     }
     fflush(stdout);
 }
 
 static void node_event_cb(atc_hdlc_event_t event, void* user_data) {
     (void)user_data;
-    if (event == ATC_HDLC_EVENT_CONNECT_ACCEPTED || event == ATC_HDLC_EVENT_INCOMING_CONNECT)
+    if (event == ATC_HDLC_EVENT_CONN_ACCEPTED || event == ATC_HDLC_EVENT_CONN_REQ)
         printf("\nConnected.\n");
-    else if (event == ATC_HDLC_EVENT_LINK_FAILURE || event == ATC_HDLC_EVENT_PEER_DISCONNECT)
+    else if (event == ATC_HDLC_EVENT_LINK_FAILURE || event == ATC_HDLC_EVENT_PEER_DISC)
         printf("\n[Error] Link dropped.\n");
 }
 
@@ -435,8 +434,7 @@ static bool wait_for_connection(physical_node_t* node, int timeout_ms) {
 /** @brief Test B: wait for MCU-initiated I-frames then verify payload. */
 static bool run_test_b(physical_node_t* node) {
     static const uint8_t expected[MCU_TEST_FRAME_SIZE] = {
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
-        0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
     };
 
     printf("Waiting for MCU self-test frames (%u bytes)...\n", MCU_TEST_TOTAL_BYTES);
@@ -447,8 +445,7 @@ static bool run_test_b(physical_node_t* node) {
     }
 
     printf("\n--- Test B ---\n");
-    printf("Expected: %u bytes (%u x %u)\n", MCU_TEST_TOTAL_BYTES, MCU_TEST_FRAME_COUNT,
-           MCU_TEST_FRAME_SIZE);
+    printf("Expected: %u bytes (%u x %u)\n", MCU_TEST_TOTAL_BYTES, MCU_TEST_FRAME_COUNT, MCU_TEST_FRAME_SIZE);
     printf("Received: %u bytes (%u frames)\n", node->mcu_test_bytes, node->mcu_test_frames);
 
     if (node->mcu_test_bytes < MCU_TEST_TOTAL_BYTES) {
@@ -457,14 +454,12 @@ static bool run_test_b(physical_node_t* node) {
     }
 
     for (uint32_t i = 0; i < MCU_TEST_FRAME_COUNT; i++) {
-        if (memcmp(node->mcu_test_buf + i * MCU_TEST_FRAME_SIZE, expected, MCU_TEST_FRAME_SIZE) !=
-            0) {
+        if (memcmp(node->mcu_test_buf + i * MCU_TEST_FRAME_SIZE, expected, MCU_TEST_FRAME_SIZE) != 0) {
             printf("%s[FAIL] Test B: payload mismatch in frame %u%s\n", COL_RED, i, COL_RESET);
             return false;
         }
     }
-    printf("%s[PASS] Test B: %u MCU-initiated I-frames verified%s\n", COL_GREEN,
-           MCU_TEST_FRAME_COUNT, COL_RESET);
+    printf("%s[PASS] Test B: %u MCU-initiated I-frames verified%s\n", COL_GREEN, MCU_TEST_FRAME_COUNT, COL_RESET);
     return true;
 }
 
@@ -502,14 +497,12 @@ static void wait_for_echoes(physical_node_t* node, uint32_t expected, int timeou
         timeout_ms -= 10;
     }
     if (timeout_ms <= 0 && node->bytes_received < expected)
-        printf("\n[Warning] Echo timeout: received=%u expected=%u\n", node->bytes_received,
-               expected);
+        printf("\n[Warning] Echo timeout: received=%u expected=%u\n", node->bytes_received, expected);
 }
 
 /** @brief Test A: verify byte-for-byte integrity and report TX / RTT throughput. */
-static bool run_test_a(physical_node_t* node, const uint8_t* original, uint32_t data_len,
-                       uint32_t sent, double tx_s, double rtt_s, double* out_tx_kbps,
-                       double* out_rtt_kbps) {
+static bool run_test_a(physical_node_t* node, const uint8_t* original, uint32_t data_len, uint32_t sent, double tx_s,
+                       double rtt_s, double* out_tx_kbps, double* out_rtt_kbps) {
     uint32_t frames = (data_len + CHUNK_SIZE - 1) / CHUNK_SIZE;
     uint32_t overhead = frames * 6; /* flag+addr+ctrl+2×FCS */
     double tx_kbps = ((data_len + overhead) * 8.0) / (tx_s * 1000.0);
@@ -542,16 +535,15 @@ static bool run_test_a(physical_node_t* node, const uint8_t* original, uint32_t 
                node->ctx.tx_window->slot_count, pos, original[pos], node->recv_buf[pos], COL_RESET);
         return false;
     }
-    printf("%s[PASS] Test A Window %u: byte-for-byte match%s\n", COL_GREEN,
-           node->ctx.tx_window->slot_count, COL_RESET);
+    printf("%s[PASS] Test A Window %u: byte-for-byte match%s\n", COL_GREEN, node->ctx.tx_window->slot_count, COL_RESET);
     return true;
 }
 
 /* ================================================================
  *  Node Init / Cleanup
  * ================================================================ */
-static bool node_init(physical_node_t* node, uint32_t recv_len, uint8_t window_size,
-                      const char* serial_port, int baud_rate) {
+static bool node_init(physical_node_t* node, uint32_t recv_len, uint8_t window_size, const char* serial_port,
+                      int baud_rate) {
     memset(node, 0, sizeof(*node));
 
     node->recv_buf = (uint8_t*)malloc(recv_len);
@@ -592,8 +584,7 @@ static bool node_init(physical_node_t* node, uint32_t recv_len, uint8_t window_s
     node->rx.buffer = node->input_buffer;
     node->rx.capacity = sizeof(node->input_buffer);
 
-    atc_hdlc_params_t p = {
-        .config = &node->cfg, .platform = &node->plat, .tx_window = &node->tw, .rx_buf = &node->rx};
+    atc_hdlc_params_t p = {.config = &node->cfg, .platform = &node->plat, .tx_window = &node->tw, .rx_buf = &node->rx};
     atc_hdlc_init(&node->ctx, p);
     node->ctx.peer_address = 0x02;
 
@@ -707,8 +698,8 @@ int main(int argc, char* argv[]) {
     printf(" |-----|---------|---------|--------|---------|----------|----------|\n");
     for (int i = 0; i < 7; i++) {
         printf(" |  %2u |  %s  |  %s  | %6.2f | %7.2f | %8.2f | %8.2f |\n", results[i].w,
-               results[i].a ? " PASS" : " FAIL", results[i].b ? " PASS" : " FAIL", results[i].tx_s,
-               results[i].rtt_s, results[i].tx_kbps, results[i].rtt_kbps);
+               results[i].a ? " PASS" : " FAIL", results[i].b ? " PASS" : " FAIL", results[i].tx_s, results[i].rtt_s,
+               results[i].tx_kbps, results[i].rtt_kbps);
     }
     printf("============================================================================\n\n");
 

@@ -28,11 +28,9 @@
 #define CTRL_NS(ctrl) (((ctrl) >> 1) & 0x07)
 #define CTRL_S(ctrl)  (((ctrl) >> 2) & 0x03)
 
-#define I_CTRL(ns, nr, pf)                                                                         \
-    ((atc_hdlc_u8)(((ns) & 0x07) << 1 | ((pf) & 0x01) << 4 | ((nr) & 0x07) << 5))
-#define S_CTRL(s, nr, pf)                                                                          \
-    ((atc_hdlc_u8)(0x01 | ((s) & 0x03) << 2 | ((pf) & 0x01) << 4 | ((nr) & 0x07) << 5))
-#define U_CTRL(cmd, pf) ((atc_hdlc_u8)((cmd) | ((pf) ? PF_BIT : 0)))
+#define I_CTRL(ns, nr, pf) ((atc_hdlc_u8)(((ns) & 0x07) << 1 | ((pf) & 0x01) << 4 | ((nr) & 0x07) << 5))
+#define S_CTRL(s, nr, pf)  ((atc_hdlc_u8)(0x01 | ((s) & 0x03) << 2 | ((pf) & 0x01) << 4 | ((nr) & 0x07) << 5))
+#define U_CTRL(cmd, pf)    ((atc_hdlc_u8)((cmd) | ((pf) ? PF_BIT : 0)))
 
 #define MOD8 (8)
 
@@ -113,8 +111,8 @@ static inline void frame_end(atc_hdlc_ctx_t* ctx) {
     put_raw(ctx, FLAG, true);
 }
 
-static inline void frame_send(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                              const atc_hdlc_u8* data, atc_hdlc_u32 len) {
+static inline void frame_send(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl, const atc_hdlc_u8* data,
+                              atc_hdlc_u32 len) {
     frame_begin(ctx, address, ctrl);
     for (atc_hdlc_u32 i = 0; i < len; i++)
         emit(ctx, data[i]);
@@ -134,8 +132,7 @@ static inline void send_dm(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 pf) {
     send_u(ctx, ctx->my_address, U_CTRL(U_DM, pf));
 }
 
-static inline void send_s(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 s,
-                          atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
+static inline void send_s(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 s, atc_hdlc_u8 nr, atc_hdlc_u8 pf) {
     frame_begin(ctx, address, S_CTRL(s, nr, pf));
     frame_end(ctx);
 }
@@ -165,14 +162,12 @@ static inline void retransmit_frmr(atc_hdlc_ctx_t* ctx) {
     frame_end(ctx);
 }
 
-static inline void send_frmr(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 rejected_ctrl, bool w, bool x,
-                             bool y, bool z) {
+static inline void send_frmr(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 rejected_ctrl, bool w, bool x, bool y, bool z) {
     ctx->frmr_ctrl = rejected_ctrl;
-    ctx->frmr_flags =
-        (atc_hdlc_u8)((w ? FRMR_W : 0) | (x ? FRMR_X : 0) | (y ? FRMR_Y : 0) | (z ? FRMR_Z : 0));
+    ctx->frmr_flags = (atc_hdlc_u8)((w ? FRMR_W : 0) | (x ? FRMR_X : 0) | (y ? FRMR_Y : 0) | (z ? FRMR_Z : 0));
 
-    LOG_ERR("tx: FRMR ctrl=0x%02X W=%u X=%u Y=%u Z=%u", rejected_ctrl, (unsigned)w, (unsigned)x,
-            (unsigned)y, (unsigned)z);
+    LOG_ERR("tx: FRMR ctrl=0x%02X W=%u X=%u Y=%u Z=%u", rejected_ctrl, (unsigned)w, (unsigned)x, (unsigned)y,
+            (unsigned)z);
 
     t2_stop(ctx);
     retransmit_frmr(ctx);

@@ -99,8 +99,7 @@ atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_ctx_t* ctx, bool busy);
  * @param len  Payload length.
  * @return ATC_HDLC_OK or error code.
  */
-atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_ctx_t* ctx, const atc_hdlc_u8* data,
-                                     atc_hdlc_u32 len);
+atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_ctx_t* ctx, const atc_hdlc_u8* data, atc_hdlc_u32 len);
 
 /**
  * @brief Send UI-frame (connectionless).
@@ -113,8 +112,8 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_ctx_t* ctx, const atc_hdlc_u8* dat
  * @param len     Length.
  * @return ATC_HDLC_OK or error code.
  */
-atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address,
-                                      const atc_hdlc_u8* data, atc_hdlc_u32 len);
+atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, const atc_hdlc_u8* data,
+                                      atc_hdlc_u32 len);
 
 /**
  * @brief Send TEST frame; echo is delivered via @c on_event callback.
@@ -125,8 +124,8 @@ atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address,
  * @param len     Length.
  * @return ATC_HDLC_OK or error code.
  */
-atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address,
-                                        const atc_hdlc_u8* data, atc_hdlc_u32 len);
+atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, const atc_hdlc_u8* data,
+                                        atc_hdlc_u32 len);
 
 /**
  * @brief Feed multiple bytes.

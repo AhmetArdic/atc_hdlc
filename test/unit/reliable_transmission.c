@@ -21,10 +21,10 @@ static atc_hdlc_u8 s_slots_rt[7 * 1024];
 static atc_hdlc_u32 s_lens_rt[7];
 
 static atc_hdlc_config_t s_make_ctx_cfg;
-static atc_hdlc_tx_window_t s_make_ctx_tw;
-static atc_hdlc_rx_buffer_t s_make_ctx_rx;
+static atc_hdlc_txwin_t s_make_ctx_tw;
+static atc_hdlc_rxbuf_t s_make_ctx_rx;
 
-static const atc_hdlc_platform_ops_t s_make_ctx_plat = {
+static const atc_hdlc_plat_ops_t s_make_ctx_plat = {
     .on_send = mock_send_cb,
     .on_data = mock_on_data_cb,
     .on_event = NULL,
@@ -47,10 +47,8 @@ static void make_ctx(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 window_size, atc_hdlc_u32 
     s_make_ctx_rx.buffer = mock_rx_buffer;
     s_make_ctx_rx.capacity = sizeof(mock_rx_buffer);
 
-    atc_hdlc_params_t p = {.config = &s_make_ctx_cfg,
-                           .platform = &s_make_ctx_plat,
-                           .tx_window = &s_make_ctx_tw,
-                           .rx_buf = &s_make_ctx_rx};
+    atc_hdlc_params_t p = {
+        .config = &s_make_ctx_cfg, .platform = &s_make_ctx_plat, .tx_window = &s_make_ctx_tw, .rx_buf = &s_make_ctx_rx};
     atc_hdlc_init(ctx, p);
     ctx->peer_address = 0x02;
     ctx->current_state = ATC_HDLC_STATE_CONNECTED;
@@ -83,8 +81,8 @@ void test_reliable_transmission(void) {
 
     /* ACK: peer sends I-frame N(S)=0, N(R)=1 */
     reset_test_state();
-    atc_hdlc_u32 encoded_len = (atc_hdlc_u32)test_pack_frame(
-        0x01, I_CTRL(0, 1, 0), NULL, 0, temp_input_buffer, sizeof(temp_input_buffer));
+    atc_hdlc_u32 encoded_len =
+        (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 1, 0), NULL, 0, temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, encoded_len);
 
     if (ctx.va != ctx.vs || ctx.vr != 1)
@@ -120,8 +118,7 @@ void test_n2_retry_connected(void) {
             test_fail("N2 Connected", "T1 not restarted after enquiry");
         if (ctx.current_state == ATC_HDLC_STATE_DISCONNECTED) {
             char msg[64];
-            sprintf(msg, "Premature link failure on retry %d (max=%u)", i + 1,
-                    ctx.config->max_retries);
+            sprintf(msg, "Premature link failure on retry %d (max=%u)", i + 1, ctx.config->max_retries);
             test_fail("N2 Connected", msg);
         }
     }
@@ -161,8 +158,8 @@ void test_sequence_rollover(void) {
         }
 
         // 2. Acknowledge it (Peer sends RR with NR = expected_vs)
-        atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(
-            0x01, S_CTRL(0, expected_vs, 0), NULL, 0, temp_input_buffer, sizeof(temp_input_buffer));
+        atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0, expected_vs, 0), NULL, 0, temp_input_buffer,
+                                                         sizeof(temp_input_buffer));
         atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
         if (ctx.va != ctx.vs) {
@@ -184,8 +181,8 @@ void test_duplicate_ack_ignored(void) {
     atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8*)"A", 1);
 
     // Receive ACK (RR NR=1)
-    atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0, 1, 0), NULL, 0,
-                                                     temp_input_buffer, sizeof(temp_input_buffer));
+    atc_hdlc_u32 len =
+        (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0, 1, 0), NULL, 0, temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
     if (ctx.va != ctx.vs)
@@ -213,8 +210,8 @@ void test_piggyback_ack(void) {
     printf("\n--- Phase 1: Outgoing Piggyback ---\n");
 
     // Build peer's I-frame: Addr=0x01 (to me), Ctrl: I-frame N(S)=0, N(R)=0, P=0
-    atc_hdlc_u32 encoded_len = (atc_hdlc_u32)test_pack_frame(
-        0x01, I_CTRL(0, 0, 0), (atc_hdlc_u8*)"HI", 2, temp_input_buffer, sizeof(temp_input_buffer));
+    atc_hdlc_u32 encoded_len = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0), (atc_hdlc_u8*)"HI", 2,
+                                                             temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, encoded_len);
 
     // After receiving, V(R) should be 1
@@ -238,8 +235,8 @@ void test_piggyback_ack(void) {
         test_fail("Piggyback", "Expected va != vs before peer ACK");
 
     /* Phase 2: peer's I-frame N(S)=1, N(R)=1 ACKs our frame 0 */
-    encoded_len = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(1, 1, 0), (atc_hdlc_u8*)"RE", 2,
-                                                temp_input_buffer, sizeof(temp_input_buffer));
+    encoded_len = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(1, 1, 0), (atc_hdlc_u8*)"RE", 2, temp_input_buffer,
+                                                sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, encoded_len);
 
     if (ctx.va != ctx.vs)
@@ -289,8 +286,8 @@ void test_window_size_2_basic(void) {
     }
 
     /* Cumulative ACK N(R)=2 */
-    atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0, 2, 0), NULL, 0,
-                                                     temp_input_buffer, sizeof(temp_input_buffer));
+    atc_hdlc_u32 len =
+        (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0, 2, 0), NULL, 0, temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
     if (ctx.va != ctx.vs) {
@@ -340,8 +337,8 @@ void test_gobackn_retransmit(void) {
     }
 
     // Now peer replies with RR and F=1 (Response uses peer's own address = 0x02)
-    atc_hdlc_u32 rr_len = (atc_hdlc_u32)test_pack_frame(
-        0x02, S_CTRL(0x00, 0, 1), NULL, 0, temp_input_buffer, sizeof(temp_input_buffer));
+    atc_hdlc_u32 rr_len =
+        (atc_hdlc_u32)test_pack_frame(0x02, S_CTRL(0x00, 0, 1), NULL, 0, temp_input_buffer, sizeof(temp_input_buffer));
 
     int frames_before = mock_frame_count;
     atc_hdlc_data_in(&ctx, temp_input_buffer, rr_len);
@@ -377,8 +374,7 @@ void test_window7_mid_rej(void) {
     char payload[8];
     for (int i = 0; i < 7; i++) {
         sprintf(payload, "PKT_%d", i);
-        if (atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8*)payload, (atc_hdlc_u16)strlen(payload)) !=
-            ATC_HDLC_OK) {
+        if (atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8*)payload, (atc_hdlc_u16)strlen(payload)) != ATC_HDLC_OK) {
             char msg[64];
             sprintf(msg, "Failed to send frame %d", i);
             test_fail("Window7 REJ", msg);
@@ -400,8 +396,8 @@ void test_window7_mid_rej(void) {
     mock_output_len = 0;
     int frames_before = mock_frame_count;
 
-    atc_hdlc_u32 rej_len = (atc_hdlc_u32)test_pack_frame(
-        0x01, S_CTRL(0x02, 3, 0), NULL, 0, temp_input_buffer, sizeof(temp_input_buffer));
+    atc_hdlc_u32 rej_len =
+        (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x02, 3, 0), NULL, 0, temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, rej_len);
 
     int retransmitted = mock_frame_count - frames_before;
@@ -420,8 +416,8 @@ void test_window7_mid_rej(void) {
     }
 
     /* Phase 4: ACK all with RR N(R)=7, window reopens */
-    atc_hdlc_u32 rr_len = (atc_hdlc_u32)test_pack_frame(
-        0x01, S_CTRL(0x00, 7, 0), NULL, 0, temp_input_buffer, sizeof(temp_input_buffer));
+    atc_hdlc_u32 rr_len =
+        (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, 7, 0), NULL, 0, temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, rr_len);
 
     if (ctx.va != ctx.vs) {
@@ -489,8 +485,8 @@ static bench_result_t run_throughput_bench(int window_size) {
         // Simulate one round-trip: peer ACKs all outstanding frames
         result.round_trips++;
 
-        atc_hdlc_u32 rr_len = (atc_hdlc_u32)test_pack_frame(
-            0x01, S_CTRL(0x00, ctx.vs, 0), NULL, 0, temp_input_buffer, sizeof(temp_input_buffer));
+        atc_hdlc_u32 rr_len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, ctx.vs, 0), NULL, 0, temp_input_buffer,
+                                                            sizeof(temp_input_buffer));
         atc_hdlc_data_in(&ctx, temp_input_buffer, rr_len);
     }
 
@@ -501,8 +497,8 @@ static bench_result_t run_throughput_bench(int window_size) {
 
 void test_throughput_benchmark(void) {
     printf("\nTEST: Throughput Benchmark — All Window Sizes (1-7)\n");
-    printf("   Payload: %d chunks x %d bytes = %d bytes total\n\n", BENCH_TOTAL_CHUNKS,
-           BENCH_CHUNK_SIZE, BENCH_TOTAL_CHUNKS * BENCH_CHUNK_SIZE);
+    printf("   Payload: %d chunks x %d bytes = %d bytes total\n\n", BENCH_TOTAL_CHUNKS, BENCH_CHUNK_SIZE,
+           BENCH_TOTAL_CHUNKS * BENCH_CHUNK_SIZE);
 
     bench_result_t results[7];
 
@@ -510,51 +506,42 @@ void test_throughput_benchmark(void) {
     for (int w = 1; w <= 7; w++) {
         printf("   %s[Window Size = %d]%s Running... ", COL_CYAN, w, COL_RESET);
         results[w - 1] = run_throughput_bench(w);
-        printf("Frames: %d | Round-trips: %d | TX Bytes: %d\n", results[w - 1].frames_sent,
-               results[w - 1].round_trips, results[w - 1].total_tx_bytes);
+        printf("Frames: %d | Round-trips: %d | TX Bytes: %d\n", results[w - 1].frames_sent, results[w - 1].round_trips,
+               results[w - 1].total_tx_bytes);
     }
     printf("\n");
 
     // --- Comparison Table ---
-    printf("   %s┌────────────────────────────────────────────────────────────────────┐%s\n",
-           COL_YELLOW, COL_RESET);
-    printf("   %s│              THROUGHPUT COMPARISON — ALL WINDOW SIZES              │%s\n",
-           COL_YELLOW, COL_RESET);
-    printf("   %s├──────────┬──────────────┬──────────────┬───────────┬───────────────┤%s\n",
-           COL_YELLOW, COL_RESET);
-    printf("   %s│  Window  │  Frames Sent │  Round-Trips │  TX Bytes │  Speedup      │%s\n",
-           COL_YELLOW, COL_RESET);
-    printf("   %s├──────────┼──────────────┼──────────────┼───────────┼───────────────┤%s\n",
-           COL_YELLOW, COL_RESET);
+    printf("   %s┌────────────────────────────────────────────────────────────────────┐%s\n", COL_YELLOW, COL_RESET);
+    printf("   %s│              THROUGHPUT COMPARISON — ALL WINDOW SIZES              │%s\n", COL_YELLOW, COL_RESET);
+    printf("   %s├──────────┬──────────────┬──────────────┬───────────┬───────────────┤%s\n", COL_YELLOW, COL_RESET);
+    printf("   %s│  Window  │  Frames Sent │  Round-Trips │  TX Bytes │  Speedup      │%s\n", COL_YELLOW, COL_RESET);
+    printf("   %s├──────────┼──────────────┼──────────────┼───────────┼───────────────┤%s\n", COL_YELLOW, COL_RESET);
 
     for (int w = 0; w < 7; w++) {
-        float speedup = (results[0].round_trips > 0)
-                            ? (float)results[0].round_trips / (float)results[w].round_trips
-                            : 0.0f;
+        float speedup =
+            (results[0].round_trips > 0) ? (float)results[0].round_trips / (float)results[w].round_trips : 0.0f;
 
         if (w == 0) {
-            printf("   %s│    %d     │     %3d      │     %3d      │   %5d   │  (baseline)   │%s\n",
-                   COL_YELLOW, results[w].window_size, results[w].frames_sent,
-                   results[w].round_trips, results[w].total_tx_bytes, COL_RESET);
+            printf("   %s│    %d     │     %3d      │     %3d      │   %5d   │  (baseline)   │%s\n", COL_YELLOW,
+                   results[w].window_size, results[w].frames_sent, results[w].round_trips, results[w].total_tx_bytes,
+                   COL_RESET);
         } else {
             printf("   %s│    %d     │     %3d      │     %3d      │   %5d   │%s  %s%.1fx faster%s "
                    " %s│%s\n",
-                   COL_YELLOW, results[w].window_size, results[w].frames_sent,
-                   results[w].round_trips, results[w].total_tx_bytes, COL_RESET, COL_GREEN, speedup,
-                   COL_RESET, COL_YELLOW, COL_RESET);
+                   COL_YELLOW, results[w].window_size, results[w].frames_sent, results[w].round_trips,
+                   results[w].total_tx_bytes, COL_RESET, COL_GREEN, speedup, COL_RESET, COL_YELLOW, COL_RESET);
         }
     }
 
-    printf("   %s└──────────┴──────────────┴──────────────┴───────────┴───────────────┘%s\n\n",
-           COL_YELLOW, COL_RESET);
+    printf("   %s└──────────┴──────────────┴──────────────┴───────────┴───────────────┘%s\n\n", COL_YELLOW, COL_RESET);
 
     // --- Assertions ---
     for (int w = 0; w < 7; w++) {
         int ws = w + 1;
         if (results[w].frames_sent != BENCH_TOTAL_CHUNKS) {
             char msg[100];
-            sprintf(msg, "W=%d did not send all %d frames (got %d)", ws, BENCH_TOTAL_CHUNKS,
-                    results[w].frames_sent);
+            sprintf(msg, "W=%d did not send all %d frames (got %d)", ws, BENCH_TOTAL_CHUNKS, results[w].frames_sent);
             test_fail("Throughput Bench", msg);
             return;
         }
@@ -563,8 +550,7 @@ void test_throughput_benchmark(void) {
         int expected_rt = (BENCH_TOTAL_CHUNKS + ws - 1) / ws;
         if (results[w].round_trips != expected_rt) {
             char msg[100];
-            sprintf(msg, "W=%d expected %d round-trips, got %d", ws, expected_rt,
-                    results[w].round_trips);
+            sprintf(msg, "W=%d expected %d round-trips, got %d", ws, expected_rt, results[w].round_trips);
             test_fail("Throughput Bench", msg);
             return;
         }
@@ -596,8 +582,8 @@ void test_nr_modulo_validation(void) {
         atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8*)payload, 4);
     }
     // 2. Peer ACKs them: N(R)=6
-    atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, 6, 0), NULL, 0,
-                                                     temp_input_buffer, sizeof(temp_input_buffer));
+    atc_hdlc_u32 len =
+        (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, 6, 0), NULL, 0, temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
     if (ctx.va != 6 || ctx.vs != 6) {
@@ -621,8 +607,8 @@ void test_nr_modulo_validation(void) {
 
     // 4. Peer sends RR N(R)=6. This is perfectly valid (peer acknowledging up to 5, waiting for 6)
     // If hdlc_nr_valid has the bug, it will reject N(R)=6 because it thinks 6 is outside [6, 0].
-    len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, 6, 0), NULL, 0, temp_input_buffer,
-                                        sizeof(temp_input_buffer));
+    len =
+        (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, 6, 0), NULL, 0, temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
     // If valid, the timer should be reset to timeout. If ignored, the timer continues ticking down.
@@ -679,9 +665,8 @@ void test_nr_edge_cases(void) {
         ctx.vs = cases[i].vs;
         ctx.flags &= (uint8_t)~HDLC_F_T1_ACTIVE; /* reset to observe change */
 
-        atc_hdlc_u32 len =
-            (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, cases[i].nr, 0), NULL, 0,
-                                          temp_input_buffer, sizeof(temp_input_buffer));
+        atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, cases[i].nr, 0), NULL, 0, temp_input_buffer,
+                                                         sizeof(temp_input_buffer));
         atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
         bool was_treated_as_valid = false;
@@ -708,8 +693,7 @@ void test_nr_edge_cases(void) {
         if (was_treated_as_valid != cases[i].expect_valid) {
             char fail_msg[256];
             snprintf(fail_msg, sizeof(fail_msg), "%s. Case: %s [va=%u vs=%u nr=%u]",
-                     cases[i].expect_valid ? "Expected Valid, but rejected"
-                                           : "Expected Invalid, but accepted",
+                     cases[i].expect_valid ? "Expected Valid, but rejected" : "Expected Invalid, but accepted",
                      cases[i].desc, cases[i].va, cases[i].vs, cases[i].nr);
             test_fail("NR Edge Cases", fail_msg);
             return;
@@ -730,13 +714,13 @@ void test_state_initialization(void) {
     atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8*)"TEST", 4);
 
     // Simulate peer sending an I-frame so V(R) increments to 1
-    atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0), (atc_hdlc_u8*)"PEER", 4,
-                                                     temp_input_buffer, sizeof(temp_input_buffer));
+    atc_hdlc_u32 len = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0), (atc_hdlc_u8*)"PEER", 4, temp_input_buffer,
+                                                     sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
     // Simulate peer sending RR N(R)=1 so V(A) increments to 1
-    len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, 1, 0), NULL, 0, temp_input_buffer,
-                                        sizeof(temp_input_buffer));
+    len =
+        (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(0x00, 1, 0), NULL, 0, temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
     if (ctx.vs == 0 || ctx.vr == 0 || ctx.va == 0) {
@@ -746,8 +730,7 @@ void test_state_initialization(void) {
 
     // 2. Peer sends SABM to reset connection
     printf("   Peer sends SABM to trigger reset.\n");
-    len = (atc_hdlc_u32)test_pack_frame(0x01, U_CTRL(U_SABM, 1), NULL, 0, temp_input_buffer,
-                                        sizeof(temp_input_buffer));
+    len = (atc_hdlc_u32)test_pack_frame(0x01, U_CTRL(U_SABM, 1), NULL, 0, temp_input_buffer, sizeof(temp_input_buffer));
     atc_hdlc_data_in(&ctx, temp_input_buffer, len);
 
     // After processing SABM, we should be connected and state variables MUST be 0
@@ -784,8 +767,7 @@ void test_public_query_api(void) {
 
     /* Simulate receiving an I-frame → T2 starts */
     atc_hdlc_u8 i_raw[64];
-    atc_hdlc_u32 i_len =
-        (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0), payload, 1, i_raw, sizeof(i_raw));
+    atc_hdlc_u32 i_len = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0), payload, 1, i_raw, sizeof(i_raw));
     reset_test_state();
     atc_hdlc_data_in(&ctx, i_raw, i_len);
     if (!(ctx.flags & HDLC_F_T2_ACTIVE))
@@ -862,8 +844,7 @@ void test_local_busy_rnr_response(void) {
     /* Peer sends I-frame N(S)=0, N(R)=0 */
     atc_hdlc_u8 payload[] = {0xAB};
     atc_hdlc_u8 i_raw[64];
-    atc_hdlc_u32 i_len =
-        (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0), payload, 1, i_raw, sizeof(i_raw));
+    atc_hdlc_u32 i_len = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0), payload, 1, i_raw, sizeof(i_raw));
 
     reset_test_state();
     atc_hdlc_data_in(&ctx, i_raw, i_len);
@@ -897,8 +878,7 @@ void test_rnr_reception(void) {
 
     /* Build RNR(P=0, N(R)=0) from peer (address = my_address = 0x01) */
     atc_hdlc_u8 rnr_raw[32];
-    atc_hdlc_u32 rnr_len =
-        (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(S_RNR, 0, 0), NULL, 0, rnr_raw, sizeof(rnr_raw));
+    atc_hdlc_u32 rnr_len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(S_RNR, 0, 0), NULL, 0, rnr_raw, sizeof(rnr_raw));
 
     reset_test_state();
     atc_hdlc_data_in(&ctx, rnr_raw, rnr_len);
@@ -910,8 +890,7 @@ void test_rnr_reception(void) {
 
     /* Build RR(P=0, N(R)=0) from peer to clear busy */
     atc_hdlc_u8 rr_raw[32];
-    atc_hdlc_u32 rr_len =
-        (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(S_RR, 0, 0), NULL, 0, rr_raw, sizeof(rr_raw));
+    atc_hdlc_u32 rr_len = (atc_hdlc_u32)test_pack_frame(0x01, S_CTRL(S_RR, 0, 0), NULL, 0, rr_raw, sizeof(rr_raw));
     atc_hdlc_data_in(&ctx, rr_raw, rr_len);
 
     /* remote_busy should clear on RR */
@@ -941,8 +920,7 @@ void test_t2_timer_callbacks(void) {
     /* Receive I-frame → T2 must start */
     atc_hdlc_u8 payload[] = {0x01, 0x02};
     atc_hdlc_u8 i_raw[64];
-    atc_hdlc_u32 i_len =
-        (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0), payload, 2, i_raw, sizeof(i_raw));
+    atc_hdlc_u32 i_len = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0), payload, 2, i_raw, sizeof(i_raw));
 
     reset_test_state();
     atc_hdlc_data_in(&ctx, i_raw, i_len);
@@ -975,8 +953,7 @@ void test_t2_timer_callbacks(void) {
     ctx.va = 0;
     /* Receive I-frame N(S)=0, N(R)=0 → vr becomes 1, T2 starts */
     atc_hdlc_u8 i_raw2[64];
-    atc_hdlc_u32 i_len2 =
-        (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0), payload, 2, i_raw2, sizeof(i_raw2));
+    atc_hdlc_u32 i_len2 = (atc_hdlc_u32)test_pack_frame(0x01, I_CTRL(0, 0, 0), payload, 2, i_raw2, sizeof(i_raw2));
     atc_hdlc_data_in(&ctx, i_raw2, i_len2);
     if (!(ctx.flags & HDLC_F_T2_ACTIVE))
         test_fail("T2 Callbacks", "T2 not started before piggybacked ACK test");
@@ -994,25 +971,24 @@ typedef struct {
     const char* name;
     void (*fn)(void);
 } test_entry_t;
-static const test_entry_t s_tests[] = {
-    {"test_reliable_transmission", test_reliable_transmission},
-    {"test_sequence_rollover", test_sequence_rollover},
-    {"test_duplicate_ack_ignored", test_duplicate_ack_ignored},
-    {"test_piggyback_ack", test_piggyback_ack},
-    {"test_window_size_2_basic", test_window_size_2_basic},
-    {"test_gobackn_retransmit", test_gobackn_retransmit},
-    {"test_window7_mid_rej", test_window7_mid_rej},
-    {"test_throughput_benchmark", test_throughput_benchmark},
-    {"test_nr_modulo_validation", test_nr_modulo_validation},
-    {"test_nr_edge_cases", test_nr_edge_cases},
-    {"test_state_initialization", test_state_initialization},
-    {"test_public_query_api", test_public_query_api},
-    {"test_set_local_busy", test_set_local_busy},
-    {"test_local_busy_rnr_response", test_local_busy_rnr_response},
-    {"test_rnr_reception", test_rnr_reception},
-    {"test_t2_timer_callbacks", test_t2_timer_callbacks},
-    {"test_n2_retry_connected", test_n2_retry_connected},
-    {NULL, NULL}};
+static const test_entry_t s_tests[] = {{"test_reliable_transmission", test_reliable_transmission},
+                                       {"test_sequence_rollover", test_sequence_rollover},
+                                       {"test_duplicate_ack_ignored", test_duplicate_ack_ignored},
+                                       {"test_piggyback_ack", test_piggyback_ack},
+                                       {"test_window_size_2_basic", test_window_size_2_basic},
+                                       {"test_gobackn_retransmit", test_gobackn_retransmit},
+                                       {"test_window7_mid_rej", test_window7_mid_rej},
+                                       {"test_throughput_benchmark", test_throughput_benchmark},
+                                       {"test_nr_modulo_validation", test_nr_modulo_validation},
+                                       {"test_nr_edge_cases", test_nr_edge_cases},
+                                       {"test_state_initialization", test_state_initialization},
+                                       {"test_public_query_api", test_public_query_api},
+                                       {"test_set_local_busy", test_set_local_busy},
+                                       {"test_local_busy_rnr_response", test_local_busy_rnr_response},
+                                       {"test_rnr_reception", test_rnr_reception},
+                                       {"test_t2_timer_callbacks", test_t2_timer_callbacks},
+                                       {"test_n2_retry_connected", test_n2_retry_connected},
+                                       {NULL, NULL}};
 
 int main(int argc, char* argv[]) {
     if (argc > 1) {

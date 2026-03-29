@@ -5,9 +5,9 @@
 
 static atc_hdlc_ctx_t hdlc_ctx;
 static atc_hdlc_config_t hdlc_cfg;
-static atc_hdlc_platform_ops_t hdlc_plat;
-static atc_hdlc_tx_window_t hdlc_tw;
-static atc_hdlc_rx_buffer_t hdlc_rx_desc;
+static atc_hdlc_plat_ops_t hdlc_plat;
+static atc_hdlc_txwin_t hdlc_tw;
+static atc_hdlc_rxbuf_t hdlc_rx_desc;
 
 static atc_hdlc_u8 rx_buf[HDLC_PORT_MAX_INFO + 4u];
 static atc_hdlc_u8 tx_slots[HDLC_PORT_WINDOW * HDLC_PORT_MAX_INFO];
@@ -48,7 +48,7 @@ static const atc_hdlc_u8 self_test_payload[SELF_TEST_FRAME_SIZE] = {
 static void on_event(atc_hdlc_event_t event, void* user_ctx) {
     (void)user_ctx;
 
-    if (event == ATC_HDLC_EVENT_CONNECT_ACCEPTED || event == ATC_HDLC_EVENT_INCOMING_CONNECT) {
+    if (event == ATC_HDLC_EVENT_CONN_ACCEPTED || event == ATC_HDLC_EVENT_CONN_REQ) {
         for (atc_hdlc_u8 i = 0; i < SELF_TEST_FRAME_COUNT; i++)
             atc_hdlc_transmit_i(&hdlc_ctx, self_test_payload, SELF_TEST_FRAME_SIZE);
     }

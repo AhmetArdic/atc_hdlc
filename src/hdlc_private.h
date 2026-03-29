@@ -37,8 +37,8 @@ void set_state(atc_hdlc_ctx_t* ctx, atc_hdlc_state_t new_state, atc_hdlc_event_t
 
 void reset_state(atc_hdlc_ctx_t* ctx);
 
-void dispatch_frame(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                    const atc_hdlc_u8* info, atc_hdlc_u16 info_len);
+void dispatch_frame(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info,
+                    atc_hdlc_u16 info_len);
 
 static inline void t1_start(atc_hdlc_ctx_t* ctx) {
     if (ctx->platform->t1_start && ctx->config)

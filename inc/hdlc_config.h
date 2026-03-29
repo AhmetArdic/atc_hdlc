@@ -49,7 +49,7 @@ extern "C" {
 #define ATC_HDLC_LOG_LEVEL_DBG  (3)
 
 #ifndef ATC_HDLC_LOG_LEVEL
-#define ATC_HDLC_LOG_LEVEL ATC_HDLC_LOG_LEVEL_OFF 
+#define ATC_HDLC_LOG_LEVEL ATC_HDLC_LOG_LEVEL_OFF
 #endif
 
 /** @brief Log sink. Override before including this header to redirect logs

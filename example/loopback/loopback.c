@@ -64,19 +64,19 @@ static void wire_deliver(wire_t* w) {
 
 static const char* event_str(atc_hdlc_event_t e) {
     switch (e) {
-    case ATC_HDLC_EVENT_LINK_SETUP_REQUEST:
+    case ATC_HDLC_EVENT_SETUP_REQ:
         return "LINK_SETUP_REQUEST";
-    case ATC_HDLC_EVENT_CONNECT_ACCEPTED:
+    case ATC_HDLC_EVENT_CONN_ACCEPTED:
         return "CONNECT_ACCEPTED";
-    case ATC_HDLC_EVENT_INCOMING_CONNECT:
+    case ATC_HDLC_EVENT_CONN_REQ:
         return "INCOMING_CONNECT";
     case ATC_HDLC_EVENT_RESET:
         return "RESET";
-    case ATC_HDLC_EVENT_DISCONNECT_REQUEST:
+    case ATC_HDLC_EVENT_DISC_REQ:
         return "DISCONNECT_REQUEST";
-    case ATC_HDLC_EVENT_DISCONNECT_COMPLETE:
+    case ATC_HDLC_EVENT_DISC_DONE:
         return "DISCONNECT_COMPLETE";
-    case ATC_HDLC_EVENT_PEER_DISCONNECT:
+    case ATC_HDLC_EVENT_PEER_DISC:
         return "PEER_DISCONNECT";
     case ATC_HDLC_EVENT_PEER_REJECT:
         return "PEER_REJECT";
@@ -84,9 +84,9 @@ static const char* event_str(atc_hdlc_event_t e) {
         return "PROTOCOL_ERROR";
     case ATC_HDLC_EVENT_LINK_FAILURE:
         return "LINK_FAILURE";
-    case ATC_HDLC_EVENT_REMOTE_BUSY_ON:
+    case ATC_HDLC_EVENT_PEER_BUSY:
         return "REMOTE_BUSY_ON";
-    case ATC_HDLC_EVENT_REMOTE_BUSY_OFF:
+    case ATC_HDLC_EVENT_PEER_READY:
         return "REMOTE_BUSY_OFF";
     case ATC_HDLC_EVENT_WINDOW_OPEN:
         return "WINDOW_OPEN";
@@ -126,9 +126,9 @@ static atc_hdlc_u8 rx_a[128], rx_b[128];
 static atc_hdlc_u8 tx_slots_a[1 * 64];
 static atc_hdlc_u32 tx_lens_a[1];
 
-static atc_hdlc_rx_buffer_t rx_buf_a = {rx_a, sizeof(rx_a)};
-static atc_hdlc_rx_buffer_t rx_buf_b = {rx_b, sizeof(rx_b)};
-static atc_hdlc_tx_window_t tx_win_a = {tx_slots_a, tx_lens_a, 64, 1};
+static atc_hdlc_rxbuf_t rx_buf_a = {rx_a, sizeof(rx_a)};
+static atc_hdlc_rxbuf_t rx_buf_b = {rx_b, sizeof(rx_b)};
+static atc_hdlc_txwin_t tx_win_a = {tx_slots_a, tx_lens_a, 64, 1};
 
 static const atc_hdlc_config_t cfg_a = {
     .mode = ATC_HDLC_MODE_ABM,
@@ -147,7 +147,7 @@ static const atc_hdlc_config_t cfg_b = {
     .t2_ms = 10,
 };
 
-static const atc_hdlc_platform_ops_t plat_a = {
+static const atc_hdlc_plat_ops_t plat_a = {
     .on_send = send_cb,
     .on_event = on_event_a,
     .t1_start = t_start,
@@ -156,7 +156,7 @@ static const atc_hdlc_platform_ops_t plat_a = {
     .t2_stop = t_stop,
     .user_ctx = &wire_ab,
 };
-static const atc_hdlc_platform_ops_t plat_b = {
+static const atc_hdlc_plat_ops_t plat_b = {
     .on_send = send_cb,
     .on_data = on_data_b,
     .on_event = on_event_b,

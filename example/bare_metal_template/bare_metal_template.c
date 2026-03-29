@@ -139,14 +139,14 @@ static void on_event(atc_hdlc_event_t event, void* u) {
     (void)u;
     /* PLATFORM: application state machine — react to link events */
     switch (event) {
-    case ATC_HDLC_EVENT_CONNECT_ACCEPTED:
+    case ATC_HDLC_EVENT_CONN_ACCEPTED:
         printf("[app] connected\n");
         break;
-    case ATC_HDLC_EVENT_INCOMING_CONNECT:
+    case ATC_HDLC_EVENT_CONN_REQ:
         printf("[app] peer connected\n");
         break;
-    case ATC_HDLC_EVENT_DISCONNECT_COMPLETE:
-    case ATC_HDLC_EVENT_PEER_DISCONNECT:
+    case ATC_HDLC_EVENT_DISC_DONE:
+    case ATC_HDLC_EVENT_PEER_DISC:
         printf("[app] disconnected\n");
         break;
     case ATC_HDLC_EVENT_LINK_FAILURE:
@@ -180,7 +180,7 @@ static const atc_hdlc_config_t cfg = {
     .t2_ms = 20,
 };
 
-static const atc_hdlc_platform_ops_t platform = {
+static const atc_hdlc_plat_ops_t platform = {
     .on_send = uart_send,
     .on_data = on_data,
     .on_event = on_event,
@@ -190,8 +190,8 @@ static const atc_hdlc_platform_ops_t platform = {
     .t2_stop = t2_stop,
 };
 
-static atc_hdlc_tx_window_t tx_win = {tx_slots, tx_lens, MAX_INFO_SIZE, WINDOW_SIZE};
-static atc_hdlc_rx_buffer_t rx_buf = {rx_buf_mem, sizeof(rx_buf_mem)};
+static atc_hdlc_txwin_t tx_win = {tx_slots, tx_lens, MAX_INFO_SIZE, WINDOW_SIZE};
+static atc_hdlc_rxbuf_t rx_buf = {rx_buf_mem, sizeof(rx_buf_mem)};
 static atc_hdlc_ctx_t ctx;
 
 /* ================================================================== */

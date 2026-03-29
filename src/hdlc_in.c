@@ -34,8 +34,8 @@ static void handle_flag(atc_hdlc_ctx_t* ctx) {
         goto reset;
 
     atc_hdlc_u32 dlen = ctx->rx_index - FCS_LEN;
-    atc_hdlc_u16 rx_fcs = (atc_hdlc_u16)(ctx->rx_buf->buffer[dlen] |
-                                         ((atc_hdlc_u16)ctx->rx_buf->buffer[dlen + 1] << 8));
+    atc_hdlc_u16 rx_fcs =
+        (atc_hdlc_u16)(ctx->rx_buf->buffer[dlen] | ((atc_hdlc_u16)ctx->rx_buf->buffer[dlen + 1] << 8));
 
     if (ctx->rx_crc != rx_fcs) {
         LOG_WRN("rx: CRC Error! Calc: 0x%04X, RX: 0x%04X", ctx->rx_crc, rx_fcs);
@@ -78,20 +78,17 @@ static void rx_byte(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 byte) {
     }
 
     if (ctx->rx_index >= ctx->rx_buf->capacity) {
-        LOG_WRN("rx: Buffer overflow! Max %u bytes. Discarding.",
-                ctx->rx_buf->capacity);
+        LOG_WRN("rx: Buffer overflow! Max %u bytes. Discarding.", ctx->rx_buf->capacity);
         goto discard;
     }
 
     ctx->rx_buf->buffer[ctx->rx_index] = byte;
     if (ctx->rx_index >= FCS_LEN)
-        ctx->rx_crc =
-            ctx->crc->compute(ctx->rx_crc, &ctx->rx_buf->buffer[ctx->rx_index - FCS_LEN], 1);
+        ctx->rx_crc = ctx->crc->compute(ctx->rx_crc, &ctx->rx_buf->buffer[ctx->rx_index - FCS_LEN], 1);
     ctx->rx_index++;
 
     if (ctx->rx_index == 1) {
-        if (byte != ctx->my_address && byte != ctx->peer_address &&
-            byte != ATC_HDLC_BROADCAST_ADDRESS) {
+        if (byte != ctx->my_address && byte != ctx->peer_address && byte != ATC_HDLC_BROADCAST_ADDRESS) {
             LOG_WRN("rx: Invalid Address 0x%02X. Frame discarded.", byte);
             goto discard;
         }

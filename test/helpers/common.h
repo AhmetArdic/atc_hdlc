@@ -75,10 +75,9 @@ typedef struct {
     bool valid;
 } test_frame_t;
 
-int test_pack_frame(atc_hdlc_u8 addr, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info,
-                    atc_hdlc_u16 info_len, atc_hdlc_u8* out, int out_cap);
+int test_pack_frame(atc_hdlc_u8 addr, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info, atc_hdlc_u16 info_len,
+                    atc_hdlc_u8* out, int out_cap);
 
-test_frame_t test_unpack_frame(const atc_hdlc_u8* buf, int buf_len, atc_hdlc_u8* flat,
-                               int flat_cap);
+test_frame_t test_unpack_frame(const atc_hdlc_u8* buf, int buf_len, atc_hdlc_u8* flat, int flat_cap);
 
 #endif /* TEST_COMMON_H */
