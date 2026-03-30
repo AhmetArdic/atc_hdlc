@@ -1,7 +1,7 @@
 #ifndef TEST_COMMON_H
 #define TEST_COMMON_H
 
-#include "../inc/hdlc.h"
+#include "atc_hdlc/hdlc.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>

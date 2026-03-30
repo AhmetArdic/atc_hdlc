@@ -15,7 +15,7 @@
  *   ./example/loopback/loopback
  */
 
-#include "hdlc.h"
+#include "atc_hdlc/hdlc.h"
 #include <stdio.h>
 #include <string.h>
 

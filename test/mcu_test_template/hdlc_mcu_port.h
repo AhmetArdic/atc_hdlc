@@ -1,7 +1,7 @@
 #ifndef HDLC_MCU_PORT_H
 #define HDLC_MCU_PORT_H
 
-#include "hdlc.h"
+#include "atc_hdlc/hdlc.h"
 
 /*
  * Buffer / window sizing.

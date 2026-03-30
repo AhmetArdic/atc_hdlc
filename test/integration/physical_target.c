@@ -20,8 +20,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../inc/hdlc.h"
 #include "../helpers/common.h"
+#include "atc_hdlc/hdlc.h"
 
 /* ================================================================
  *  Platform Abstraction

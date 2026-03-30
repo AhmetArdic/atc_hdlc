@@ -1,6 +1,6 @@
-#include "../../inc/hdlc.h"
 #include "../../src/hdlc_frame.h"
 #include "../helpers/common.h"
+#include "atc_hdlc/hdlc.h"
 #include <ctype.h>
 #include <stdbool.h>
 #include <stdint.h>

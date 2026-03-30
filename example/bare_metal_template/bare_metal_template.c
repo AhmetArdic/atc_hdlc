@@ -19,7 +19,7 @@
  *   make bare_metal_template   (from build/)
  */
 
-#include "hdlc.h"
+#include "atc_hdlc/hdlc.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>

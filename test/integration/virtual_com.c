@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../inc/hdlc.h"
 #include "../helpers/common.h"
+#include "atc_hdlc/hdlc.h"
 
 // Configuration
 #define PAYLOAD_SIZE (1024 * 1024) // 1MB

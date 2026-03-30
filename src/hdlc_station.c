@@ -7,7 +7,7 @@
  * (at your option) any later version.
  */
 
-#include "../inc/hdlc.h"
+#include "../inc/atc_hdlc/hdlc.h"
 #include "hdlc_frame.h"
 #include <string.h>
 

@@ -1,4 +1,4 @@
-#include "../../inc/hdlc.h"
+#include "atc_hdlc/hdlc.h"
 #include "../../src/hdlc_frame.h"
 #include "../helpers/common.h"
 #include <ctype.h>

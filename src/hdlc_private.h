@@ -10,7 +10,7 @@
 #ifndef ATC_HDLC_PRIVATE_H
 #define ATC_HDLC_PRIVATE_H
 
-#include "../inc/hdlc_types.h"
+#include "../inc/atc_hdlc/hdlc_types.h"
 
 #if ATC_HDLC_LOG_LEVEL >= ATC_HDLC_LOG_LEVEL_ERR
 #define LOG_ERR(fmt, ...) ATC_HDLC_LOG_IMPL("ERR", fmt, ##__VA_ARGS__)
