@@ -29,9 +29,10 @@ This library implements a highly capable subset of the ISO/IEC 13239 HDLC standa
 ```
 .
 ├── inc/
-│   ├── hdlc.h              # Public API (atc_hdlc_* functions)
-│   ├── hdlc_types.h        # Types, callbacks, error codes, context
-│   └── hdlc_config.h       # Configuration defaults (overridable via #define)
+│   └── atc_hdlc/
+│       ├── hdlc.h          # Public API (atc_hdlc_* functions)
+│       ├── hdlc_types.h    # Types, callbacks, error codes, context
+│       └── hdlc_config.h   # Configuration defaults (overridable via #define)
 ├── src/
 │   ├── CMakeLists.txt
 │   ├── hdlc_private.h      # Internal constants, bit-field accessors, timer helpers
@@ -74,7 +75,7 @@ This library implements a highly capable subset of the ISO/IEC 13239 HDLC standa
 
 Three layers:
 
-**Public API** (`inc/`): `hdlc.h`, `hdlc_types.h`, `hdlc_config.h`.
+**Public API** (`inc/atc_hdlc/`): `hdlc.h`, `hdlc_types.h`, `hdlc_config.h`.
 
 **Core Implementation** (`src/`):
 - `hdlc_frame.h` — Frame constants and field accessor macros.
@@ -117,7 +118,7 @@ ctest --test-dir build -L integration
 ### 1. Define Callbacks
 
 ```c
-int my_on_send(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *ctx) {
+int my_on_send(atc_hdlc_u8 byte, bool flush, void *ctx) {
     UART_SendByte(byte);
     if (flush) { /* flush hardware buffer */ }
     return 0;
@@ -129,16 +130,16 @@ void my_on_data(const atc_hdlc_u8 *payload, atc_hdlc_u16 len, void *ctx) {
 
 void my_on_event(atc_hdlc_event_t event, void *ctx) {
     switch (event) {
-        case ATC_HDLC_EVENT_CONNECT_ACCEPTED:    /* UA received for our SABM */     break;
-        case ATC_HDLC_EVENT_INCOMING_CONNECT:    /* peer sent SABM, auto-accepted */ break;
-        case ATC_HDLC_EVENT_DISCONNECT_COMPLETE: /* UA received for our DISC */      break;
-        case ATC_HDLC_EVENT_PEER_DISCONNECT:     /* peer sent DISC */                break;
-        case ATC_HDLC_EVENT_PEER_REJECT:         /* peer sent DM */                  break;
-        case ATC_HDLC_EVENT_PROTOCOL_ERROR:      /* peer sent FRMR */                break;
-        case ATC_HDLC_EVENT_LINK_FAILURE:        /* N2 retries exceeded */           break;
-        case ATC_HDLC_EVENT_REMOTE_BUSY_ON:      /* peer sent RNR */                 break;
-        case ATC_HDLC_EVENT_REMOTE_BUSY_OFF:     /* peer sent RR after RNR */        break;
-        case ATC_HDLC_EVENT_WINDOW_OPEN:         /* TX window slot freed */          break;
+        case ATC_HDLC_EVENT_CONN_ACCEPTED:  /* UA received for our SABM */     break;
+        case ATC_HDLC_EVENT_CONN_REQ:       /* peer sent SABM, auto-accepted */ break;
+        case ATC_HDLC_EVENT_DISC_DONE:      /* UA received for our DISC */      break;
+        case ATC_HDLC_EVENT_PEER_DISC:      /* peer sent DISC */                break;
+        case ATC_HDLC_EVENT_PEER_REJECT:    /* peer sent DM */                  break;
+        case ATC_HDLC_EVENT_PROTOCOL_ERROR: /* peer sent FRMR */                break;
+        case ATC_HDLC_EVENT_LINK_FAILURE:   /* N2 retries exceeded */           break;
+        case ATC_HDLC_EVENT_PEER_BUSY:      /* peer sent RNR */                 break;
+        case ATC_HDLC_EVENT_PEER_READY:     /* peer sent RR after RNR */        break;
+        case ATC_HDLC_EVENT_WINDOW_OPEN:    /* TX window slot freed */          break;
         default: break;
     }
 }
@@ -165,7 +166,7 @@ atc_hdlc_config_t config = {
 };
 
 // Platform callbacks
-atc_hdlc_platform_ops_t platform = {
+atc_hdlc_plat_ops_t platform = {
     .on_send = my_on_send,
     .on_data = my_on_data,
     .on_event = my_on_event,
@@ -179,7 +180,7 @@ atc_hdlc_platform_ops_t platform = {
 // TX window (for reliable I-frames)
 uint8_t tx_slots[3 * 256];  // slot_count * slot_capacity
 uint32_t tx_slot_lens[3];
-atc_hdlc_tx_window_t tx_window = {
+atc_hdlc_txwin_t tx_window = {
     .slots = tx_slots,
     .slot_lens = tx_slot_lens,
     .slot_capacity = 256,
@@ -188,7 +189,7 @@ atc_hdlc_tx_window_t tx_window = {
 
 // RX buffer
 uint8_t rx_buffer[512];
-atc_hdlc_rx_buffer_t rx_buf = {
+atc_hdlc_rxbuf_t rx_buf = {
     .buffer = rx_buffer,
     .capacity = sizeof(rx_buffer),
 };
@@ -199,6 +200,7 @@ atc_hdlc_params_t params = {
     .platform  = &platform,
     .tx_window = &tx_window,
     .rx_buf    = &rx_buf,
+    .crc       = NULL,  // NULL = software CRC-16-CCITT default
 };
 atc_hdlc_init(&ctx, params);
 
@@ -312,7 +314,7 @@ Set these fields before calling `atc_hdlc_init()`:
 | `t1_ms` | `1000` | T1 retransmission timeout (ms) |
 | `t2_ms` | `10` | T2 delayed ACK timeout (ms, must be < t1_ms) |
 
-### Compile-Time Defaults (`inc/hdlc_config.h`)
+### Compile-Time Defaults (`inc/atc_hdlc/hdlc_config.h`)
 
 Override these macros before including `hdlc.h`:
 
@@ -323,12 +325,34 @@ Override these macros before including `hdlc.h`:
 | `ATC_HDLC_DEFAULT_N2_RETRY_COUNT` | `3` | Default N2 retry limit |
 | `ATC_HDLC_LOG_LEVEL` | `OFF` | Verbosity ceiling (`OFF`/`ERR`/`WRN`/`INFO`/`DBG`) |
 
+### Custom CRC Driver (`atc_hdlc_crc_ops_t`)
+
+Pass `NULL` for `.crc` in `atc_hdlc_params_t` to use the built-in software CRC-16-CCITT implementation (`atc_hdlc_crc_ops_default`).
+
+To plug in a hardware CRC peripheral, provide your own `atc_hdlc_crc_ops_t`:
+
+```c
+atc_hdlc_u16 my_hw_crc(atc_hdlc_u16 crc, const atc_hdlc_u8 *buf, atc_hdlc_u32 len) {
+    // feed buf[0..len-1] into hardware CRC unit seeded with crc
+    return HW_CRC_Result();
+}
+
+const atc_hdlc_crc_ops_t my_crc = { .compute = my_hw_crc };
+
+atc_hdlc_params_t params = {
+    ...
+    .crc = &my_crc,
+};
+```
+
+The `compute` function must implement CRC-16-CCITT (poly `0x1021`, init `0xFFFF`).
+
 To redirect debug output on bare-metal targets:
 
 ```c
 #define ATC_HDLC_LOG_IMPL(level, fmt, ...) \
     my_log_function(level, fmt, ##__VA_ARGS__)
-#include "hdlc.h"
+#include "atc_hdlc/hdlc.h"
 ```
 
 ## License
