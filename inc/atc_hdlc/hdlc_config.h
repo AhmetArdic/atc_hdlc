@@ -21,44 +21,40 @@ extern "C" {
 
 /** @brief Default T1 retransmit timeout (ms). */
 #ifndef ATC_HDLC_DEFAULT_T1_TIMEOUT
-#define ATC_HDLC_DEFAULT_T1_TIMEOUT 1000
+#define ATC_HDLC_DEFAULT_T1_TIMEOUT (1000)
 #endif
 
 /** @brief Default T2 ack delay timeout (ms). */
 #ifndef ATC_HDLC_DEFAULT_T2_TIMEOUT
-#define ATC_HDLC_DEFAULT_T2_TIMEOUT 10
+#define ATC_HDLC_DEFAULT_T2_TIMEOUT (10)
 #endif
 
 /** @brief Default max retry count (N2). */
 #ifndef ATC_HDLC_DEFAULT_N2_RETRY_COUNT
-#define ATC_HDLC_DEFAULT_N2_RETRY_COUNT 3
-#endif
-
-/** @brief Enable debug logging (0 = all logs compiled out). */
-#ifndef ATC_HDLC_ENABLE_DEBUG_LOGS
-#define ATC_HDLC_ENABLE_DEBUG_LOGS 0
+#define ATC_HDLC_DEFAULT_N2_RETRY_COUNT (3)
 #endif
 
 /**
  * @brief Log verbosity levels (used with ATC_HDLC_LOG_LEVEL).
+ *   OFF  — all logs compiled out
  *   ERR  — connection-breaking errors (FRMR, link failure, CRC)
  *   WRN  — protocol warnings (bad N(R), out-of-sequence, retransmit)
  *   INFO — state transitions and connection events
  *   DBG  — per-frame detail and flow-control tracking
  */
-#define ATC_HDLC_LOG_LEVEL_ERR  0
-#define ATC_HDLC_LOG_LEVEL_WRN  1
-#define ATC_HDLC_LOG_LEVEL_INFO 2
-#define ATC_HDLC_LOG_LEVEL_DBG  3
+#define ATC_HDLC_LOG_LEVEL_OFF  (-1)
+#define ATC_HDLC_LOG_LEVEL_ERR  (0)
+#define ATC_HDLC_LOG_LEVEL_WRN  (1)
+#define ATC_HDLC_LOG_LEVEL_INFO (2)
+#define ATC_HDLC_LOG_LEVEL_DBG  (3)
 
-/** @brief Verbosity ceiling when ATC_HDLC_ENABLE_DEBUG_LOGS is set. */
 #ifndef ATC_HDLC_LOG_LEVEL
-#define ATC_HDLC_LOG_LEVEL ATC_HDLC_LOG_LEVEL_WRN
+#define ATC_HDLC_LOG_LEVEL ATC_HDLC_LOG_LEVEL_OFF
 #endif
 
 /** @brief Log sink. Override before including this header to redirect logs
  *  without pulling in stdio.h (e.g. on bare-metal targets). */
-#if ATC_HDLC_ENABLE_DEBUG_LOGS
+#if ATC_HDLC_LOG_LEVEL >= ATC_HDLC_LOG_LEVEL_ERR
 #ifndef ATC_HDLC_LOG_IMPL
 #include <stdio.h>
 #define ATC_HDLC_LOG_IMPL(level, fmt, ...) printf("[HDLC %-4s] " fmt "\n", level, ##__VA_ARGS__)

@@ -14,7 +14,7 @@
  *   ./example/minimal_ui/minimal_ui
  */
 
-#include "hdlc.h"
+#include "atc_hdlc/hdlc.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -23,7 +23,7 @@
 /* Simulates a shared bus where the sender also sees its own frames. */
 /* ------------------------------------------------------------------ */
 
-static atc_hdlc_context_t ctx;
+static atc_hdlc_ctx_t ctx;
 
 static atc_hdlc_u8 loopback_buf[64];
 static int loopback_len = 0;
@@ -56,13 +56,13 @@ static const atc_hdlc_config_t cfg = {
     .max_info_size = 16,
 };
 
-static const atc_hdlc_platform_t platform = {
+static const atc_hdlc_plat_ops_t platform = {
     .on_send = send_cb,
     .on_data = on_data,
     /* All timer callbacks NULL — UI frames never start T1 or T2. */
 };
 
-static atc_hdlc_rx_buffer_t rx_buf = {rx_buf_mem, sizeof(rx_buf_mem)};
+static atc_hdlc_rxbuf_t rx_buf = {rx_buf_mem, sizeof(rx_buf_mem)};
 
 /* ------------------------------------------------------------------ */
 

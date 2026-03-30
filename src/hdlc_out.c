@@ -7,52 +7,51 @@
  * (at your option) any later version.
  */
 
-#include "../inc/hdlc.h"
+#include "../inc/atc_hdlc/hdlc.h"
 #include "hdlc_frame.h"
 #include <string.h>
 
-atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_context_t* ctx, atc_hdlc_u8 address,
-                                      const atc_hdlc_u8* data, atc_hdlc_u32 len) {
+atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, const atc_hdlc_u8* data,
+                                      atc_hdlc_u32 len) {
     if (!ctx)
-        return ATC_HDLC_ERR_INVALID_PARAM;
+        return ATC_HDLC_ERR_BAD_PARAM;
     if (!data && len > 0)
-        return ATC_HDLC_ERR_INVALID_PARAM;
+        return ATC_HDLC_ERR_BAD_PARAM;
     if (ctx->config && len > ctx->config->max_info_size)
-        return ATC_HDLC_ERR_FRAME_TOO_LARGE;
+        return ATC_HDLC_ERR_FRAME_SIZE;
 
     frame_send(ctx, address, U_CTRL(U_UI, 0), data, len);
 
     return ATC_HDLC_OK;
 }
 
-atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_context_t* ctx, atc_hdlc_u8 address,
-                                        const atc_hdlc_u8* data, atc_hdlc_u32 len) {
+atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, const atc_hdlc_u8* data,
+                                        atc_hdlc_u32 len) {
     if (!ctx)
-        return ATC_HDLC_ERR_INVALID_PARAM;
+        return ATC_HDLC_ERR_BAD_PARAM;
     if (!data && len > 0)
-        return ATC_HDLC_ERR_INVALID_PARAM;
+        return ATC_HDLC_ERR_BAD_PARAM;
     if (ctx->config && len > ctx->config->max_info_size)
-        return ATC_HDLC_ERR_FRAME_TOO_LARGE;
+        return ATC_HDLC_ERR_FRAME_SIZE;
 
     frame_send(ctx, address, U_CTRL(U_TEST, 1), data, len);
 
     return ATC_HDLC_OK;
 }
 
-atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t* ctx, const atc_hdlc_u8* data,
-                                     atc_hdlc_u32 len) {
+atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_ctx_t* ctx, const atc_hdlc_u8* data, atc_hdlc_u32 len) {
     if (!ctx)
-        return ATC_HDLC_ERR_INVALID_PARAM;
+        return ATC_HDLC_ERR_BAD_PARAM;
     if (ctx->current_state != ATC_HDLC_STATE_CONNECTED)
-        return ATC_HDLC_ERR_INVALID_STATE;
+        return ATC_HDLC_ERR_BAD_STATE;
     if (CTX_FLAG(ctx, HDLC_F_REMOTE_BUSY))
         return ATC_HDLC_ERR_REMOTE_BUSY;
     if (!ctx->tx_window)
         return ATC_HDLC_ERR_NO_BUFFER;
     if (ctx->config && len > ctx->config->max_info_size)
-        return ATC_HDLC_ERR_FRAME_TOO_LARGE;
+        return ATC_HDLC_ERR_FRAME_SIZE;
     if (len > 0 && data && len > ctx->tx_window->slot_capacity)
-        return ATC_HDLC_ERR_FRAME_TOO_LARGE;
+        return ATC_HDLC_ERR_FRAME_SIZE;
 
     atc_hdlc_u8 outstanding = (atc_hdlc_u8)((ctx->vs - ctx->va + MOD8) % MOD8);
     if (outstanding >= ctx->tx_window->slot_count)
@@ -65,7 +64,7 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t* ctx, const atc_hdlc_u8*
         memcpy(ctx->tx_window->slots + (slot * ctx->tx_window->slot_capacity), data, len);
     ctx->tx_window->slot_lens[slot] = len;
 
-    LOG_DBG("tx: I-Frame V(S)=%u, Len=%lu", ctx->vs, (unsigned long)len);
+    LOG_DBG("tx: I-Frame V(S)=%u, Len=%u", ctx->vs, len);
 
     frame_send(ctx, ctx->peer_address, I_CTRL(ctx->vs, ctx->vr, 0), data, len);
 
@@ -78,20 +77,20 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t* ctx, const atc_hdlc_u8*
     return ATC_HDLC_OK;
 }
 
-void atc_hdlc_transmit_ui_start(atc_hdlc_context_t* ctx, atc_hdlc_u8 address) {
+void atc_hdlc_transmit_ui_start(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address) {
     if (!ctx)
         return;
     frame_begin(ctx, address, U_CTRL(U_UI, 0));
 }
 
-void atc_hdlc_transmit_ui_data(atc_hdlc_context_t* ctx, const atc_hdlc_u8* data, atc_hdlc_u32 len) {
+void atc_hdlc_transmit_ui_data(atc_hdlc_ctx_t* ctx, const atc_hdlc_u8* data, atc_hdlc_u32 len) {
     if (!ctx || (!data && len > 0))
         return;
     for (atc_hdlc_u32 i = 0; i < len; i++)
         emit(ctx, data[i]);
 }
 
-void atc_hdlc_transmit_ui_end(atc_hdlc_context_t* ctx) {
+void atc_hdlc_transmit_ui_end(atc_hdlc_ctx_t* ctx) {
     if (!ctx)
         return;
     frame_end(ctx);

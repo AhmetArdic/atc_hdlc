@@ -10,7 +10,7 @@
 #ifndef ATC_HDLC_CRC_H
 #define ATC_HDLC_CRC_H
 
-#include "../inc/hdlc_types.h"
+#include "../inc/atc_hdlc/hdlc_types.h"
 
 #define ATC_HDLC_FCS_INIT_VALUE (0xFFFF)
 

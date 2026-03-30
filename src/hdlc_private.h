@@ -10,10 +10,13 @@
 #ifndef ATC_HDLC_PRIVATE_H
 #define ATC_HDLC_PRIVATE_H
 
-#include "../inc/hdlc_types.h"
+#include "../inc/atc_hdlc/hdlc_types.h"
 
-#if ATC_HDLC_ENABLE_DEBUG_LOGS
+#if ATC_HDLC_LOG_LEVEL >= ATC_HDLC_LOG_LEVEL_ERR
 #define LOG_ERR(fmt, ...) ATC_HDLC_LOG_IMPL("ERR", fmt, ##__VA_ARGS__)
+#else
+#define LOG_ERR(fmt, ...)
+#endif
 #if ATC_HDLC_LOG_LEVEL >= ATC_HDLC_LOG_LEVEL_WRN
 #define LOG_WRN(fmt, ...) ATC_HDLC_LOG_IMPL("WRN", fmt, ##__VA_ARGS__)
 #else
@@ -29,39 +32,33 @@
 #else
 #define LOG_DBG(fmt, ...)
 #endif
-#else
-#define LOG_ERR(fmt, ...)
-#define LOG_WRN(fmt, ...)
-#define LOG_INFO(fmt, ...)
-#define LOG_DBG(fmt, ...)
-#endif
 
-void set_state(atc_hdlc_context_t* ctx, atc_hdlc_state_t new_state, atc_hdlc_event_t event);
+void set_state(atc_hdlc_ctx_t* ctx, atc_hdlc_state_t new_state, atc_hdlc_event_t event);
 
-void reset_state(atc_hdlc_context_t* ctx);
+void reset_state(atc_hdlc_ctx_t* ctx);
 
-void dispatch_frame(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                    const atc_hdlc_u8* info, atc_hdlc_u16 info_len);
+void dispatch_frame(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info,
+                    atc_hdlc_u16 info_len);
 
-static inline void t1_start(atc_hdlc_context_t* ctx) {
+static inline void t1_start(atc_hdlc_ctx_t* ctx) {
     if (ctx->platform->t1_start && ctx->config)
         ctx->platform->t1_start(ctx->config->t1_ms, ctx->platform->user_ctx);
     CTX_SET(ctx, HDLC_F_T1_ACTIVE);
 }
 
-static inline void t1_stop(atc_hdlc_context_t* ctx) {
+static inline void t1_stop(atc_hdlc_ctx_t* ctx) {
     if (CTX_FLAG(ctx, HDLC_F_T1_ACTIVE) && ctx->platform->t1_stop)
         ctx->platform->t1_stop(ctx->platform->user_ctx);
     CTX_CLR(ctx, HDLC_F_T1_ACTIVE);
 }
 
-static inline void t2_start(atc_hdlc_context_t* ctx) {
+static inline void t2_start(atc_hdlc_ctx_t* ctx) {
     if (ctx->platform->t2_start && ctx->config)
         ctx->platform->t2_start(ctx->config->t2_ms, ctx->platform->user_ctx);
     CTX_SET(ctx, HDLC_F_T2_ACTIVE);
 }
 
-static inline void t2_stop(atc_hdlc_context_t* ctx) {
+static inline void t2_stop(atc_hdlc_ctx_t* ctx) {
     if (CTX_FLAG(ctx, HDLC_F_T2_ACTIVE) && ctx->platform->t2_stop)
         ctx->platform->t2_stop(ctx->platform->user_ctx);
     CTX_CLR(ctx, HDLC_F_T2_ACTIVE);

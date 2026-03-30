@@ -25,7 +25,7 @@ extern "C" {
  * @param params Init parameters.
  * @return ATC_HDLC_OK or error code.
  */
-atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t* ctx, atc_hdlc_params_t params);
+atc_hdlc_error_t atc_hdlc_init(atc_hdlc_ctx_t* ctx, atc_hdlc_params_t params);
 
 /**
  * @brief T1 timer expired (retransmission timeout).
@@ -34,7 +34,7 @@ atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t* ctx, atc_hdlc_params_t params
  *
  * @param ctx Context.
  */
-void atc_hdlc_t1_expired(atc_hdlc_context_t* ctx);
+void atc_hdlc_t1_expired(atc_hdlc_ctx_t* ctx);
 
 /**
  * @brief T2 timer expired (delayed ACK).
@@ -43,7 +43,7 @@ void atc_hdlc_t1_expired(atc_hdlc_context_t* ctx);
  *
  * @param ctx Context.
  */
-void atc_hdlc_t2_expired(atc_hdlc_context_t* ctx);
+void atc_hdlc_t2_expired(atc_hdlc_ctx_t* ctx);
 
 /**
  * @brief Connect to peer (sends SABM).
@@ -52,7 +52,7 @@ void atc_hdlc_t2_expired(atc_hdlc_context_t* ctx);
  * @param peer_addr Peer address.
  * @return ATC_HDLC_OK or error code.
  */
-atc_hdlc_error_t atc_hdlc_link_setup(atc_hdlc_context_t* ctx, atc_hdlc_u8 peer_addr);
+atc_hdlc_error_t atc_hdlc_link_setup(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 peer_addr);
 
 /**
  * @brief Disconnect (sends DISC).
@@ -60,7 +60,7 @@ atc_hdlc_error_t atc_hdlc_link_setup(atc_hdlc_context_t* ctx, atc_hdlc_u8 peer_a
  * @param ctx Context.
  * @return ATC_HDLC_OK or error code.
  */
-atc_hdlc_error_t atc_hdlc_disconnect(atc_hdlc_context_t* ctx);
+atc_hdlc_error_t atc_hdlc_disconnect(atc_hdlc_ctx_t* ctx);
 
 /**
  * @brief Reset link and re-send SABM.
@@ -70,7 +70,7 @@ atc_hdlc_error_t atc_hdlc_disconnect(atc_hdlc_context_t* ctx);
  * @param ctx Context.
  * @return ATC_HDLC_OK always.
  */
-atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_context_t* ctx);
+atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_ctx_t* ctx);
 
 /**
  * @brief Unconditional abort — call on PHY line break or framing error.
@@ -80,7 +80,7 @@ atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_context_t* ctx);
  *
  * @param ctx Context.
  */
-void atc_hdlc_abort(atc_hdlc_context_t* ctx);
+void atc_hdlc_abort(atc_hdlc_ctx_t* ctx);
 
 /**
  * @brief Set local busy condition.
@@ -89,7 +89,7 @@ void atc_hdlc_abort(atc_hdlc_context_t* ctx);
  * @param busy true = busy (tell peer to wait), false = ready.
  * @return ATC_HDLC_OK or error code.
  */
-atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_context_t* ctx, bool busy);
+atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_ctx_t* ctx, bool busy);
 
 /**
  * @brief Send reliable I-frame.
@@ -99,8 +99,7 @@ atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_context_t* ctx, bool busy);
  * @param len  Payload length.
  * @return ATC_HDLC_OK or error code.
  */
-atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t* ctx, const atc_hdlc_u8* data,
-                                     atc_hdlc_u32 len);
+atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_ctx_t* ctx, const atc_hdlc_u8* data, atc_hdlc_u32 len);
 
 /**
  * @brief Send UI-frame (connectionless).
@@ -113,8 +112,8 @@ atc_hdlc_error_t atc_hdlc_transmit_i(atc_hdlc_context_t* ctx, const atc_hdlc_u8*
  * @param len     Length.
  * @return ATC_HDLC_OK or error code.
  */
-atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_context_t* ctx, atc_hdlc_u8 address,
-                                      const atc_hdlc_u8* data, atc_hdlc_u32 len);
+atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, const atc_hdlc_u8* data,
+                                      atc_hdlc_u32 len);
 
 /**
  * @brief Send TEST frame; echo is delivered via @c on_event callback.
@@ -125,8 +124,8 @@ atc_hdlc_error_t atc_hdlc_transmit_ui(atc_hdlc_context_t* ctx, atc_hdlc_u8 addre
  * @param len     Length.
  * @return ATC_HDLC_OK or error code.
  */
-atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_context_t* ctx, atc_hdlc_u8 address,
-                                        const atc_hdlc_u8* data, atc_hdlc_u32 len);
+atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, const atc_hdlc_u8* data,
+                                        atc_hdlc_u32 len);
 
 /**
  * @brief Feed multiple bytes.
@@ -137,7 +136,7 @@ atc_hdlc_error_t atc_hdlc_transmit_test(atc_hdlc_context_t* ctx, atc_hdlc_u8 add
  * @param data Byte array.
  * @param len  Count.
  */
-void atc_hdlc_data_in(atc_hdlc_context_t* ctx, const atc_hdlc_u8* data, atc_hdlc_u32 len);
+void atc_hdlc_data_in(atc_hdlc_ctx_t* ctx, const atc_hdlc_u8* data, atc_hdlc_u32 len);
 
 /**
  * @brief Start streaming UI frame TX.
@@ -145,7 +144,7 @@ void atc_hdlc_data_in(atc_hdlc_context_t* ctx, const atc_hdlc_u8* data, atc_hdlc
  * @param ctx     Context.
  * @param address Address.
  */
-void atc_hdlc_transmit_ui_start(atc_hdlc_context_t* ctx, atc_hdlc_u8 address);
+void atc_hdlc_transmit_ui_start(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address);
 
 /**
  * @brief Add bytes to streaming UI frame.
@@ -154,7 +153,7 @@ void atc_hdlc_transmit_ui_start(atc_hdlc_context_t* ctx, atc_hdlc_u8 address);
  * @param data Data.
  * @param len  Length.
  */
-void atc_hdlc_transmit_ui_data(atc_hdlc_context_t* ctx, const atc_hdlc_u8* data, atc_hdlc_u32 len);
+void atc_hdlc_transmit_ui_data(atc_hdlc_ctx_t* ctx, const atc_hdlc_u8* data, atc_hdlc_u32 len);
 
 /**
  * @brief Finish streaming UI frame TX.
@@ -163,7 +162,7 @@ void atc_hdlc_transmit_ui_data(atc_hdlc_context_t* ctx, const atc_hdlc_u8* data,
  *
  * @param ctx Context.
  */
-void atc_hdlc_transmit_ui_end(atc_hdlc_context_t* ctx);
+void atc_hdlc_transmit_ui_end(atc_hdlc_ctx_t* ctx);
 
 /**
  * @brief Get current state.
@@ -171,7 +170,7 @@ void atc_hdlc_transmit_ui_end(atc_hdlc_context_t* ctx);
  * @param ctx Context.
  * @return State value.
  */
-atc_hdlc_state_t atc_hdlc_get_state(const atc_hdlc_context_t* ctx);
+atc_hdlc_state_t atc_hdlc_get_state(const atc_hdlc_ctx_t* ctx);
 
 #ifdef __cplusplus
 }

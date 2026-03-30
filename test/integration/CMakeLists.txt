@@ -2,6 +2,7 @@ find_package(Threads REQUIRED)
 set(HELPERS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../helpers)
 
 add_executable(virtual_com virtual_com.c ${HELPERS_DIR}/common.c ${HELPERS_DIR}/virtual_pipe.c)
+target_include_directories(hdlc PUBLIC ${CMAKE_SOURCE_DIR}/inc)
 target_link_libraries(virtual_com PRIVATE hdlc Threads::Threads)
 target_compile_definitions(virtual_com PRIVATE TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
 

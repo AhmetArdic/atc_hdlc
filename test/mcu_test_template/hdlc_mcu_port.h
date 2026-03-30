@@ -1,7 +1,7 @@
 #ifndef HDLC_MCU_PORT_H
 #define HDLC_MCU_PORT_H
 
-#include "hdlc.h"
+#include "atc_hdlc/hdlc.h"
 
 /*
  * Buffer / window sizing.
@@ -46,6 +46,6 @@ atc_hdlc_error_t hdlc_port_transmit(const atc_hdlc_u8* data, atc_hdlc_u32 len);
 /*
  * Returns a pointer to the internal HDLC context (for diagnostics / state checks).
  */
-atc_hdlc_context_t* hdlc_port_ctx(void);
+atc_hdlc_ctx_t* hdlc_port_ctx(void);
 
 #endif /* HDLC_MCU_PORT_H */

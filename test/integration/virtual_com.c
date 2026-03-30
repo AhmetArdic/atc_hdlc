@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../inc/hdlc.h"
 #include "../helpers/common.h"
+#include "atc_hdlc/hdlc.h"
 
 // Configuration
 #define PAYLOAD_SIZE (1024 * 1024) // 1MB
@@ -19,15 +19,15 @@ typedef struct {
 
     mutex_t ctx_lock;
 
-    atc_hdlc_context_t ctx;
+    atc_hdlc_ctx_t ctx;
     atc_hdlc_u8 input_buffer[BUFFER_SIZE * 2];
     atc_hdlc_u8 retransmit_slots[7 * 1024]; /* 7 slots x 1024 B */
     atc_hdlc_u32 retransmit_lens[7];
     /* Descriptors stored per-node so they outlive node_pair_init() */
     atc_hdlc_config_t hdlc_cfg;
-    atc_hdlc_platform_t hdlc_plat;
-    atc_hdlc_tx_window_t hdlc_tw;
-    atc_hdlc_rx_buffer_t hdlc_rx;
+    atc_hdlc_plat_ops_t hdlc_plat;
+    atc_hdlc_txwin_t hdlc_tw;
+    atc_hdlc_rxbuf_t hdlc_rx;
     thread_t thread;
     volatile bool running;
 
@@ -115,10 +115,10 @@ static void node_t2_stop_cb(void* user_data) {
 
 static void node_event_cb(atc_hdlc_event_t event, void* user_data) {
     virtual_node_t* node = (virtual_node_t*)user_data;
-    if (event == ATC_HDLC_EVENT_CONNECT_ACCEPTED || event == ATC_HDLC_EVENT_INCOMING_CONNECT) {
+    if (event == ATC_HDLC_EVENT_CONN_ACCEPTED || event == ATC_HDLC_EVENT_CONN_REQ) {
         node->connected = true;
-    } else if (event == ATC_HDLC_EVENT_DISCONNECT_COMPLETE ||
-               event == ATC_HDLC_EVENT_PEER_DISCONNECT || event == ATC_HDLC_EVENT_LINK_FAILURE) {
+    } else if (event == ATC_HDLC_EVENT_DISC_DONE || event == ATC_HDLC_EVENT_PEER_DISC ||
+               event == ATC_HDLC_EVENT_LINK_FAILURE) {
         node->connected = false;
     }
 }
@@ -164,8 +164,8 @@ void* node_thread_func(void* arg) {
 
 /* Thread handling moved to test_virtual_pipe.c */
 
-static void node_pair_init(virtual_node_t* node1, virtual_node_t* node2, pipe_queue_t* pipe1,
-                           pipe_queue_t* pipe2, int window_size) {
+static void node_pair_init(virtual_node_t* node1, virtual_node_t* node2, pipe_queue_t* pipe1, pipe_queue_t* pipe2,
+                           int window_size) {
     memset(node1, 0, sizeof(*node1));
     memset(node2, 0, sizeof(*node2));
 
@@ -257,8 +257,7 @@ static void node_pair_start(virtual_node_t* node1, virtual_node_t* node2) {
     thread_create(&node2->thread, node_thread_func, node2);
 }
 
-static void node_pair_cleanup(virtual_node_t* node1, virtual_node_t* node2, pipe_queue_t* pipe1,
-                              pipe_queue_t* pipe2) {
+static void node_pair_cleanup(virtual_node_t* node1, virtual_node_t* node2, pipe_queue_t* pipe1, pipe_queue_t* pipe2) {
     node1->running = false;
     node2->running = false;
     thread_join(node1->thread);
@@ -287,8 +286,7 @@ static bool hdlc_test_connect(virtual_node_t* node, int timeout_ms) {
     return node->connected;
 }
 
-static bool hdlc_test_send_data(virtual_node_t* node, const uint8_t* payload, uint32_t payload_len,
-                                int timeout_ms) {
+static bool hdlc_test_send_data(virtual_node_t* node, const uint8_t* payload, uint32_t payload_len, int timeout_ms) {
     uint32_t sent = 0;
     double start = get_time_s();
     double timeout_s = (double)timeout_ms / 1000.0;
@@ -312,8 +310,7 @@ static bool hdlc_test_send_data(virtual_node_t* node, const uint8_t* payload, ui
     return sent == payload_len;
 }
 
-static bool hdlc_test_wait_rx(volatile uint32_t* bytes_received, uint32_t expected_bytes,
-                              int timeout_ms) {
+static bool hdlc_test_wait_rx(volatile uint32_t* bytes_received, uint32_t expected_bytes, int timeout_ms) {
     double start = get_time_s();
     double timeout_s = (double)timeout_ms / 1000.0;
     while (*bytes_received < expected_bytes && (get_time_s() - start) < timeout_s) {
@@ -340,9 +337,7 @@ static void hdlc_test_disconnect(virtual_node_t* node, int timeout_ms) {
 }
 
 void run_timeout_test(int window_size) {
-    printf(
-        "\n--- Running Mem-Pipe Test with Window Size = %d (Timeout Injection - 100%% Error) ---\n",
-        window_size);
+    printf("\n--- Running Mem-Pipe Test with Window Size = %d (Timeout Injection - 100%% Error) ---\n", window_size);
 
     pipe_queue_t pipe1, pipe2;
     virtual_node_t node1, node2;
@@ -391,8 +386,7 @@ cleanup:
 }
 
 void run_go_back_n_test(int window_size) {
-    printf("\n--- Running Mem-Pipe Test w/ Win=%d (Go-Back-N Protocol Verification) ---\n",
-           window_size);
+    printf("\n--- Running Mem-Pipe Test w/ Win=%d (Go-Back-N Protocol Verification) ---\n", window_size);
 
     pipe_queue_t pipe1, pipe2;
     virtual_node_t node1, node2;
@@ -511,8 +505,7 @@ void run_file_transfer_test(const char* filepath, int window_size, uint32_t erro
     node_pair_start(&node1, &node2);
 
     char test_name[256];
-    sprintf(test_name, "File Transfer %s(Window %d)", (error_prob > 0) ? "[Errored] " : "",
-            window_size);
+    sprintf(test_name, "File Transfer %s(Window %d)", (error_prob > 0) ? "[Errored] " : "", window_size);
 
     if (!hdlc_test_connect(&node1, 5000)) {
         test_fail(test_name, "Timeout waiting for Node 1 to connect");
@@ -552,8 +545,8 @@ void run_file_transfer_test(const char* filepath, int window_size, uint32_t erro
 
     double speed_kbps = (file_size / 1024.0) / elapsed;
     char pass_msg[256];
-    sprintf(pass_msg, "File Transfer %s(Window %d) [%ld bytes, Speed: %.2f KB/s]",
-            (error_prob > 0) ? "[Errored] " : "", window_size, file_size, speed_kbps);
+    sprintf(pass_msg, "File Transfer %s(Window %d) [%ld bytes, Speed: %.2f KB/s]", (error_prob > 0) ? "[Errored] " : "",
+            window_size, file_size, speed_kbps);
     test_pass(pass_msg);
 
 cleanup:
@@ -562,11 +555,11 @@ cleanup:
     free(rx_buffer);
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     srand((unsigned int)time(NULL));
 
     if (argc > 1) {
-        const char *name = argv[1];
+        const char* name = argv[1];
         char buf[32];
 
         for (int w = 1; w <= 7; w++) {
@@ -605,8 +598,7 @@ int main(int argc, char *argv[]) {
     for (int w = 1; w <= 7; w++)
         run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w, 0);
 
-    printf(
-        "\nStarting Mem-Pipe Virtual COM Tests (File Transfer - Error Injection - 0.005%%)...\n");
+    printf("\nStarting Mem-Pipe Virtual COM Tests (File Transfer - Error Injection - 0.005%%)...\n");
     for (int w = 4; w <= 7; w++)
         run_file_transfer_test(TEST_DATA_DIR "/test.pdf", w, 50);
 

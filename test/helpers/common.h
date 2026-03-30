@@ -1,7 +1,7 @@
 #ifndef TEST_COMMON_H
 #define TEST_COMMON_H
 
-#include "../inc/hdlc.h"
+#include "atc_hdlc/hdlc.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -54,9 +54,9 @@ void mock_t2_stop_cb(void* user_ctx);
  * setup_test_context_w()       — configurable window size, timers=mock
  * setup_test_context_no_tw()   — no TX window (tests ATC_HDLC_ERR_NO_BUFFER path)
  */
-void setup_test_context(atc_hdlc_context_t* ctx);
-void setup_test_context_w(atc_hdlc_context_t* ctx, atc_hdlc_u8 window_size);
-void setup_test_context_no_tw(atc_hdlc_context_t* ctx);
+void setup_test_context(atc_hdlc_ctx_t* ctx);
+void setup_test_context_w(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 window_size);
+void setup_test_context_no_tw(atc_hdlc_ctx_t* ctx);
 
 /* --- State reset --- */
 void reset_test_state(void);
@@ -75,10 +75,9 @@ typedef struct {
     bool valid;
 } test_frame_t;
 
-int test_pack_frame(atc_hdlc_u8 addr, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info,
-                    atc_hdlc_u16 info_len, atc_hdlc_u8* out, int out_cap);
+int test_pack_frame(atc_hdlc_u8 addr, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info, atc_hdlc_u16 info_len,
+                    atc_hdlc_u8* out, int out_cap);
 
-test_frame_t test_unpack_frame(const atc_hdlc_u8* buf, int buf_len, atc_hdlc_u8* flat,
-                               int flat_cap);
+test_frame_t test_unpack_frame(const atc_hdlc_u8* buf, int buf_len, atc_hdlc_u8* flat, int flat_cap);
 
 #endif /* TEST_COMMON_H */

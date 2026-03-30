@@ -7,46 +7,47 @@
  * (at your option) any later version.
  */
 
-#include "../inc/hdlc.h"
+#include "../inc/atc_hdlc/hdlc.h"
 #include "hdlc_frame.h"
 #include <string.h>
 
-atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t* ctx, atc_hdlc_params_t params) {
+atc_hdlc_error_t atc_hdlc_init(atc_hdlc_ctx_t* ctx, atc_hdlc_params_t params) {
     if (!ctx)
-        return ATC_HDLC_ERR_INVALID_PARAM;
+        return ATC_HDLC_ERR_BAD_PARAM;
 
     const atc_hdlc_config_t* config = params.config;
-    const atc_hdlc_platform_t* platform = params.platform;
-    atc_hdlc_tx_window_t* tx_window = params.tx_window;
-    atc_hdlc_rx_buffer_t* rx_buf = params.rx_buf;
+    const atc_hdlc_plat_ops_t* platform = params.platform;
+    atc_hdlc_txwin_t* tx_window = params.tx_window;
+    atc_hdlc_rxbuf_t* rx_buf = params.rx_buf;
 
     if (!config || !platform || !rx_buf)
-        return ATC_HDLC_ERR_INVALID_PARAM;
+        return ATC_HDLC_ERR_BAD_PARAM;
     if (!platform->on_send)
-        return ATC_HDLC_ERR_INVALID_PARAM;
+        return ATC_HDLC_ERR_BAD_PARAM;
     if (!rx_buf->buffer)
-        return ATC_HDLC_ERR_INVALID_PARAM;
+        return ATC_HDLC_ERR_BAD_PARAM;
 
     if (config->mode != ATC_HDLC_MODE_ABM)
-        return ATC_HDLC_ERR_UNSUPPORTED_MODE;
+        return ATC_HDLC_ERR_BAD_MODE;
 
     atc_hdlc_u32 min_cap = config->max_info_size + ADDR_LEN + CTRL_LEN + FCS_LEN;
     if (rx_buf->capacity < min_cap || rx_buf->capacity < MIN_FRAME_LEN)
-        return ATC_HDLC_ERR_INCONSISTENT_BUFFER;
+        return ATC_HDLC_ERR_BAD_BUF;
 
     if (tx_window) {
         if (!tx_window->slots || !tx_window->slot_lens)
-            return ATC_HDLC_ERR_INCONSISTENT_BUFFER;
+            return ATC_HDLC_ERR_BAD_BUF;
         if (tx_window->slot_count < 1 || tx_window->slot_count > 7)
-            return ATC_HDLC_ERR_INVALID_PARAM;
+            return ATC_HDLC_ERR_BAD_PARAM;
         if (tx_window->slot_capacity < config->max_info_size)
-            return ATC_HDLC_ERR_INCONSISTENT_BUFFER;
+            return ATC_HDLC_ERR_BAD_BUF;
     }
 
-    memset(ctx, 0, sizeof(atc_hdlc_context_t));
+    memset(ctx, 0, sizeof(atc_hdlc_ctx_t));
 
     ctx->config = config;
     ctx->platform = platform;
+    ctx->crc = params.crc ? params.crc : &atc_hdlc_crc_ops_default;
     ctx->tx_window = tx_window;
     ctx->rx_buf = rx_buf;
 
@@ -57,38 +58,37 @@ atc_hdlc_error_t atc_hdlc_init(atc_hdlc_context_t* ctx, atc_hdlc_params_t params
     return ATC_HDLC_OK;
 }
 
-atc_hdlc_error_t atc_hdlc_link_setup(atc_hdlc_context_t* ctx, atc_hdlc_u8 peer_addr) {
+atc_hdlc_error_t atc_hdlc_link_setup(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 peer_addr) {
     if (!ctx)
-        return ATC_HDLC_ERR_INVALID_PARAM;
+        return ATC_HDLC_ERR_BAD_PARAM;
     if (ctx->current_state != ATC_HDLC_STATE_DISCONNECTED)
-        return ATC_HDLC_ERR_INVALID_STATE;
+        return ATC_HDLC_ERR_BAD_STATE;
 
     ctx->peer_address = peer_addr;
 
     LOG_INFO("tx: Sending SABM to peer 0x%02X", ctx->peer_address);
     send_u(ctx, ctx->peer_address, U_CTRL(U_SABM, 1));
     t1_start(ctx);
-    set_state(ctx, ATC_HDLC_STATE_CONNECTING, ATC_HDLC_EVENT_LINK_SETUP_REQUEST);
+    set_state(ctx, ATC_HDLC_STATE_CONNECTING, ATC_HDLC_EVENT_SETUP_REQ);
     return ATC_HDLC_OK;
 }
 
-atc_hdlc_error_t atc_hdlc_disconnect(atc_hdlc_context_t* ctx) {
+atc_hdlc_error_t atc_hdlc_disconnect(atc_hdlc_ctx_t* ctx) {
     if (!ctx)
-        return ATC_HDLC_ERR_INVALID_PARAM;
-    if (ctx->current_state != ATC_HDLC_STATE_CONNECTED &&
-        ctx->current_state != ATC_HDLC_STATE_FRMR_ERROR)
-        return ATC_HDLC_ERR_INVALID_STATE;
+        return ATC_HDLC_ERR_BAD_PARAM;
+    if (ctx->current_state != ATC_HDLC_STATE_CONNECTED && ctx->current_state != ATC_HDLC_STATE_FRMR_ERROR)
+        return ATC_HDLC_ERR_BAD_STATE;
 
     LOG_INFO("tx: Sending DISC to peer 0x%02X", ctx->peer_address);
     send_u(ctx, ctx->peer_address, U_CTRL(U_DISC, 1));
     t1_start(ctx);
-    set_state(ctx, ATC_HDLC_STATE_DISCONNECTING, ATC_HDLC_EVENT_DISCONNECT_REQUEST);
+    set_state(ctx, ATC_HDLC_STATE_DISCONNECTING, ATC_HDLC_EVENT_DISC_REQ);
     return ATC_HDLC_OK;
 }
 
-atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_context_t* ctx) {
+atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_ctx_t* ctx) {
     if (!ctx)
-        return ATC_HDLC_ERR_INVALID_PARAM;
+        return ATC_HDLC_ERR_BAD_PARAM;
 
     LOG_INFO("state: Link reset initiated");
     reset_state(ctx);
@@ -98,11 +98,11 @@ atc_hdlc_error_t atc_hdlc_link_reset(atc_hdlc_context_t* ctx) {
     return ATC_HDLC_OK;
 }
 
-atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_context_t* ctx, bool busy) {
+atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_ctx_t* ctx, bool busy) {
     if (!ctx)
-        return ATC_HDLC_ERR_INVALID_PARAM;
+        return ATC_HDLC_ERR_BAD_PARAM;
     if (ctx->current_state != ATC_HDLC_STATE_CONNECTED)
-        return ATC_HDLC_ERR_INVALID_STATE;
+        return ATC_HDLC_ERR_BAD_STATE;
 
     if (busy && !CTX_FLAG(ctx, HDLC_F_LOCAL_BUSY)) {
         CTX_SET(ctx, HDLC_F_LOCAL_BUSY);
@@ -116,7 +116,7 @@ atc_hdlc_error_t atc_hdlc_set_local_busy(atc_hdlc_context_t* ctx, bool busy) {
     return ATC_HDLC_OK;
 }
 
-void atc_hdlc_t1_expired(atc_hdlc_context_t* ctx) {
+void atc_hdlc_t1_expired(atc_hdlc_ctx_t* ctx) {
     if (!ctx)
         return;
 
@@ -167,7 +167,7 @@ void atc_hdlc_t1_expired(atc_hdlc_context_t* ctx) {
     }
 }
 
-void atc_hdlc_t2_expired(atc_hdlc_context_t* ctx) {
+void atc_hdlc_t2_expired(atc_hdlc_ctx_t* ctx) {
     if (!ctx)
         return;
     CTX_CLR(ctx, HDLC_F_T2_ACTIVE);
@@ -177,13 +177,13 @@ void atc_hdlc_t2_expired(atc_hdlc_context_t* ctx) {
         send_rr(ctx, 0);
 }
 
-atc_hdlc_state_t atc_hdlc_get_state(const atc_hdlc_context_t* ctx) {
+atc_hdlc_state_t atc_hdlc_get_state(const atc_hdlc_ctx_t* ctx) {
     if (!ctx)
         return ATC_HDLC_STATE_DISCONNECTED;
     return (atc_hdlc_state_t)ctx->current_state;
 }
 
-void atc_hdlc_abort(atc_hdlc_context_t* ctx) {
+void atc_hdlc_abort(atc_hdlc_ctx_t* ctx) {
     if (!ctx)
         return;
 
@@ -197,11 +197,11 @@ void atc_hdlc_abort(atc_hdlc_context_t* ctx) {
     ctx->current_state = ATC_HDLC_STATE_DISCONNECTED;
 }
 
-void set_state(atc_hdlc_context_t* ctx, atc_hdlc_state_t new_state, atc_hdlc_event_t event) {
+void set_state(atc_hdlc_ctx_t* ctx, atc_hdlc_state_t new_state, atc_hdlc_event_t event) {
     bool state_changed = (ctx->current_state != new_state);
 
     /* INCOMING_CONNECT fires even when state stays CONNECTED (peer re-sent SABM). */
-    if (state_changed || event == ATC_HDLC_EVENT_INCOMING_CONNECT) {
+    if (state_changed || event == ATC_HDLC_EVENT_CONN_REQ) {
         LOG_INFO("state: %d -> %d (event: %d)", ctx->current_state, new_state, event);
         ctx->current_state = new_state;
         if (ctx->platform->on_event)

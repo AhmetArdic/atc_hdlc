@@ -7,11 +7,11 @@
  * (at your option) any later version.
  */
 
-#include "../inc/hdlc.h"
+#include "../inc/atc_hdlc/hdlc.h"
 #include "hdlc_crc.h"
 #include "hdlc_frame.h"
 
-static void retransmit_outstanding(atc_hdlc_context_t* ctx) {
+static void retransmit_outstanding(atc_hdlc_ctx_t* ctx) {
     CTX_CLR(ctx, HDLC_F_RETRANSMIT_PENDING);
     atc_hdlc_u8 end_vs = ctx->vs;
     atc_hdlc_u8 w = ctx->tx_window->slot_count;
@@ -29,13 +29,13 @@ static void retransmit_outstanding(atc_hdlc_context_t* ctx) {
     t1_start(ctx);
 }
 
-static void handle_flag(atc_hdlc_context_t* ctx) {
+static void handle_flag(atc_hdlc_ctx_t* ctx) {
     if (ctx->rx_state == RX_HUNT || ctx->rx_index < MIN_FRAME_LEN)
         goto reset;
 
     atc_hdlc_u32 dlen = ctx->rx_index - FCS_LEN;
-    atc_hdlc_u16 rx_fcs = (atc_hdlc_u16)(ctx->rx_buf->buffer[dlen] |
-                                         ((atc_hdlc_u16)ctx->rx_buf->buffer[dlen + 1] << 8));
+    atc_hdlc_u16 rx_fcs =
+        (atc_hdlc_u16)(ctx->rx_buf->buffer[dlen] | ((atc_hdlc_u16)ctx->rx_buf->buffer[dlen + 1] << 8));
 
     if (ctx->rx_crc != rx_fcs) {
         LOG_WRN("rx: CRC Error! Calc: 0x%04X, RX: 0x%04X", ctx->rx_crc, rx_fcs);
@@ -47,7 +47,7 @@ static void handle_flag(atc_hdlc_context_t* ctx) {
     const atc_hdlc_u8* info = NULL;
     atc_hdlc_u16 info_len = 0;
 
-    LOG_DBG("rx: Valid frame (Addr: 0x%02X, Ctrl: 0x%02X, Len: %lu)", address, ctrl, dlen);
+    LOG_DBG("rx: Valid frame (Addr: 0x%02X, Ctrl: 0x%02X, Len: %u)", address, ctrl, dlen);
 
     if (dlen > ADDR_LEN + CTRL_LEN) {
         info = &ctx->rx_buf->buffer[ADDR_LEN + CTRL_LEN];
@@ -61,7 +61,7 @@ reset:
     ctx->rx_crc = ATC_HDLC_FCS_INIT_VALUE;
 }
 
-static void rx_byte(atc_hdlc_context_t* ctx, atc_hdlc_u8 byte) {
+static void rx_byte(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 byte) {
     if (byte == FLAG) {
         handle_flag(ctx);
         return;
@@ -78,20 +78,17 @@ static void rx_byte(atc_hdlc_context_t* ctx, atc_hdlc_u8 byte) {
     }
 
     if (ctx->rx_index >= ctx->rx_buf->capacity) {
-        LOG_WRN("rx: Buffer overflow! Max %lu bytes. Discarding.",
-                (unsigned long)ctx->rx_buf->capacity);
+        LOG_WRN("rx: Buffer overflow! Max %u bytes. Discarding.", ctx->rx_buf->capacity);
         goto discard;
     }
 
     ctx->rx_buf->buffer[ctx->rx_index] = byte;
     if (ctx->rx_index >= FCS_LEN)
-        ctx->rx_crc =
-            atc_hdlc_crc_ccitt_update(ctx->rx_crc, ctx->rx_buf->buffer[ctx->rx_index - FCS_LEN]);
+        ctx->rx_crc = ctx->crc->compute(ctx->rx_crc, &ctx->rx_buf->buffer[ctx->rx_index - FCS_LEN], 1);
     ctx->rx_index++;
 
     if (ctx->rx_index == 1) {
-        if (byte != ctx->my_address && byte != ctx->peer_address &&
-            byte != ATC_HDLC_BROADCAST_ADDRESS) {
+        if (byte != ctx->my_address && byte != ctx->peer_address && byte != ATC_HDLC_BROADCAST_ADDRESS) {
             LOG_WRN("rx: Invalid Address 0x%02X. Frame discarded.", byte);
             goto discard;
         }
@@ -105,7 +102,7 @@ discard:
     ctx->rx_crc = ATC_HDLC_FCS_INIT_VALUE;
 }
 
-void atc_hdlc_data_in(atc_hdlc_context_t* ctx, const atc_hdlc_u8* data, atc_hdlc_u32 len) {
+void atc_hdlc_data_in(atc_hdlc_ctx_t* ctx, const atc_hdlc_u8* data, atc_hdlc_u32 len) {
     if (!ctx || !data)
         return;
     for (atc_hdlc_u32 i = 0; i < len; i++)

@@ -7,18 +7,17 @@
  * (at your option) any later version.
  */
 
-#include "../inc/hdlc.h"
+#include "../inc/atc_hdlc/hdlc.h"
 #include "hdlc_frame.h"
 #include <string.h>
 
-void reset_state(atc_hdlc_context_t* ctx) {
+void reset_state(atc_hdlc_ctx_t* ctx) {
     ctx->vs = 0;
     ctx->vr = 0;
     ctx->va = 0;
     ctx->tx_next_slot = 0;
     if (ctx->tx_window && ctx->tx_window->slot_lens)
-        memset(ctx->tx_window->slot_lens, 0,
-               ctx->tx_window->slot_count * sizeof(ctx->tx_window->slot_lens[0]));
+        memset(ctx->tx_window->slot_lens, 0, ctx->tx_window->slot_count * sizeof(ctx->tx_window->slot_lens[0]));
     CTX_CLR(ctx, HDLC_F_REJ_EXCEPTION);
     CTX_CLR(ctx, HDLC_F_REMOTE_BUSY);
     CTX_CLR(ctx, HDLC_F_LOCAL_BUSY);
@@ -27,7 +26,7 @@ void reset_state(atc_hdlc_context_t* ctx) {
     t2_stop(ctx);
 }
 
-static void frames_acked(atc_hdlc_context_t* ctx, atc_hdlc_u8 nr) {
+static void frames_acked(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 nr) {
     if (nr == ctx->va)
         return;
 
@@ -42,7 +41,7 @@ static void frames_acked(atc_hdlc_context_t* ctx, atc_hdlc_u8 nr) {
     LOG_DBG("rx: N(R)=%u acknowledged, V(A) -> %u", nr, ctx->va);
 }
 
-static void process_nr(atc_hdlc_context_t* ctx, atc_hdlc_u8 nr) {
+static void process_nr(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 nr) {
     if (ctx->vs == nr) {
         frames_acked(ctx, nr);
         t1_stop(ctx);
@@ -52,7 +51,7 @@ static void process_nr(atc_hdlc_context_t* ctx, atc_hdlc_u8 nr) {
     }
 }
 
-static void trigger_retransmit(atc_hdlc_context_t* ctx, atc_hdlc_u8 from_seq) {
+static void trigger_retransmit(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 from_seq) {
     if (!ctx->tx_window || ctx->vs == from_seq)
         return;
     LOG_WRN("tx: Go-Back-N V(S) %u -> %u", ctx->vs, from_seq);
@@ -60,8 +59,8 @@ static void trigger_retransmit(atc_hdlc_context_t* ctx, atc_hdlc_u8 from_seq) {
     CTX_SET(ctx, HDLC_F_RETRANSMIT_PENDING);
 }
 
-static void state_disconnected(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                               const atc_hdlc_u8* info, atc_hdlc_u16 info_len) {
+static void state_disconnected(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info,
+                               atc_hdlc_u16 info_len) {
     (void)address;
     if (!is_uframe(ctrl))
         return;
@@ -71,7 +70,7 @@ static void state_disconnected(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc
         LOG_INFO("S0 RX SABM -> S3 TX UA");
         reset_state(ctx);
         send_ua(ctx, CTRL_PF(ctrl));
-        set_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_INCOMING_CONNECT);
+        set_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_CONN_REQ);
         break;
 
     case U_DISC:
@@ -97,8 +96,8 @@ static void state_disconnected(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc
     }
 }
 
-static void state_connecting(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                             const atc_hdlc_u8* info, atc_hdlc_u16 info_len) {
+static void state_connecting(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info,
+                             atc_hdlc_u16 info_len) {
     (void)address;
     (void)info;
     (void)info_len;
@@ -116,7 +115,7 @@ static void state_connecting(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_h
             LOG_INFO("S1 RX UA(F=1) -> S3 CONNECTED");
             t1_stop(ctx);
             reset_state(ctx);
-            set_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_CONNECT_ACCEPTED);
+            set_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_CONN_ACCEPTED);
         }
         break;
 
@@ -138,7 +137,7 @@ static void state_connecting(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_h
     }
 }
 
-static bool validate_nr(atc_hdlc_context_t* ctx, atc_hdlc_u8 ctrl, atc_hdlc_u8 nr) {
+static bool validate_nr(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 ctrl, atc_hdlc_u8 nr) {
     atc_hdlc_u8 diff_nr = (atc_hdlc_u8)((nr - ctx->va) & (MOD8 - 1));
     atc_hdlc_u8 diff_vs = (atc_hdlc_u8)((ctx->vs - ctx->va) & (MOD8 - 1));
     if (diff_nr <= diff_vs)
@@ -149,8 +148,8 @@ static bool validate_nr(atc_hdlc_context_t* ctx, atc_hdlc_u8 ctrl, atc_hdlc_u8 n
     return false;
 }
 
-static void handle_in_sequence_iframe(atc_hdlc_context_t* ctx, atc_hdlc_u8 pf,
-                                      const atc_hdlc_u8* info, atc_hdlc_u16 info_len) {
+static void handle_in_sequence_iframe(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 pf, const atc_hdlc_u8* info,
+                                      atc_hdlc_u16 info_len) {
     ctx->vr = (atc_hdlc_u8)((ctx->vr + 1) % MOD8);
     CTX_CLR(ctx, HDLC_F_REJ_EXCEPTION);
 
@@ -173,7 +172,7 @@ static void handle_in_sequence_iframe(atc_hdlc_context_t* ctx, atc_hdlc_u8 pf,
     }
 }
 
-static void handle_out_of_sequence_iframe(atc_hdlc_context_t* ctx, atc_hdlc_u8 ns, atc_hdlc_u8 pf) {
+static void handle_out_of_sequence_iframe(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 ns, atc_hdlc_u8 pf) {
     (void)ns; /* used only in LOG_WRN; suppress warning when logs disabled */
     if (CTX_FLAG(ctx, HDLC_F_REJ_EXCEPTION)) {
         if (pf)
@@ -186,8 +185,7 @@ static void handle_out_of_sequence_iframe(atc_hdlc_context_t* ctx, atc_hdlc_u8 n
     }
 }
 
-static void handle_iframe(atc_hdlc_context_t* ctx, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info,
-                          atc_hdlc_u16 info_len) {
+static void handle_iframe(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info, atc_hdlc_u16 info_len) {
     atc_hdlc_u8 ns = CTRL_NS(ctrl);
     atc_hdlc_u8 nr = CTRL_NR(ctrl);
     atc_hdlc_u8 pf = CTRL_PF(ctrl);
@@ -204,7 +202,7 @@ static void handle_iframe(atc_hdlc_context_t* ctx, atc_hdlc_u8 ctrl, const atc_h
         handle_out_of_sequence_iframe(ctx, ns, pf);
 }
 
-static void handle_sframe(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl) {
+static void handle_sframe(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl) {
     atc_hdlc_u8 s = CTRL_S(ctrl);
     atc_hdlc_u8 nr = CTRL_NR(ctrl);
     atc_hdlc_u8 pf = CTRL_PF(ctrl);
@@ -218,14 +216,14 @@ static void handle_sframe(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc
         if (was_busy) {
             LOG_DBG("flow: remote_busy cleared by RR");
             if (ctx->platform->on_event)
-                ctx->platform->on_event(ATC_HDLC_EVENT_REMOTE_BUSY_OFF, ctx->platform->user_ctx);
+                ctx->platform->on_event(ATC_HDLC_EVENT_PEER_READY, ctx->platform->user_ctx);
         }
     } else if (s == S_RNR) {
         if (!CTX_FLAG(ctx, HDLC_F_REMOTE_BUSY)) {
             CTX_SET(ctx, HDLC_F_REMOTE_BUSY);
             LOG_DBG("flow: remote_busy set by RNR");
             if (ctx->platform->on_event)
-                ctx->platform->on_event(ATC_HDLC_EVENT_REMOTE_BUSY_ON, ctx->platform->user_ctx);
+                ctx->platform->on_event(ATC_HDLC_EVENT_PEER_BUSY, ctx->platform->user_ctx);
         }
     } else if (s == S_REJ) {
         CTX_CLR(ctx, HDLC_F_REMOTE_BUSY);
@@ -254,8 +252,8 @@ static void handle_sframe(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc
     }
 }
 
-static void handle_uframe(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                          const atc_hdlc_u8* info, atc_hdlc_u16 info_len) {
+static void handle_uframe(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info,
+                          atc_hdlc_u16 info_len) {
     atc_hdlc_u8 pf = CTRL_PF(ctrl);
 
     switch (ctrl & ~PF_BIT) {
@@ -263,14 +261,14 @@ static void handle_uframe(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc
         LOG_INFO("S3 RX SABM -> reset + UA");
         reset_state(ctx);
         send_ua(ctx, pf);
-        set_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_INCOMING_CONNECT);
+        set_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_CONN_REQ);
         break;
 
     case U_DISC:
         LOG_INFO("S3 RX DISC -> S0");
         reset_state(ctx);
         send_ua(ctx, pf);
-        set_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_PEER_DISCONNECT);
+        set_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_PEER_DISC);
         break;
 
     case U_DM:
@@ -313,8 +311,8 @@ static void handle_uframe(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc
     }
 }
 
-static void state_connected(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                            const atc_hdlc_u8* info, atc_hdlc_u16 info_len) {
+static void state_connected(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info,
+                            atc_hdlc_u16 info_len) {
     if (is_iframe(ctrl))
         handle_iframe(ctx, ctrl, info, info_len);
     else if (is_sframe(ctrl))
@@ -323,8 +321,8 @@ static void state_connected(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hd
         handle_uframe(ctx, address, ctrl, info, info_len);
 }
 
-static void state_disconnecting(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                                const atc_hdlc_u8* info, atc_hdlc_u16 info_len) {
+static void state_disconnecting(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info,
+                                atc_hdlc_u16 info_len) {
     (void)address;
     (void)info;
     (void)info_len;
@@ -351,7 +349,7 @@ static void state_disconnecting(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, at
         if (CTRL_PF(ctrl)) {
             LOG_INFO("S2 RX UA(F=1) -> S0 DISCONNECTED");
             t1_stop(ctx);
-            set_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_DISCONNECT_COMPLETE);
+            set_state(ctx, ATC_HDLC_STATE_DISCONNECTED, ATC_HDLC_EVENT_DISC_DONE);
         }
         break;
 
@@ -368,8 +366,8 @@ static void state_disconnecting(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, at
     }
 }
 
-static void state_frmr_error(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                             const atc_hdlc_u8* info, atc_hdlc_u16 info_len) {
+static void state_frmr_error(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info,
+                             atc_hdlc_u16 info_len) {
     (void)address;
     (void)info;
     (void)info_len;
@@ -380,12 +378,12 @@ static void state_frmr_error(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_h
         LOG_INFO("S4 RX SABM -> S3 TX UA");
         reset_state(ctx);
         send_ua(ctx, CTRL_PF(ctrl));
-        set_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_INCOMING_CONNECT);
+        set_state(ctx, ATC_HDLC_STATE_CONNECTED, ATC_HDLC_EVENT_CONN_REQ);
     }
 }
 
-void dispatch_frame(atc_hdlc_context_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl,
-                    const atc_hdlc_u8* info, atc_hdlc_u16 info_len) {
+void dispatch_frame(atc_hdlc_ctx_t* ctx, atc_hdlc_u8 address, atc_hdlc_u8 ctrl, const atc_hdlc_u8* info,
+                    atc_hdlc_u16 info_len) {
     switch (ctx->current_state) {
     case ATC_HDLC_STATE_DISCONNECTED:
         state_disconnected(ctx, address, ctrl, info, info_len);
