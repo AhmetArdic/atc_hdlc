@@ -2,386 +2,359 @@
 
 A lightweight, portable HDLC (High-Level Data Link Control) protocol implementation designed for embedded systems with UART (Asynchronous) communication.
 
-## 🎯 What We've Built So Far (HDLC Protocol Features)
+## Protocol Features
 
 This library implements a highly capable subset of the ISO/IEC 13239 HDLC standard, specifically tailored for asynchronous serial communication:
 
-*   **Framing & Transparency**: Standard `0x7E` flag boundaries with `0x7D` byte-stuffing inversion for binary-transparent links.
-*   **Data Integrity**: 16-bit CRC-CCITT verification discarding corrupted frames instantly.
-*   **Asynchronous Balanced Mode (ABM)**: Full connection lifecycle management using `SABM`, `UA`, `DISC`, and `DM` frames. Peer-to-peer topology where either side can initiate or disconnect.
-*   **Reliable Data Transfer (Go-Back-N)**: Sliding window protocol (Modulo-8) with up to 7 outstanding I-frames. Uses `REJ` frames for swift error recovery.
-*   **Piggybacked & Cumulative ACKs**: Information (I) frames carry receive sequence numbers `N(R)`. `RR` frames are only sent when delayed ACK (T2) times out, reducing overhead.
-*   **Connectionless Data**: Unnumbered Information (`UI`) frames for broadcast or unacknowledged low-latency messages.
-*   **Link Verification**: Automatic `TEST` frame responding with optional payload echoing to measure link health dynamically.
-*   **Collision Avoidance**: SABM contention resolution delay via address prioritization if both stations try to connect simultaneously.
+- **Framing & Transparency**: Standard `0x7E` flag boundaries with `0x7D` byte-stuffing inversion for binary-transparent links.
+- **Data Integrity**: 16-bit CRC-CCITT verification discarding corrupted frames instantly.
+- **Asynchronous Balanced Mode (ABM)**: Full connection lifecycle management using `SABM`, `UA`, `DISC`, and `DM` frames. Peer-to-peer topology where either side can initiate or disconnect.
+- **Reliable Data Transfer (Go-Back-N)**: Sliding window protocol (Modulo-8) with up to 7 outstanding I-frames. Uses `REJ` frames for swift error recovery.
+- **Piggybacked & Cumulative ACKs**: Information (I) frames carry receive sequence numbers `N(R)`. `RR` frames are only sent when delayed ACK (T2) times out, reducing overhead.
+- **Connectionless Data**: Unnumbered Information (`UI`) frames for broadcast or unacknowledged low-latency messages.
+- **Link Verification**: Automatic `TEST` frame responding with optional payload echoing.
+- **Collision Avoidance**: SABM contention resolution delay via address prioritization if both stations try to connect simultaneously.
+- **Flow Control**: RNR (Receive Not Ready) support with `atc_hdlc_set_local_busy()`.
+- **Frame Reject (FRMR) Handling**: Full generation and parsing of FRMR payload to gracefully report irrecoverable protocol violations.
+- **Abort Support**: `atc_hdlc_abort()` for line break/framing error recovery.
 
-## 🗺️ Roadmap (Upcoming HDLC Standard Features)
+## Roadmap (Upcoming Features)
 
-To make this stack fully compliant with broader HDLC specifications, the following features are planned:
+- **[TODO] Selective Reject (SREJ)**: Upgrading from Go-Back-N to Selective Repeat for higher efficiency on lossy links.
+- **[TODO] Extended Sequence Numbers (Modulo-128)**: Supporting extended control fields for `SABME`/I-frames.
+- **[TODO] Parameter Negotiation (XID)**: Dynamic negotiation of Window Size, Modulus, Timers, and Max Frame Length.
 
-*   **[TODO] Flow Control (RNR)**: Implementation of Receive Not Ready (`RNR`) to signal busy conditions and temporarily halt peer transmissions without dropping the link.
-*   **[TODO] Selective Reject (SREJ)**: Upgrading from Go-Back-N to Selective Repeat for higher efficiency on lossy links, retransmitting only the dropped frames.
-*   **[TODO] Extended Sequence Numbers (Modulo-128)**: Supporting extended control fields for `SABME`/I-frames to allow up to 127 outstanding frames for high-bandwidth/high-latency links.
-*   **[TODO] Extended Addressing**: Expanding beyond the 1-byte 0-254 space to support multi-byte station addresses for large networks.
-*   **[TODO] Unbalanced Modes (NRM/ARM)**: Adding Normal Response Mode (Polled/Primary-Secondary) and Asynchronous Response Mode for legacy multi-drop serial buses.
-*   **[TODO] Parameter Negotiation (XID)**: Exchange Identification frames to automatically negotiate Window Size, Modulus, Retransmission Timers, and Max Frame Length dynamically during link setup.
-*   **[TODO] Frame Reject (FRMR) Handling**: Full generation and parsing of FRMR payload to gracefully report irrecoverable protocol violations (e.g., invalid control field).
-
-## 🚀 Features (General Library Capabilities)
-
-*   **Robust Framing**:
-    *   Unambiguous Flag delimiting (`0x7E`).
-    *   Deterministic Byte Stuffing (`0x7E` → `0x7D 0x5E`, `0x7D` → `0x7D 0x5D`).
-*   **Data Integrity**:
-    *   **CRC-16-CCITT** (Polynomial `0x1021`) with pre-computed 256-entry LUT for fast validation.
-    *   Recalculate & Compare verification strategy on the receiver side.
-    *   **Early Address Verification**: Discards misaddressed frames before costly CRC computation, saving CPU cycles on noisy lines.
-*   **Flexible Transmission**:
-    *   **Packet Mode**:
-        *   **Buffered**: Construct a full `atc_hdlc_frame_t` and send it in one call using the context.
-        *   **Zero-Copy**: Send frames byte-by-byte (`start` → `data` → `end`) for ultra-low memory environments.
-    *   **Stateless Mode**: Pack/Unpack frames directly into memory buffers without using the `atc_hdlc_context_t` or callbacks. Ideal for purely functional usage.
-*   **Reliable Data Transfer (Go-Back-N)**:
-    *   **Parametric Window Size** (1..7, configurable at init). Window=1 is Stop-and-Wait.
-    *   **Cumulative Acknowledgment**: N(R) in any received frame acknowledges all frames with N(S) < N(R). `atc_hdlc_tick` integration ensures periodic polling to send RR when needed.
-    *   **Automatic Retransmission**: On timeout, all outstanding frames from V(A) to V(S)-1 are retransmitted (Go-Back-N). Safely handles Enquiry (P=1) and P/F bit handshake to prevent blind retransmission.
-    *   **REJ (Reject) Handling**: Peer can request retransmission from a specific sequence number. Correctly unwinds Go-Back-N window without deadlocks.
-    *   **Piggyback ACK**: Outgoing I-frames carry N(R) to acknowledge received frames without a separate RR.
-    *   **Configurable Timers**: 
-        *   T1 (Retransmission timeout, default 1000 ticks).
-        *   T2 (ACK delay timeout, default 10 ticks) to allow piggybacking.
-    *   **Connection Retry Limits**: Drops connection if peers don't respond after a set number of MAX_RETRY attempts.
-    *   Zero-allocation slotted retransmit buffer — user provides a single contiguous buffer, library divides into `window_size` equal slots.
-*   **Protocol Infrastructure**:
-    *   Built-in support for I-Frames, S-Frames, and U-Frames with bit-field accessors.
-    *   Control Field helper functions for constructing each frame type.
-    *   **Asynchronous Balanced Mode (ABM)**:
-        *   Full Connection Management (`SABM`, `UA`, `DISC`, `DM`).
-        *   Explicit rejection of unsupported modes (`SNRM`, `SARM`) with `DM`.
-        *   Connection State Machine (`DISCONNECTED` ↔ `CONNECTING` ↔ `CONNECTED` ↔ `DISCONNECTING`).
-        *   **Contention Resolution**: Resolves SABM collisions (both sides connecting simultaneously) via a back-off contention timer using address prioritization.
-    *   **TEST Frame**: Send and auto-echo TEST frames with optional data payload for link verification.
-    *   **Multi-Slave / Broadcast Support**:
-        *   Broadcast Address (`0xFF`) support for UI frames.
-        *   Slaves silently ignore broadcast connection management commands (`SABM`, `DISC`) to prevent bus contention.
-        *   Broadcast UI frames are accepted without generating a response.
-    *   Frame Type dispatcher.
-*   **Developer Experience**:
-    *   Modern **CMake** build system (C99).
-    *   **Unit tests** covering edge cases (byte stuffing, CRC errors, overflow, fragmentation, control field loopback, reliable transmission, Go-Back-N, TEST frames, Virtual COM port simulation, modulo-8 arithmetic, and multi-platform pipe mechanisms). Works on **Linux & Windows**.
-    *   **STM32 Target Example**: Example project and physical target tests to run directly on microcontrollers.
-    *   **C++ compatible** (`extern "C"` wrappers).
-
-## 📂 Project Structure
+## Project Structure
 
 ```
 .
 ├── inc/
-│   ├── hdlc.h                # Public API (init, send, receive, packet processing)
-│   ├── hdlc_types.h          # Public types (frame, context, callbacks, control field)
-│   └── hdlc_config.h         # Configuration (prefix, timer defaults, window size)
+│   └── atc_hdlc/
+│       ├── hdlc.h          # Public API (atc_hdlc_* functions)
+│       ├── hdlc_types.h    # Types, callbacks, error codes, context
+│       └── hdlc_config.h   # Configuration defaults (overridable via #define)
 ├── src/
-│   ├── CMakeLists.txt        # Library build configuration
-│   ├── hdlc.c                # Core state management (init, tick, addresses)
-│   ├── hdlc_crc.c            # CRC-16-CCITT LUT and update function
-│   ├── hdlc_crc.h            # Internal CRC API
-│   ├── hdlc_frame.c          # Frame serialization (pack/unpack, encoding core)
-│   ├── hdlc_frame_handlers.c # Frame type dispatch (I/S/U-frame processing)
-│   ├── hdlc_input.c          # RX engine (byte parser, state machine)
-│   ├── hdlc_output.c         # TX engine (streaming, buffered, zero-copy output)
-│   └── hdlc_private.h        # Internal state machine definitions & constants
+│   ├── CMakeLists.txt
+│   ├── hdlc_private.h      # Internal constants, bit-field accessors, timer helpers
+│   ├── hdlc_frame.h        # Frame constants, field macros (FLAG, ESC, CTRL_*)
+│   ├── hdlc_crc.c          # CRC-16-CCITT LUT and update function
+│   ├── hdlc_crc.h
+│   ├── hdlc_station.c      # Init, link setup/disconnect, state transitions
+│   ├── hdlc_in.c           # Byte-by-byte RX parser (byte-stuffing removal, CRC)
+│   ├── hdlc_dispatch.c     # Frame dispatch and receive-side protocol logic
+│   └── hdlc_out.c          # TX streaming engine (byte-stuffing, frame construction)
+├── example/
+│   ├── CMakeLists.txt
+│   ├── loopback/           # Self-loopback integration example
+│   ├── minimal_ui/         # Minimal UI-frame send/receive example
+│   └── bare_metal_template/ # Bare-metal integration template
 ├── test/
-│   ├── CMakeLists.txt                # Test build configuration
-│   ├── test_hdlc.c                   # Core protocol unit tests
-│   ├── test_reliable_transmission.c  # Reliable TX, Go-Back-N, retransmission tests
-│   ├── test_connection_management.c  # State machine, collision & connection tests
-│   ├── test_virtual_com.c            # Virtual COM port integration and file transfer tests
-│   ├── test_physical_target.c        # Physical target throughput test over actual UART
-│   ├── test_virtual_pipe.c           # Generic multi-platform pipe mechanism for testing
-│   ├── test_virtual_pipe.h           # Pipe module header
-│   ├── test_common.c                 # Shared test utilities (colors, assertions)
-│   └── test_common.h                 # Shared test header
-├── CMakeLists.txt      # Root CMake configuration
-└── README.md           # This file
+│   ├── README.md           # Test execution guide (ctest labels, filtering)
+│   ├── unit/               # Fast unit tests (no I/O, no threads)
+│   │   ├── hdlc.c
+│   │   ├── reliable_transmission.c
+│   │   ├── connection_management.c
+│   │   ├── init_validation.c
+│   │   └── error_codes.c
+│   ├── integration/        # Virtual pipe and serial port tests
+│   │   ├── virtual_com.c
+│   │   └── physical_target.c
+│   ├── helpers/            # Shared test utilities
+│   │   ├── common.c / common.h
+│   │   └── virtual_pipe.c / virtual_pipe.h
+│   └── mcu_test_template/  # MCU port layer template — copy to MCU project before use
+│       ├── hdlc_platform.h     # PAL contract (3 functions to implement)
+│       ├── hdlc_mcu_port.h     # Public API (init, run, transmit)
+│       ├── hdlc_mcu_port.c     # Generic implementation (add to MCU build)
+│       └── README.md           # Integration guide (STM32 HAL+DMA example)
+├── CMakeLists.txt
+└── README.md
 ```
 
-## 🛠️ Build & Run
+## Architecture
 
-### Prerequisites
-*   C Compiler (GCC recommended)
-*   CMake ≥ 3.10
+Three layers:
 
-### Compile
+**Public API** (`inc/atc_hdlc/`): `hdlc.h`, `hdlc_types.h`, `hdlc_config.h`.
+
+**Core Implementation** (`src/`):
+- `hdlc_frame.h` — Frame constants and field accessor macros.
+- `hdlc_crc.c` — CRC-16-CCITT lookup table.
+- `hdlc_station.c` — Init, link setup/disconnect, state transitions.
+- `hdlc_in.c` — RX parser (byte-stuffing removal, CRC validation, reassembly).
+- `hdlc_dispatch.c` — Frame dispatch and receive-side protocol logic (I/S/U handling).
+- `hdlc_out.c` — TX streaming engine (byte-stuffing, frame construction, flush).
+
+### Data Flow
+
+```
+RX: UART byte → atc_hdlc_data_in() → hdlc_in.c (accumulate + unstuff)
+    → CRC check → frame handlers → on_data / on_event callbacks
+
+TX: atc_hdlc_transmit_i/ui/test() → hdlc_out.c (stuff + CRC)
+    → on_send(byte, flush) callback → UART
+
+Timers: User calls atc_hdlc_t1_expired() / atc_hdlc_t2_expired() from timer ISR
+```
+
+## Build & Run
 
 ```bash
-mkdir build && cd build
-cmake ..
-make
+cmake -B build
+cmake --build build
+
+# Run all tests
+ctest --test-dir build
+
+# Run only unit tests (fast, no I/O)
+ctest --test-dir build -L unit
+
+# Run only integration tests
+ctest --test-dir build -L integration
 ```
 
-On Windows with MinGW:
-```bash
-mkdir build && cd build
-cmake -G "MinGW Makefiles" ..
-make
-```
+## Integration
 
-### Run Tests
-
-```bash
-cd build
-ctest --verbose
-```
-
-### Example Output
-```text
-========================================
-TEST: Basic Frame (I-Frame)
-========================================
-   [ON FRAME EVENT] Frame Received!
-   Type: 0, Addr: FF, Ctrl: 00, Information Len: 4
-   Information: 54 45 53 54
-[PASS] Basic Frame
-
-========================================
-TEST: Byte Stuffing Heavy
-========================================
-   [ON FRAME EVENT] Frame Received!
-   Type: 0, Addr: 01, Ctrl: 03, Information Len: 5
-[PASS] Heavy Stuffing
-
-...
-
-========================================
-TEST: Broadcast Behavior
-========================================
-Testing Broadcast UI reception...
-   [ON FRAME EVENT] Frame Received!
-   Type: 2, Addr: FF, Ctrl: 03, Information Len: 9
-[PASS] Broadcast UI received by application.
-[PASS] Broadcast UI generated NO response.
-...
-[PASS] Broadcast Behavior
-
-ALL TESTS PASSED SUCCESSFULLY!
-```
-
-## 📦 Integration
-
-To use this library in your own project:
-
-1.  Add all `src/*.c` files to your build (`hdlc.c`, `hdlc_input.c`, `hdlc_output.c`, `hdlc_frame.c`, `hdlc_frame_handlers.c`, `hdlc_crc.c`).
-2.  Add `inc/` to your include path.
-3.  **Define Callbacks**:
-    ```c
-    // Output: Called by the library for each byte to transmit
-    void my_output_byte(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data) {
-        UART_SendByte(byte);
-        if (flush) {
-           // Optional: Flush hardware buffer if needed
-           // UART_Flush();
-        }
-    }
-
-    // On Frame: Called by the library when a valid frame is received
-    void my_on_frame(const atc_hdlc_frame_t *frame, void *user_data) {
-        process_frame(frame->address, frame->control.value,
-                      frame->information, frame->information_len);
-    }
-
-    // On State Change: Called when the connection state changes
-    void my_on_state(atc_hdlc_protocol_state_t state, atc_hdlc_event_t event, void *user_data) {
-        (void)user_data;
-        if (state == ATC_HDLC_PROTOCOL_STATE_CONNECTED) {
-            printf("Connected! (event=%d)\n", event);
-        } else if (state == ATC_HDLC_PROTOCOL_STATE_DISCONNECTED) {
-            if (event == ATC_HDLC_EVENT_LINK_FAILURE)
-                printf("Link failure! Reconnecting...\n");
-            else if (event == ATC_HDLC_EVENT_PEER_DISCONNECT)
-                printf("Peer disconnected.\n");
-            else
-                printf("Disconnected! (event=%d)\n", event);
-        } else {
-            printf("State changed to %d (event=%d)\n", state, event);
-        }
-    }
-    ```
-
-4.  **Initialize the context**:
-    ```c
-    atc_hdlc_context_t ctx;
-    uint8_t rx_buffer[256];
-    uint8_t retransmit_buffer[512]; // For reliable TX (divided into window_size slots)
-
-    atc_hdlc_init(&ctx,
-        rx_buffer, sizeof(rx_buffer),           // Input buffer
-        retransmit_buffer, sizeof(retransmit_buffer), // Retransmit buffer
-        ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT,        // T1 timeout (default 1000 ticks)
-        ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT,         // T2 timeout for cumulative ACK (default 10 ticks)
-        ATC_HDLC_DEFAULT_WINDOW_SIZE,               // Window size (1 = Stop-and-Wait)
-        ATC_HDLC_DEFAULT_MAX_RETRY_COUNT,           // N2 Retry limit (default 3)
-        my_output_byte, my_on_frame, my_on_state, NULL);
-    
-    // Configure Addresses (My Address, Peer Address)
-    atc_hdlc_configure_addresses(&ctx, 0x01, 0x02);
-
-    // Initiate Connection
-    atc_hdlc_connect(&ctx);
-    ```
-
-5.  **Feed received bytes into the parser**:
-
-    > ⚠️ **ISR Safety**: `atc_hdlc_input_byte` performs an **O(N) CRC verification loop** when the closing flag (`0x7E`) is received and also invokes the user `rx_cb` callback synchronously. **Do NOT call directly from a high-frequency ISR.** Use a Ring Buffer to decouple reception from processing.
-
-    ```c
-    // ISR: Just push bytes into a ring buffer
-    void UART_RX_ISR(void) {
-        uint8_t byte = UART_ReadByte();
-        ring_buffer_push(&rx_buf, byte);
-    }
-
-    // Main Loop: Process bytes safely (single byte)
-    void main_loop(void) {
-        uint8_t byte;
-        while (ring_buffer_pop(&rx_buf, &byte)) {
-            atc_hdlc_input_byte(&ctx, byte);
-        }
-    }
-
-    // Or use bulk input for DMA / batch transfers
-    void process_dma_buffer(uint8_t *buf, uint32_t len) {
-        atc_hdlc_input_bytes(&ctx, buf, len);
-    }
-    ```
-
-6.  **Packet Mode (Buffered)**:
-    Construct a frame structure and let the library handle transmission via the `output_cb`.
-    ```c
-    atc_hdlc_u8 payload[] = "TEST";
-    atc_hdlc_frame_t frame = {
-        .address = 0xFF,
-        .control.value = 0x00,      // I-Frame
-        .information = payload,
-        .information_len = 4
-    };
-    atc_hdlc_output_frame(&ctx, &frame);
-    ```
-
-7.  **Packet Mode (Zero-Copy)**:
-    For memory-constrained devices where allocating a full frame buffer is not feasible:
-    ```c
-    // Start: sends Flag + Address + Control (with CRC init)
-    atc_hdlc_output_frame_start(&ctx, 0x01, 0x03);
-
-    // Data: byte-by-byte or array (stuffing handled automatically)
-    atc_hdlc_output_frame_information_byte(&ctx, 0xAA);
-    uint8_t payload[] = {0x10, 0x20, 0x30};
-    atc_hdlc_output_frame_information_bytes(&ctx, payload, 3);
-
-    // End: sends CRC + Flag
-    atc_hdlc_output_frame_end(&ctx);
-    ```
-
-8.  **Stateless Mode (Pack)**:
-    Useful when you need to serialize a frame into a buffer without using the library's context or callbacks.
-    ```c
-    uint8_t buffer[128];
-    uint32_t len = 0;
-    atc_hdlc_frame_t frame = { ... }; // Setup frame fully
-    
-    if (atc_hdlc_frame_pack(&frame, buffer, sizeof(buffer), &len)) {
-        // buffer now contains the encoded frame (Flags + Stuffing + CRC)
-        // e.g. HAL_UART_Transmit(&huart1, buffer, len, 100);
-    }
-    ```
-
-9.  **Stateless Mode (Unpack)**:
-    Useful when you have a raw buffer containing a full frame and want to parse it without maintaining a receiver state machine.
-    ```c
-    uint8_t raw_buffer[] = {0x7E, 0xFF, ... , 0x7E}; // Received raw data
-    atc_hdlc_frame_t frame;
-    uint8_t flat_buffer[128]; // Destination for decoded data
-    
-    // Decodes, verifies CRC, unstuffs, and populates 'frame'
-    if (atc_hdlc_frame_unpack(raw_buffer, sizeof(raw_buffer), &frame, flat_buffer, sizeof(flat_buffer))) {
-        // Frame is valid!
-        process_frame(frame.address, frame.control.value, frame.information, frame.information_len);
-    }
-    ```
-
-## ⚙️ Configuration
-
-Configuration is done in `inc/hdlc_config.h`:
-
-| Parameter | Default | Description |
-|---|---|---|
-| `ATC_HDLC_DEFAULT_RETRANSMIT_TIMEOUT` | `1000` | Default T1 retransmission timeout in ticks |
-| `ATC_HDLC_DEFAULT_ACK_DELAY_TIMEOUT` | `10` | Default T2 ACK delay timeout in ticks for cumulative ACK |
-| `ATC_HDLC_DEFAULT_CONTENTION_DELAY_TIMEOUT`| `100` | Default contention timer back-off in ticks upon SABM collision |
-| `ATC_HDLC_DEFAULT_WINDOW_SIZE` | `1` | Default transmit window size for Go-Back-N (1..7) |
-| `ATC_HDLC_DEFAULT_MAX_RETRY_COUNT` | `3` | Default N2 retry limit before link disconnects |
-
-## 📖 API Reference
-
-### Packet Mode (Formatted & Zero-Copy)
-
-| Function | Description |
-|---|---|
-| `atc_hdlc_init()` | Initialize context and bind callbacks |
-| `atc_hdlc_input_byte()` | Feed a single received byte into the parser |
-| `atc_hdlc_input_bytes()` | Feed a byte array into the parser (bulk) |
-| `atc_hdlc_output_frame()` | Send a complete frame (buffered) |
-| `atc_hdlc_output_frame_start()` | Begin packet TX (Flag + Address + Control) |
-| `atc_hdlc_output_frame_information_byte()` | Send a single data byte (with stuffing) |
-| `atc_hdlc_output_frame_information_bytes()` | Send a data array (with stuffing) |
-| `atc_hdlc_output_frame_end()` | Finalize packet TX (CRC + Flag) |
-| `atc_hdlc_output_frame_ui()` | Send unacknowledged data (UI Frame) |
-| `atc_hdlc_output_frame_test()` | Send a TEST frame with optional data payload |
-| `atc_hdlc_output_frame_start_ui()` | Begin UI frame TX (streaming) |
-| `atc_hdlc_output_frame_start_test()` | Begin TEST frame TX (streaming) |
-| `atc_hdlc_output_frame_start_i()` | Begin I-frame TX (streaming, user-managed retransmission) |
-
-### Reliable Transmission (Go-Back-N)
-
-| Function | Description |
-|---|---|
-| `atc_hdlc_output_frame_i()` | Send a reliable I-frame (queued in the send window) |
-| `atc_hdlc_tick(ctx)` | Periodic timer tick — drives retransmission and connection timeouts. Each call = 1 tick. |
-
-### Connection Management
-
-| Function | Description |
-|---|---|
-| `atc_hdlc_configure_addresses()` | Set source and destination addresses |
-| `atc_hdlc_connect()` | Initiate connection (sends SABM) |
-| `atc_hdlc_disconnect()` | Terminate connection (sends DISC) |
-| `atc_hdlc_is_connected()` | Check if currently connected |
-
-### Stateless Mode
-
-| Function | Description |
-|---|---|
-| `atc_hdlc_frame_pack()` | Pack (serialize) a frame into a memory buffer |
-| `atc_hdlc_frame_unpack()` | Unpack (deserialize) a raw frame from a memory buffer |
-
-### Control Field Helpers
-
-| Function | Description |
-|---|---|
-| `atc_hdlc_create_i_ctrl(ns, nr, pf)` | Create I-Frame control byte |
-| `atc_hdlc_create_s_ctrl(s_bits, nr, pf)` | Create S-Frame control byte |
-| `atc_hdlc_create_u_ctrl(m_lo, m_hi, pf)` | Create U-Frame control byte |
-| `atc_hdlc_get_s_frame_sub_type(control)` | Get S-Frame sub-type from a control field |
-| `atc_hdlc_get_u_frame_sub_type(control)` | Get U-Frame sub-type from a control field |
-
-### Callback Signatures
+### 1. Define Callbacks
 
 ```c
-typedef void (*atc_hdlc_output_byte_cb_t)(atc_hdlc_u8 byte, atc_hdlc_bool flush, void *user_data);
-typedef void (*atc_hdlc_on_frame_cb_t)(const atc_hdlc_frame_t *frame, void *user_data);
-typedef void (*atc_hdlc_on_state_change_cb_t)(atc_hdlc_protocol_state_t state, atc_hdlc_event_t event, void *user_data);
+int my_on_send(atc_hdlc_u8 byte, bool flush, void *ctx) {
+    UART_SendByte(byte);
+    if (flush) { /* flush hardware buffer */ }
+    return 0;
+}
+
+void my_on_data(const atc_hdlc_u8 *payload, atc_hdlc_u16 len, void *ctx) {
+    // Process received data
+}
+
+void my_on_event(atc_hdlc_event_t event, void *ctx) {
+    switch (event) {
+        case ATC_HDLC_EVENT_CONN_ACCEPTED:  /* UA received for our SABM */     break;
+        case ATC_HDLC_EVENT_CONN_REQ:       /* peer sent SABM, auto-accepted */ break;
+        case ATC_HDLC_EVENT_DISC_DONE:      /* UA received for our DISC */      break;
+        case ATC_HDLC_EVENT_PEER_DISC:      /* peer sent DISC */                break;
+        case ATC_HDLC_EVENT_PEER_REJECT:    /* peer sent DM */                  break;
+        case ATC_HDLC_EVENT_PROTOCOL_ERROR: /* peer sent FRMR */                break;
+        case ATC_HDLC_EVENT_LINK_FAILURE:   /* N2 retries exceeded */           break;
+        case ATC_HDLC_EVENT_PEER_BUSY:      /* peer sent RNR */                 break;
+        case ATC_HDLC_EVENT_PEER_READY:     /* peer sent RR after RNR */        break;
+        case ATC_HDLC_EVENT_WINDOW_OPEN:    /* TX window slot freed */          break;
+        default: break;
+    }
+}
+
+void my_t1_start(atc_hdlc_u32 ms, void *ctx) { start_timer(ms); }
+void my_t1_stop(void *ctx) { stop_timer(); }
+void my_t2_start(atc_hdlc_u32 ms, void *ctx) { start_timer(ms); }
+void my_t2_stop(void *ctx) { stop_timer(); }
 ```
 
-## 📄 License
+### 2. Initialize Context
 
-This project is licensed under the **GNU General Public License v3.0 (GPLv3)**. See the [LICENSE](LICENSE) file for details.
+```c
+atc_hdlc_ctx_t ctx;
+
+// Configuration
+atc_hdlc_config_t config = {
+    .mode = ATC_HDLC_MODE_ABM,
+    .address = 0x01,
+    .max_info_size = 256,
+    .max_retries = 3,
+    .t1_ms = 1000,
+    .t2_ms = 50,
+};
+
+// Platform callbacks
+atc_hdlc_plat_ops_t platform = {
+    .on_send = my_on_send,
+    .on_data = my_on_data,
+    .on_event = my_on_event,
+    .t1_start = my_t1_start,
+    .t1_stop = my_t1_stop,
+    .t2_start = my_t2_start,
+    .t2_stop = my_t2_stop,
+    .user_ctx = NULL,
+};
+
+// TX window (for reliable I-frames)
+uint8_t tx_slots[3 * 256];  // slot_count * slot_capacity
+uint32_t tx_slot_lens[3];
+atc_hdlc_txwin_t tx_window = {
+    .slots = tx_slots,
+    .slot_lens = tx_slot_lens,
+    .slot_capacity = 256,
+    .slot_count = 3,
+};
+
+// RX buffer
+uint8_t rx_buffer[512];
+atc_hdlc_rxbuf_t rx_buf = {
+    .buffer = rx_buffer,
+    .capacity = sizeof(rx_buffer),
+};
+
+// Init
+atc_hdlc_params_t params = {
+    .config    = &config,
+    .platform  = &platform,
+    .tx_window = &tx_window,
+    .rx_buf    = &rx_buf,
+    .crc       = NULL,  // NULL = software CRC-16-CCITT default
+};
+atc_hdlc_init(&ctx, params);
+
+// Connect
+atc_hdlc_link_setup(&ctx, 0x02);  // peer address
+```
+
+### 3. Feed Received Bytes
+
+> **Note**: `atc_hdlc_data_in` is **not ISR-safe**. Use a ring buffer to decouple reception.
+
+```c
+// ISR: push to ring buffer
+void UART_RX_ISR(void) {
+    ring_buffer_push(&rx_buf, UART_ReadByte());
+}
+
+// Main loop
+void main_loop(void) {
+    uint8_t byte;
+    while (ring_buffer_pop(&rx_buf, &byte)) {
+        atc_hdlc_data_in(&ctx, &byte, 1);
+    }
+}
+```
+
+### 4. Send Data
+
+```c
+// Reliable I-frame (queued in TX window)
+atc_hdlc_transmit_i(&ctx, (atc_hdlc_u8 *)"Hello", 5);
+
+// Unacknowledged UI-frame
+atc_hdlc_transmit_ui(&ctx, 0xFF, (atc_hdlc_u8 *)"Broadcast", 10);
+
+// TEST frame
+atc_hdlc_transmit_test(&ctx, 0x02, (atc_hdlc_u8 *)"ping", 4);
+```
+
+### 5. Streaming TX (Low-Memory)
+
+```c
+atc_hdlc_transmit_ui_start(&ctx, 0x02);
+atc_hdlc_transmit_ui_data(&ctx, (atc_hdlc_u8 *)"chunk1", 6);
+atc_hdlc_transmit_ui_data(&ctx, (atc_hdlc_u8 *)"chunk2", 6);
+atc_hdlc_transmit_ui_end(&ctx);
+```
+
+### 6. Timer Interrupts
+
+```c
+void T1_TIMER_IRQ(void) {  // Retransmission timeout
+    atc_hdlc_t1_expired(&ctx);
+}
+
+void T2_TIMER_IRQ(void) {  // Delayed ACK timeout
+    atc_hdlc_t2_expired(&ctx);
+}
+```
+
+## API Reference
+
+### Initialization & Connection
+
+| Function | Description |
+|---|---|
+| `atc_hdlc_init()` | Initialize context with config and callbacks |
+| `atc_hdlc_link_setup()` | Initiate connection |
+| `atc_hdlc_disconnect()` | Terminate connection |
+| `atc_hdlc_link_reset()` | Reset and reconnect |
+| `atc_hdlc_abort()` | Abort on line break/framing error |
+| `atc_hdlc_get_state()` | Get current state |
+
+### Data Transfer
+
+| Function | Description |
+|---|---|
+| `atc_hdlc_transmit_i()` | Send reliable I-frame |
+| `atc_hdlc_transmit_ui()` | Send UI-frame (connectionless) |
+| `atc_hdlc_transmit_test()` | Send TEST frame |
+| `atc_hdlc_transmit_ui_start()` | Begin streaming UI TX |
+| `atc_hdlc_transmit_ui_data()` | Add bytes to TX stream |
+| `atc_hdlc_transmit_ui_end()` | Finish TX stream |
+| `atc_hdlc_data_in()` | Feed received bytes |
+
+### Timers
+
+| Function | Description |
+|---|---|
+| `atc_hdlc_t1_expired()` | Call from T1 timer ISR (retransmission) |
+| `atc_hdlc_t2_expired()` | Call from T2 timer ISR (delayed ACK) |
+
+### Flow Control
+
+| Function | Description |
+|---|---|
+| `atc_hdlc_set_local_busy()` | Set local RNR (tell peer to pause) |
+
+## Configuration
+
+### Runtime Configuration (`atc_hdlc_config_t`)
+
+Set these fields before calling `atc_hdlc_init()`:
+
+| Field | Default | Description |
+|---|---|---|
+| `mode` | `ATC_HDLC_MODE_ABM` | Operating mode (only ABM supported) |
+| `address` | — | Local station address |
+| `max_info_size` | `256` | Maximum information field size |
+| `max_retries` | `3` | N2 retry limit before link failure |
+| `t1_ms` | `1000` | T1 retransmission timeout (ms) |
+| `t2_ms` | `10` | T2 delayed ACK timeout (ms, must be < t1_ms) |
+
+### Compile-Time Defaults (`inc/atc_hdlc/hdlc_config.h`)
+
+Override these macros before including `hdlc.h`:
+
+| Macro | Default | Description |
+|---|---|---|
+| `ATC_HDLC_DEFAULT_T1_TIMEOUT` | `1000` | Default T1 timeout (ms) |
+| `ATC_HDLC_DEFAULT_T2_TIMEOUT` | `10` | Default T2 timeout (ms) |
+| `ATC_HDLC_DEFAULT_N2_RETRY_COUNT` | `3` | Default N2 retry limit |
+| `ATC_HDLC_LOG_LEVEL` | `OFF` | Verbosity ceiling (`OFF`/`ERR`/`WRN`/`INFO`/`DBG`) |
+
+### Custom CRC Driver (`atc_hdlc_crc_ops_t`)
+
+Pass `NULL` for `.crc` in `atc_hdlc_params_t` to use the built-in software CRC-16-CCITT implementation (`atc_hdlc_crc_ops_default`).
+
+To plug in a hardware CRC peripheral, provide your own `atc_hdlc_crc_ops_t`:
+
+```c
+atc_hdlc_u16 my_hw_crc(atc_hdlc_u16 crc, const atc_hdlc_u8 *buf, atc_hdlc_u32 len) {
+    // feed buf[0..len-1] into hardware CRC unit seeded with crc
+    return HW_CRC_Result();
+}
+
+const atc_hdlc_crc_ops_t my_crc = { .compute = my_hw_crc };
+
+atc_hdlc_params_t params = {
+    ...
+    .crc = &my_crc,
+};
+```
+
+The `compute` function must implement CRC-16-CCITT (poly `0x1021`, init `0xFFFF`).
+
+To redirect debug output on bare-metal targets:
+
+```c
+#define ATC_HDLC_LOG_IMPL(level, fmt, ...) \
+    my_log_function(level, fmt, ##__VA_ARGS__)
+#include "atc_hdlc/hdlc.h"
+```
+
+## License
+
+GNU General Public License v3.0 (GPLv3). See [LICENSE](LICENSE).

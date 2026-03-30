@@ -1,3 +1,8 @@
+# Reference implementation (never commit)
+reference/
+.claude/
+CLAUDE.md
+
 # Build directories
 build/
 bin/
@@ -36,3 +41,4 @@ test/crc_check
 .vscode/
 .idea/
 .DS_Store
+.clang-format

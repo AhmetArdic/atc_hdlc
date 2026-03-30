@@ -1,0 +1,15 @@
+add_executable(loopback loopback/loopback.c)
+target_link_libraries(loopback PRIVATE hdlc)
+target_compile_options(loopback PRIVATE -Wall -Wextra -Wshadow -Wconversion)
+add_test(NAME loopback COMMAND loopback)
+set_tests_properties(loopback PROPERTIES LABELS "fast")
+
+add_executable(minimal_ui minimal_ui/minimal_ui.c)
+target_link_libraries(minimal_ui PRIVATE hdlc)
+target_compile_options(minimal_ui PRIVATE -Wall -Wextra -Wshadow -Wconversion)
+add_test(NAME minimal_ui COMMAND minimal_ui)
+set_tests_properties(minimal_ui PROPERTIES LABELS "fast")
+
+add_executable(bare_metal_template bare_metal_template/bare_metal_template.c)
+target_link_libraries(bare_metal_template PRIVATE hdlc)
+target_compile_options(bare_metal_template PRIVATE -Wall -Wextra -Wshadow -Wconversion)

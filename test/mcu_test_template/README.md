@@ -1,0 +1,208 @@
+# atc_hdlc — MCU Port Layer
+
+`hdlc_mcu_port.c` provides a ready-to-use HDLC station on any bare-metal MCU.
+You only need to implement three platform functions declared in `hdlc_platform.h`.
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `hdlc_platform.h` | PAL contract — the three functions you must implement |
+| `hdlc_mcu_port.h` | Public API (`init`, `run`, `transmit`) |
+| `hdlc_mcu_port.c` | Generic implementation — add this to your build |
+
+## Integration
+
+1. Copy `hdlc_mcu_port.c` and `hdlc_mcu_port.h` into your project (or add the path to your build system).
+2. Create a `hdlc_platform.c` file in your project and implement the three functions below.
+3. Call `hdlc_port_init()` once, then `hdlc_port_run()` from your main loop.
+
+## MCU HAL + DMA example
+
+The example below targets MCU with USART + circular DMA on both RX and TX,
+which is the most common bare-metal setup.  Adapt peripheral names and buffer
+sizes to your board.
+
+```c
+/* hdlc_platform.c — MCU HAL + DMA implementation */
+
+#include "hdlc_platform.h"
+#include "main.h"          /* UART/DMA handles from CubeMX */
+
+/* ------------------------------------------------------------------ */
+/*  TX ring buffer (written by HDLC, drained by DMA)                  */
+/* ------------------------------------------------------------------ */
+#define TX_RING_SIZE  8192u          /* must be a power of 2 */
+#define TX_RING_MASK  (TX_RING_SIZE - 1u)
+
+static uint_least8_t     tx_ring[TX_RING_SIZE];
+static volatile uint16_t tx_head     = 0;
+static volatile uint16_t tx_tail     = 0;
+static volatile uint_least8_t tx_dma_busy = 0;
+
+/* Kick a DMA transfer from tx_tail toward tx_head (IRQ-safe). */
+static void tx_flush_dma(void)
+{
+    __disable_irq();
+    if (tx_dma_busy || tx_head == tx_tail) {
+        __enable_irq();
+        return;
+    }
+    uint16_t tail = tx_tail;
+    uint16_t len  = (tx_head > tail) ? tx_head - tail
+                                     : TX_RING_SIZE - tail;
+    tx_dma_busy = 1;
+    __enable_irq();
+
+    if (HAL_UART_Transmit_DMA(&huart2, &tx_ring[tail], len) != HAL_OK) {
+        __disable_irq();
+        tx_dma_busy = 0;
+        __enable_irq();
+    }
+}
+
+/* Chain the next DMA burst when the previous one completes. */
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART2) {
+        tx_tail     = (tx_tail + huart->TxXferSize) & TX_RING_MASK;
+        tx_dma_busy = 0;
+        tx_flush_dma();
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/*  RX ring buffer (written by circular DMA, read by port_rx_read)    */
+/* ------------------------------------------------------------------ */
+#define RX_RING_SIZE  8192u
+#define RX_RING_MASK  (RX_RING_SIZE - 1u)
+
+static uint_least8_t rx_ring[RX_RING_SIZE];
+static uint16_t      rx_tail = 0;
+
+/* Start circular DMA once during system init. */
+void hdlc_platform_uart_init(void)
+{
+    HAL_UART_Receive_DMA(&huart2, rx_ring, RX_RING_SIZE);
+}
+
+/* ------------------------------------------------------------------ */
+/*  PAL implementation                                                 */
+/* ------------------------------------------------------------------ */
+
+void port_tx_byte(uint_least8_t byte, bool flush)
+{
+    uint16_t next = (tx_head + 1u) & TX_RING_MASK;
+    while (next == tx_tail)         /* spin if ring is full */
+        tx_flush_dma();
+
+    tx_ring[tx_head] = byte;
+    tx_head = next;
+
+    if (flush)
+        tx_flush_dma();
+}
+
+uint32_t port_tick_ms(void)
+{
+    return HAL_GetTick();           /* 1 ms resolution from SysTick */
+}
+
+uint16_t port_rx_read(uint_least8_t *buf, uint16_t max_len)
+{
+    uint16_t dma_head = (uint16_t)(RX_RING_SIZE
+                        - __HAL_DMA_GET_COUNTER(huart2.hdmarx));
+    if (dma_head == RX_RING_SIZE)
+        dma_head = 0;
+
+    uint16_t copied = 0;
+
+    if (dma_head > rx_tail) {
+        uint16_t n = dma_head - rx_tail;
+        if (n > max_len) n = max_len;
+        memcpy(buf, &rx_ring[rx_tail], n);
+        copied  = n;
+        rx_tail = (rx_tail + n) & RX_RING_MASK;
+    } else if (dma_head < rx_tail) {
+        /* Wrap-around: two segments */
+        uint16_t n1 = RX_RING_SIZE - rx_tail;
+        if (n1 > max_len) n1 = max_len;
+        memcpy(buf, &rx_ring[rx_tail], n1);
+        copied  = n1;
+        rx_tail = 0;
+
+        uint16_t n2 = dma_head;
+        if (n2 > (uint16_t)(max_len - copied)) n2 = max_len - copied;
+        if (n2 > 0) {
+            memcpy(buf + copied, &rx_ring[0], n2);
+            copied += n2;
+            rx_tail = n2;
+        }
+    }
+
+    return copied;
+}
+```
+
+### main.c skeleton
+
+```c
+#include "hdlc_mcu_port.h"
+#include "hdlc_platform.h"   /* for hdlc_platform_uart_init() */
+
+int main(void)
+{
+    HAL_Init();
+    SystemClock_Config();
+    MX_GPIO_Init();
+    MX_DMA_Init();
+    MX_USART2_UART_Init();
+
+    __HAL_FLASH_INSTRUCTION_CACHE_ENABLE();
+    __HAL_FLASH_DATA_CACHE_ENABLE();
+    __HAL_FLASH_PREFETCH_BUFFER_ENABLE();
+
+    hdlc_platform_uart_init();   /* start circular RX DMA */
+
+    hdlc_port_config_t cfg = {
+        .local_addr  = 0x02,
+        .peer_addr   = 0x01,
+        .max_retries = 10,
+        .t1_ms       = 500,
+        .t2_ms       = 1,
+    };
+    hdlc_port_init(&cfg);
+
+    while (1)
+        hdlc_port_run();
+}
+```
+
+## Build system notes
+
+Add to your compiler flags to change buffer sizes without editing any file:
+
+```
+-DHDLC_PORT_MAX_INFO=256
+-DHDLC_PORT_WINDOW=4
+-DHDLC_PORT_RX_CHUNK=128
+```
+
+Add these source files to your build:
+
+```
+src/hdlc_station.c
+src/hdlc_in.c
+src/hdlc_out.c
+src/hdlc_dispatch.c
+src/hdlc_crc.c
+test/mcu_test_template/hdlc_mcu_port.c
+<your>/hdlc_platform.c
+```
+
+Include paths needed:
+
+```
+inc/
+test/mcu_test_template/
+```
